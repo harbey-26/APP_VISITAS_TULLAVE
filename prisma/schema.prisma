@@ -41,7 +41,7 @@ model Visit {
   checkInLng       Float?
   checkOutLat      Float?
   checkOutLng      Float?
-  checkOutLng      Float?
+
   notes            String?
   clientName       String?
   clientPhone      String?
