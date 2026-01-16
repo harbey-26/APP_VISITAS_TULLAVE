@@ -45,6 +45,7 @@ function VisitExecutionContent() {
     const [loading, setLoading] = useState(false);
     const [notes, setNotes] = useState('');
     const [currentPos, setCurrentPos] = useState(null);
+    const [errorMsg, setErrorMsg] = useState(null);
 
     // Fetch visit details
     useEffect(() => {
@@ -105,14 +106,23 @@ function VisitExecutionContent() {
         return new Promise((resolve, reject) => {
             if (!navigator.geolocation) reject(new Error('Geolocalización no soportada'));
             navigator.geolocation.getCurrentPosition(
-                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                (err) => reject(err)
+                (pos) => {
+                    console.log(`Ubicación obtenida con precisión de ${pos.coords.accuracy} metros.`);
+                    resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                },
+                (err) => reject(err),
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
             );
         });
     };
 
     const handleStart = async () => {
         setLoading(true);
+        setErrorMsg(null);
         try {
             const { lat, lng } = await getCurrentLocation();
             setCurrentPos([lat, lng]);
@@ -129,9 +139,12 @@ function VisitExecutionContent() {
             if (res.ok) {
                 const updated = await res.json();
                 setVisit(updated);
+            } else {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Error desconocido al iniciar visita');
             }
         } catch (error) {
-            alert('Error al iniciar visita: ' + error.message);
+            setErrorMsg(error.message);
         } finally {
             setLoading(false);
         }
@@ -139,6 +152,7 @@ function VisitExecutionContent() {
 
     const handleFinish = async () => {
         setLoading(true);
+        setErrorMsg(null);
         try {
             const { lat, lng } = await getCurrentLocation();
 
@@ -155,9 +169,12 @@ function VisitExecutionContent() {
                 const updated = await res.json();
                 setVisit(updated);
                 navigate('/agenda');
+            } else {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Error desconocido al finalizar visita');
             }
         } catch (error) {
-            alert('Error al finalizar visita: ' + error.message);
+            setErrorMsg(error.message);
         } finally {
             setLoading(false);
         }
@@ -230,7 +247,13 @@ function VisitExecutionContent() {
                 )}
             </div>
 
-            <div className="mt-6 flex-none">
+            <div className="mt-6 flex-none space-y-4">
+                {errorMsg && (
+                    <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-center text-sm font-medium">
+                        {errorMsg}
+                    </div>
+                )}
+
                 {visit.status === 'PENDING' && (
                     <button
                         onClick={handleStart}

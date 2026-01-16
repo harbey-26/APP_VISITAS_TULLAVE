@@ -87,12 +87,50 @@ export const createVisit = async (req, res) => {
     }
 };
 
+
+// Helper: Calculate distance in meters
+function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+}
+
 export const startVisit = async (req, res) => {
     const { id } = req.params;
     try {
         const data = startVisitSchema.parse(req.body);
 
-        const visit = await prisma.visit.update({
+        // Fetch visit with property location
+        const visit = await prisma.visit.findUnique({
+            where: { id: parseInt(id) },
+            include: { property: true }
+        });
+
+        if (!visit) {
+            return res.status(404).json({ error: 'Visita no encontrada' });
+        }
+
+        if (visit.property && visit.property.lat && visit.property.lng) {
+            const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
+            const MAX_DISTANCE_METERS = 500;
+
+            if (distance > MAX_DISTANCE_METERS) {
+                return res.status(400).json({
+                    error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${MAX_DISTANCE_METERS}m.`
+                });
+            }
+        }
+
+        const updatedVisit = await prisma.visit.update({
             where: { id: parseInt(id) },
             data: {
                 status: 'IN_PROGRESS',
@@ -101,11 +139,12 @@ export const startVisit = async (req, res) => {
                 checkInLng: data.lng
             }
         });
-        res.json(visit);
+        res.json(updatedVisit);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
 };
+
 
 export const finishVisit = async (req, res) => {
     const { id } = req.params;
