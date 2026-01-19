@@ -51,7 +51,7 @@ function VisitExecutionContent() {
     useEffect(() => {
         const fetchVisit = async () => {
             try {
-                const res = await fetch(`http://localhost:3000/api/visits?id=${id}`, {
+                const res = await fetch(`/api/visits?id=${id}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -127,7 +127,7 @@ function VisitExecutionContent() {
             const { lat, lng } = await getCurrentLocation();
             setCurrentPos([lat, lng]);
 
-            const res = await fetch(`http://localhost:3000/api/visits/${id}/start`, {
+            const res = await fetch(`/api/visits/${id}/start`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ function VisitExecutionContent() {
         try {
             const { lat, lng } = await getCurrentLocation();
 
-            const res = await fetch(`http://localhost:3000/api/visits/${id}/finish`, {
+            const res = await fetch(`/api/visits/${id}/finish`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
