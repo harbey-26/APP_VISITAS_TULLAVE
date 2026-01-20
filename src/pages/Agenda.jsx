@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Clock, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
+import { API_URL } from '../config';
 
 export default function Agenda() {
     const [visits, setVisits] = useState([]);
@@ -11,27 +12,34 @@ export default function Agenda() {
     const [deletePassword, setDeletePassword] = useState('');
 
     const [properties, setProperties] = useState([]);
+    const [agents, setAgents] = useState([]);
     const [isNewProperty, setIsNewProperty] = useState(false);
+
+    // Default to Today for both
+    const today = new Date().toISOString().split('T')[0];
+    const [dateRange, setDateRange] = useState({ start: today, end: today });
 
     const [formData, setFormData] = useState({
         propertyId: '',
         newAddress: '',
         newClient: '',
+        assignedUserId: '', // For Admin to assign
         date: new Date().toISOString().split('T')[0],
         time: '09:00',
         duration: 60,
-        type: 'SHOWING',
+        type: 'RENTAL_SHOWING',
         notes: '',
         clientName: '',
         clientPhone: ''
     });
 
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const navigate = useNavigate();
 
     const fetchVisits = async () => {
         try {
-            const res = await fetch('/api/visits', {
+            const query = `?startDate=${dateRange.start}&endDate=${dateRange.end}`;
+            const res = await fetch(`${API_URL}/api/visits${query}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
@@ -50,7 +58,7 @@ export default function Agenda() {
 
     const fetchProperties = async () => {
         try {
-            const res = await fetch('/api/properties', {
+            const res = await fetch(`${API_URL}/api/properties`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
@@ -61,10 +69,30 @@ export default function Agenda() {
         }
     };
 
+    const fetchAgents = async () => {
+        // Only fetch agents if Admin
+        if (user?.role === 'ADMIN') {
+            try {
+                const res = await fetch(`${API_URL}/api/users`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const allUsers = await res.json();
+                    setAgents(allUsers.filter(u => u.role === 'AGENT')); // Or all users if admins can also have visits
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    };
+
     useEffect(() => {
-        fetchVisits();
-        fetchProperties();
-    }, [token]);
+        if (token) {
+            fetchVisits();
+            fetchProperties();
+            fetchAgents();
+        }
+    }, [token, user, dateRange]); // Reload when date range changes
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -72,7 +100,7 @@ export default function Agenda() {
 
             // STEP 1: Create Property
             if (isNewProperty) {
-                const propRes = await fetch('/api/properties', {
+                const propRes = await fetch(`${API_URL}/api/properties`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -104,21 +132,28 @@ export default function Agenda() {
             // STEP 2: Create Visit
             const scheduledStart = new Date(`${formData.date}T${formData.time}:00`).toISOString();
 
-            const res = await fetch('/api/visits', {
+            const payload = {
+                propertyId: parseInt(formData.propertyId),
+                scheduledStart,
+                estimatedDuration: parseInt(formData.duration),
+                type: formData.type,
+                notes: formData.notes,
+                clientName: formData.clientName,
+                clientPhone: formData.clientPhone
+            };
+
+            // Add assignedUserId if present and valid
+            if (formData.assignedUserId) {
+                payload.assignedUserId = parseInt(formData.assignedUserId);
+            }
+
+            const res = await fetch(`${API_URL}/api/visits`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    propertyId: parseInt(formData.propertyId),
-                    scheduledStart,
-                    estimatedDuration: parseInt(formData.duration),
-                    type: formData.type,
-                    notes: formData.notes,
-                    clientName: formData.clientName,
-                    clientPhone: formData.clientPhone
-                })
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
@@ -128,6 +163,7 @@ export default function Agenda() {
                     propertyId: '',
                     newAddress: '',
                     newClient: '',
+                    assignedUserId: '',
                     date: new Date().toISOString().split('T')[0],
                     time: '09:00',
                     duration: 60,
@@ -156,7 +192,7 @@ export default function Agenda() {
     const confirmDelete = async () => {
         if (!deletePassword) return;
         try {
-            const res = await fetch(`/api/visits/${deleteTargetId}`, {
+            const res = await fetch(`${API_URL}/api/visits/${deleteTargetId}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -205,19 +241,48 @@ export default function Agenda() {
         }
     };
 
+    // Helper for date display
+    const formatDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+
     return (
         <div className="space-y-6 relative min-h-[80vh]">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                    <h2 className="text-xl font-bold">Visitas de Hoy</h2>
-                    <span className="text-sm text-gray-500">{new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    <h2 className="text-xl font-bold">Visitas Programadas</h2>
+                    <span className="text-sm text-gray-500 capitalize">
+                        {dateRange.start === dateRange.end
+                            ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                            : `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`
+                        }
+                    </span>
                 </div>
-                <button
-                    onClick={() => setShowModal(true)}
-                    className="bg-brand-600 text-white p-2 rounded-full shadow-lg hover:bg-brand-700 transition"
-                >
-                    <Plus className="w-6 h-6" />
-                </button>
+                <div className="flex items-center space-x-3 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center space-x-1">
+                        <span className="text-xs text-gray-500">Del</span>
+                        <input
+                            type="date"
+                            value={dateRange.start}
+                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                            className="border border-gray-300 rounded text-sm p-1 max-w-[130px] focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                        />
+                    </div>
+                    <div className="flex items-center space-x-1">
+                        <span className="text-xs text-gray-500">al</span>
+                        <input
+                            type="date"
+                            value={dateRange.end}
+                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                            className="border border-gray-300 rounded text-sm p-1 max-w-[130px] focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                        />
+                    </div>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="bg-brand-600 text-white p-2 rounded-full shadow hover:bg-brand-700 transition ml-2"
+                        title="Nueva Visita"
+                    >
+                        <Plus className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
             <div className="space-y-4">
@@ -275,6 +340,25 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
+
+                            {/* Admin: Agent Selector */}
+                            {user?.role === 'ADMIN' && (
+                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                    <label className="block text-sm font-medium text-blue-800 mb-1">Asignar Agente</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        value={formData.assignedUserId}
+                                        onChange={e => setFormData({ ...formData, assignedUserId: e.target.value })}
+                                    >
+                                        <option value="">-- Auto-asignar (Yo) --</option>
+                                        {agents.map(agent => (
+                                            <option key={agent.id} value={agent.id}>
+                                                {agent.name} ({agent.email})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                                 <div className="flex justify-between items-center mb-2">
@@ -388,9 +472,12 @@ export default function Agenda() {
                                                 value={formData.type}
                                                 onChange={e => setFormData({ ...formData, type: e.target.value })}
                                             >
-                                                <option value="SHOWING">Visita Comercial</option>
-                                                <option value="APPRAISAL">Avalúo</option>
+                                                <option value="RENTAL_SHOWING">Mostrar inmueble en arriendo</option>
+                                                <option value="PROPERTY_INTAKE">Captación de inmueble</option>
+                                                <option value="HANDOVER">Entrega de inmueble</option>
+                                                <option value="MOVE_OUT">Desocupación</option>
                                                 <option value="INSPECTION">Inspección</option>
+                                                <option value="OTHER">Otro</option>
                                             </select>
                                         </div>
                                         <div>

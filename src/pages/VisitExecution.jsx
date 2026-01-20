@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, Square, CheckCircle } from 'lucide-react';
+import { API_URL } from '../config';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 class ErrorBoundary extends React.Component {
@@ -46,12 +47,13 @@ function VisitExecutionContent() {
     const [notes, setNotes] = useState('');
     const [currentPos, setCurrentPos] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
+    const [outcome, setOutcome] = useState('');
 
     // Fetch visit details
     useEffect(() => {
         const fetchVisit = async () => {
             try {
-                const res = await fetch(`/api/visits?id=${id}`, {
+                const res = await fetch(`${API_URL}/api/visits?id=${id}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -127,7 +129,7 @@ function VisitExecutionContent() {
             const { lat, lng } = await getCurrentLocation();
             setCurrentPos([lat, lng]);
 
-            const res = await fetch(`/api/visits/${id}/start`, {
+            const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -151,18 +153,23 @@ function VisitExecutionContent() {
     };
 
     const handleFinish = async () => {
+        if (!outcome) {
+            setErrorMsg('Debes seleccionar un resultado para finalizar la visita.');
+            return;
+        }
+
         setLoading(true);
         setErrorMsg(null);
         try {
             const { lat, lng } = await getCurrentLocation();
 
-            const res = await fetch(`/api/visits/${id}/finish`, {
+            const res = await fetch(`${API_URL}/api/visits/${id}/finish`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ lat, lng, notes })
+                body: JSON.stringify({ lat, lng, notes, outcome }) // notes field is used for Comments
             });
 
             if (res.ok) {
@@ -238,12 +245,33 @@ function VisitExecutionContent() {
                 </div>
 
                 {visit.status === 'IN_PROGRESS' && (
-                    <textarea
-                        className="w-full p-3 border rounded-xl h-32 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                        placeholder="Agregar notas de la visita..."
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                    />
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Resultado de la Visita</label>
+                            <select
+                                className="w-full p-3 border rounded-xl bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                value={outcome}
+                                onChange={(e) => setOutcome(e.target.value)}
+                            >
+                                <option value="">Seleccionar resultado...</option>
+                                <option value="Cliente interesado">Cliente interesado</option>
+                                <option value="Cliente no interesado">Cliente no interesado</option>
+                                <option value="Requiere seguimiento">Requiere seguimiento</option>
+                                <option value="Cliente no asistió">Cliente no asistió</option>
+                                <option value="Cancelada">Cancelada</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Comentarios</label>
+                            <textarea
+                                className="w-full p-3 border rounded-xl h-32 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                placeholder="Escribe tus comentarios u observaciones aquí..."
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                            />
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -277,9 +305,21 @@ function VisitExecutionContent() {
                 )}
 
                 {visit.status === 'COMPLETED' && (
-                    <div className="text-center text-green-600 font-bold flex items-center justify-center p-4 bg-green-50 rounded-xl">
-                        <CheckCircle className="w-6 h-6 mr-2" />
-                        Visita Completada
+                    <div className="bg-green-50 rounded-xl p-4 border border-green-100 space-y-3">
+                        <div className="text-center text-green-600 font-bold flex items-center justify-center mb-2">
+                            <CheckCircle className="w-6 h-6 mr-2" />
+                            Visita Completada
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-green-100">
+                            <p className="text-sm font-semibold text-gray-700">Resultado:</p>
+                            <p className="text-gray-900">{visit.outcome || 'Sin resultado registrado'}</p>
+                        </div>
+                        {visit.notes && (
+                            <div className="bg-white p-3 rounded-lg border border-green-100">
+                                <p className="text-sm font-semibold text-gray-700">Comentarios:</p>
+                                <p className="text-gray-600 italic">"{visit.notes}"</p>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

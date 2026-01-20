@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Trash2, X, User as UserIcon, Shield } from 'lucide-react';
+import { API_URL } from '../config';
 
 export default function Users() {
     const [users, setUsers] = useState([]);
@@ -15,7 +16,7 @@ export default function Users() {
 
     const fetchUsers = async () => {
         try {
-            const res = await fetch('/api/users', {
+            const res = await fetch(`${API_URL}/api/users`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
@@ -33,7 +34,7 @@ export default function Users() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await fetch('/api/users', {
+            const res = await fetch(`${API_URL}/api/users`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -60,7 +61,7 @@ export default function Users() {
         if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
 
         try {
-            const res = await fetch(`/api/users/${id}`, {
+            const res = await fetch(`${API_URL}/api/users/${id}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` }
             });

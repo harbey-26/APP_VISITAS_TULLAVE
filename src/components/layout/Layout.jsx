@@ -25,6 +25,7 @@ export default function Layout() {
                     {user?.role === 'ADMIN' && (
                         <>
                             <Link to="/users" className={`text-sm hidden sm:block font-medium ${isActive('/users')}`}>Usuarios</Link>
+                            <Link to="/properties" className={`text-sm hidden sm:block font-medium ${isActive('/properties')}`}>Inmuebles</Link>
                             <Link to="/dashboard" className={`text-sm hidden sm:block font-medium ${isActive('/dashboard')}`}>Dashboard</Link>
                         </>
                     )}

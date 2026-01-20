@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getProperties, createProperty } from '../controllers/property.controller.js';
+import { getProperties, createProperty, updateProperty, deleteProperty } from '../controllers/property.controller.js';
 import { verifyToken } from '../utils/auth.js';
 
 const router = Router();
@@ -21,9 +21,8 @@ const authenticate = (req, res, next) => {
 router.use(authenticate);
 
 router.get('/', getProperties);
-router.post('/', (req, res, next) => {
-    console.log('Entering property POST route');
-    next();
-}, createProperty);
+router.post('/', createProperty);
+router.put('/:id', updateProperty);
+router.delete('/:id', deleteProperty);
 
 export default router;

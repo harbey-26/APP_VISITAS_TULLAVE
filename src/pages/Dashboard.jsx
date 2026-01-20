@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Users, Calendar, Clock, Download } from 'lucide-react';
+import { API_URL } from '../config';
 
 export default function Dashboard() {
     const [stats, setStats] = useState({
@@ -10,12 +12,28 @@ export default function Dashboard() {
         visitsByType: {}
     });
     const [completeList, setCompleteList] = useState([]);
+
+    // Default to Today for both
+    const today = new Date().toISOString().split('T')[0];
+    const [dateRange, setDateRange] = useState({ start: today, end: today });
+    const [outcomeFilter, setOutcomeFilter] = useState('');
+
     const { token } = useAuth();
+    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await fetch('/api/visits', {
+                // Fetch visits filtered by range and outcome
+                const params = new URLSearchParams({
+                    startDate: dateRange.start,
+                    endDate: dateRange.end
+                });
+                if (outcomeFilter) {
+                    params.append('outcome', outcomeFilter);
+                }
+
+                const res = await fetch(`${API_URL}/api/visits?${params.toString()}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -42,13 +60,16 @@ export default function Dashboard() {
             }
         };
         fetchStats();
-    }, [token]);
+    }, [token, dateRange, outcomeFilter]);
 
     const translateType = (type) => {
         switch (type) {
-            case 'SHOWING': return 'Visita Comercial';
-            case 'APPRAISAL': return 'Avalúo';
+            case 'RENTAL_SHOWING': return 'Mostrar inmueble en arriendo';
+            case 'PROPERTY_INTAKE': return 'Captación de inmueble';
+            case 'HANDOVER': return 'Entrega de inmueble';
+            case 'MOVE_OUT': return 'Desocupación';
             case 'INSPECTION': return 'Inspección';
+            case 'OTHER': return 'Otro';
             default: return type;
         }
     };
@@ -102,7 +123,7 @@ export default function Dashboard() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `reporte_visitas_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `reporte_visitas_${dateRange.start}_al_${dateRange.end}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -110,15 +131,54 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800">Panel Administrativo</h2>
-                <button
-                    onClick={handleExport}
-                    className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-3 py-2 rounded-lg"
-                >
-                    <Download className="w-5 h-5" />
-                    <span>Exportar Reporte</span>
-                </button>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">Panel Administrativo</h2>
+                    <p className="text-gray-500 text-sm">Resumen de operaciones</p>
+                </div>
+
+                <div className="flex items-center space-x-3 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-500">Desde:</span>
+                        <input
+                            type="date"
+                            value={dateRange.start}
+                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-500">Hasta:</span>
+                        <input
+                            type="date"
+                            value={dateRange.end}
+                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                    </div>
+                    <div className="flex items-center space-x-2 border-l pl-3 ml-1">
+                        <span className="text-sm text-gray-500">Resultado:</span>
+                        <select
+                            value={outcomeFilter}
+                            onChange={(e) => setOutcomeFilter(e.target.value)}
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                        >
+                            <option value="">Todos</option>
+                            <option value="Cliente interesado">Cliente interesado</option>
+                            <option value="Cliente no interesado">Cliente no interesado</option>
+                            <option value="Requiere seguimiento">Requiere seguimiento</option>
+                            <option value="Cliente no asistió">Cliente no asistió</option>
+                            <option value="Cancelada">Cancelada</option>
+                        </select>
+                    </div>
+                    <button
+                        onClick={handleExport}
+                        title="Exportar CSV"
+                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-full transition"
+                    >
+                        <Download className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
             {/* Metrics Cards */}
@@ -193,7 +253,11 @@ export default function Dashboard() {
                             </thead>
                             <tbody>
                                 {completeList.map(visit => (
-                                    <tr key={visit.id} className="bg-white border-b hover:bg-gray-50">
+                                    <tr
+                                        key={visit.id}
+                                        onClick={() => navigate(`/visit/${visit.id}`)}
+                                        className="bg-white border-b hover:bg-blue-50 cursor-pointer transition"
+                                    >
                                         <td className="px-6 py-4">
                                             {new Date(visit.scheduledStart).toLocaleDateString()}
                                             <br />
