@@ -4,7 +4,8 @@ import { hashPassword } from '../src/utils/auth.js';
 const prisma = new PrismaClient();
 
 async function main() {
-    const password = await hashPassword('123456');
+    const adminPassword = await hashPassword('Tullave2024*');
+    const agentPassword = await hashPassword('Tullaveagente*');
 
     const user = await prisma.user.upsert({
         where: { email: 'admin@tullave.com' },
@@ -12,7 +13,7 @@ async function main() {
         create: {
             email: 'admin@tullave.com',
             name: 'Admin User',
-            password: password,
+            password: adminPassword,
             role: 'ADMIN'
         }
     });
@@ -23,7 +24,7 @@ async function main() {
         create: {
             email: 'agente@tullave.com',
             name: 'Agente Inmobiliario',
-            password: password,
+            password: agentPassword,
             role: 'AGENT'
         }
     });
