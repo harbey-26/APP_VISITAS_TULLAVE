@@ -43,6 +43,7 @@ model Visit {
   checkOutLng      Float?
 
   notes            String?
+  outcome          String?
   clientName       String?
   clientPhone      String?
   
