@@ -201,7 +201,7 @@ function VisitExecutionContent() {
     if (!visit) return <div className="p-4 text-center mt-10">Cargando información de la visita...</div>;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-140px)]">
+        <div className="flex flex-col h-[calc(100dvh-140px)]">
             <div className="bg-white p-6 rounded-2xl shadow-sm mb-6 flex-none">
                 <h2 className="text-2xl font-bold mb-2">{visit.property?.address}</h2>
                 <div className="flex items-center text-gray-500 mb-4">

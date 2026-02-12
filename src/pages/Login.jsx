@@ -51,7 +51,7 @@ export default function Login() {
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            className="w-full px-3 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
                             required
                         />
                     </div>
@@ -62,14 +62,14 @@ export default function Login() {
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            className="w-full px-3 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
                             required
                         />
                     </div>
 
                     <button
                         type="submit"
-                        className="w-full bg-brand-600 text-white py-2 rounded-lg hover:bg-brand-700 transition font-bold"
+                        className="w-full bg-brand-600 text-white py-3 rounded-lg hover:bg-brand-700 transition font-bold"
                     >
                         Iniciar Sesión
                     </button>

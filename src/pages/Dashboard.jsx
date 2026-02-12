@@ -137,31 +137,31 @@ export default function Dashboard() {
                     <p className="text-gray-500 text-sm">Resumen de operaciones</p>
                 </div>
 
-                <div className="flex items-center space-x-3 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center space-y-3 md:space-y-0 md:space-x-3 bg-white p-3 rounded-lg shadow-sm border border-gray-200 w-full md:w-auto">
                     <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-500">Desde:</span>
+                        <span className="text-sm text-gray-500 w-16 md:w-auto">Desde:</span>
                         <input
                             type="date"
                             value={dateRange.start}
                             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none flex-1 md:flex-none"
                         />
                     </div>
                     <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-500">Hasta:</span>
+                        <span className="text-sm text-gray-500 w-16 md:w-auto">Hasta:</span>
                         <input
                             type="date"
                             value={dateRange.end}
                             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none flex-1 md:flex-none"
                         />
                     </div>
-                    <div className="flex items-center space-x-2 border-l pl-3 ml-1">
-                        <span className="text-sm text-gray-500">Resultado:</span>
+                    <div className="flex items-center space-x-2 border-t md:border-t-0 md:border-l pt-2 md:pt-0 md:pl-3 md:ml-1">
+                        <span className="text-sm text-gray-500 w-16 md:w-auto">Resultado:</span>
                         <select
                             value={outcomeFilter}
                             onChange={(e) => setOutcomeFilter(e.target.value)}
-                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                            className="border border-gray-300 rounded text-sm p-1 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white flex-1 md:flex-none"
                         >
                             <option value="">Todos</option>
                             <option value="Cliente interesado">Cliente interesado</option>
@@ -174,7 +174,7 @@ export default function Dashboard() {
                     <button
                         onClick={handleExport}
                         title="Exportar CSV"
-                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-full transition"
+                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-full transition self-end md:self-center"
                     >
                         <Download className="w-5 h-5" />
                     </button>
