@@ -5,7 +5,7 @@
     "main": "server.js",
     "type": "module",
     "scripts": {
-        "start": "node server.js",
+        "start": "npx prisma db push --schema prisma/schema.pg.prisma && node prisma/seed.js && node server.js",
         "server": "node --watch server.js",
         "dev": "vite",
         "build": "vite build",

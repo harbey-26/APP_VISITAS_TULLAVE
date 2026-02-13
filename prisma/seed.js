@@ -29,14 +29,20 @@ async function main() {
         }
     });
 
-    const property = await prisma.property.create({
-        data: {
-            address: 'Calle 123 # 45-67, Bogotá',
-            client: 'Juan Perez',
-            lat: 4.6097,
-            lng: -74.0817
-        }
+    let property = await prisma.property.findFirst({
+        where: { address: 'Calle 123 # 45-67, Bogotá' }
     });
+
+    if (!property) {
+        property = await prisma.property.create({
+            data: {
+                address: 'Calle 123 # 45-67, Bogotá',
+                client: 'Juan Perez',
+                lat: 4.6097,
+                lng: -74.0817
+            }
+        });
+    }
 
     console.log({ user, agent, property });
 
@@ -44,16 +50,25 @@ async function main() {
     const today = new Date();
     today.setHours(14, 0, 0, 0);
 
-    await prisma.visit.create({
-        data: {
-            userId: agent.id,
+    const existingVisit = await prisma.visit.findFirst({
+        where: {
             propertyId: property.id,
-            scheduledStart: today,
-            estimatedDuration: 60,
-            type: 'SHOWING',
-            status: 'PENDING'
+            scheduledStart: today
         }
     });
+
+    if (!existingVisit) {
+        await prisma.visit.create({
+            data: {
+                userId: agent.id,
+                propertyId: property.id,
+                scheduledStart: today,
+                estimatedDuration: 60,
+                type: 'SHOWING',
+                status: 'PENDING'
+            }
+        });
+    }
 }
 
 main()
