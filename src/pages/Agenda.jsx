@@ -395,7 +395,7 @@ export default function Agenda() {
                                         />
                                         <input
                                             type="text"
-                                            placeholder="Nombre de Conjunto Residencial (Opcional)"
+                                            placeholder="Nombre del Conjunto o Edificio (Opcional)"
                                             className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                             value={formData.newClient}
                                             onChange={e => setFormData({ ...formData, newClient: e.target.value })}
