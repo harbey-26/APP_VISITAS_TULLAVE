@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, Square, CheckCircle } from 'lucide-react';
+import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft } from 'lucide-react';
 import { API_URL } from '../config';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
@@ -203,6 +203,13 @@ function VisitExecutionContent() {
     return (
         <div className="flex flex-col h-[calc(100dvh-140px)]">
             <div className="bg-white p-6 rounded-2xl shadow-sm mb-6 flex-none">
+                <button
+                    onClick={() => navigate('/agenda')}
+                    className="flex items-center text-gray-500 hover:text-brand-600 mb-4 transition-colors font-medium"
+                >
+                    <ArrowLeft className="w-5 h-5 mr-1" />
+                    Regresar
+                </button>
                 <h2 className="text-2xl font-bold mb-2">{visit.property?.address}</h2>
                 <div className="flex items-center text-gray-500 mb-4">
                     <Clock className="w-5 h-5 mr-2" />
