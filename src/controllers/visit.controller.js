@@ -80,7 +80,10 @@ export const getVisits = async (req, res) => {
 
         const visits = await prisma.visit.findMany({
             where,
-            include: { property: true },
+            include: {
+                property: true,
+                user: { select: { id: true, name: true } }
+            },
             orderBy: { scheduledStart: 'asc' }
         });
         res.json(visits);

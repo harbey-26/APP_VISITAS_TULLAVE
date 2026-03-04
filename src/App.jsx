@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import Login from './pages/Login';
 import Agenda from './pages/Agenda';
 import VisitExecution from './pages/VisitExecution';
@@ -26,6 +27,7 @@ const AdminRoute = ({ children }) => {
 function App() {
     return (
         <AuthProvider>
+            <ToastProvider>
             <Router>
                 <Routes>
                     <Route path="/login" element={<Login />} />
@@ -56,6 +58,7 @@ function App() {
                     </Route>
                 </Routes>
             </Router>
+            </ToastProvider>
         </AuthProvider>
     );
 }

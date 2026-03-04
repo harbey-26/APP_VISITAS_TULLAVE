@@ -1,8 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX } from 'lucide-react';
 import { API_URL } from '../config';
+import { useToast } from '../context/ToastContext';
+import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
+
+// Agrupa visitas en bloques horarios
+function groupByTimeSlot(visits) {
+    const slots = { Mañana: [], Tarde: [], Noche: [] };
+    visits.forEach(v => {
+        const hour = new Date(v.scheduledStart).getHours();
+        if (hour < 12) slots['Mañana'].push(v);
+        else if (hour < 18) slots['Tarde'].push(v);
+        else slots['Noche'].push(v);
+    });
+    return slots;
+}
 
 export default function Agenda() {
     const [visits, setVisits] = useState([]);
@@ -15,7 +29,6 @@ export default function Agenda() {
     const [agents, setAgents] = useState([]);
     const [isNewProperty, setIsNewProperty] = useState(false);
 
-    // Default to Today for both
     const today = new Date().toISOString().split('T')[0];
     const [dateRange, setDateRange] = useState({ start: today, end: today });
 
@@ -23,7 +36,7 @@ export default function Agenda() {
         propertyId: '',
         newAddress: '',
         newClient: '',
-        assignedUserId: '', // For Admin to assign
+        assignedUserId: '',
         date: new Date().toISOString().split('T')[0],
         time: '09:00',
         duration: 60,
@@ -35,6 +48,7 @@ export default function Agenda() {
 
     const { token, user } = useAuth();
     const navigate = useNavigate();
+    const toast = useToast();
 
     const fetchVisits = async () => {
         try {
@@ -44,12 +58,7 @@ export default function Agenda() {
             });
             if (res.ok) {
                 const data = await res.json();
-                if (Array.isArray(data)) {
-                    setVisits(data);
-                } else {
-                    console.error('API response is not an array:', data);
-                    setVisits([]);
-                }
+                setVisits(Array.isArray(data) ? data : []);
             }
         } catch (error) {
             console.error('Error al cargar visitas', error);
@@ -61,16 +70,13 @@ export default function Agenda() {
             const res = await fetch(`${API_URL}/api/properties`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (res.ok) {
-                setProperties(await res.json());
-            }
+            if (res.ok) setProperties(await res.json());
         } catch (error) {
             console.error(error);
         }
     };
 
     const fetchAgents = async () => {
-        // Only fetch agents if Admin
         if (user?.role === 'ADMIN') {
             try {
                 const res = await fetch(`${API_URL}/api/users`, {
@@ -78,7 +84,7 @@ export default function Agenda() {
                 });
                 if (res.ok) {
                     const allUsers = await res.json();
-                    setAgents(allUsers.filter(u => u.role === 'AGENT')); // Or all users if admins can also have visits
+                    setAgents(allUsers.filter(u => u.role === 'AGENT'));
                 }
             } catch (error) {
                 console.error(error);
@@ -92,46 +98,35 @@ export default function Agenda() {
             fetchProperties();
             fetchAgents();
         }
-    }, [token, user, dateRange]); // Reload when date range changes
+    }, [token, user, dateRange]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-
-            // STEP 1: Create Property
             if (isNewProperty) {
                 const propRes = await fetch(`${API_URL}/api/properties`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({
                         address: formData.newAddress,
                         client: formData.newClient || 'Cliente General',
-                        lat: 4.6097, // Default to Bogota
+                        lat: 4.6097,
                         lng: -74.0817
                     })
                 });
-
                 if (!propRes.ok) {
                     const errData = await propRes.json();
                     throw new Error(errData.error || 'Error al registrar inmueble');
                 }
-
                 const newProp = await propRes.json();
-
-                // Refresh list and select new property
+                toast.success('Inmueble registrado correctamente');
                 await fetchProperties();
                 setFormData(prev => ({ ...prev, propertyId: newProp.id, newAddress: '', newClient: '' }));
                 setIsNewProperty(false);
-                // Stop here, user will then fill visit details
                 return;
             }
 
-            // STEP 2: Create Visit
             const scheduledStart = new Date(`${formData.date}T${formData.time}:00`).toISOString();
-
             const payload = {
                 propertyId: parseInt(formData.propertyId),
                 scheduledStart,
@@ -141,18 +136,11 @@ export default function Agenda() {
                 clientName: formData.clientName,
                 clientPhone: formData.clientPhone
             };
-
-            // Add assignedUserId if present and valid
-            if (formData.assignedUserId) {
-                payload.assignedUserId = parseInt(formData.assignedUserId);
-            }
+            if (formData.assignedUserId) payload.assignedUserId = parseInt(formData.assignedUserId);
 
             const res = await fetch(`${API_URL}/api/visits`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify(payload)
             });
 
@@ -160,30 +148,21 @@ export default function Agenda() {
                 setShowModal(false);
                 fetchVisits();
                 setFormData({
-                    propertyId: '',
-                    newAddress: '',
-                    newClient: '',
-                    assignedUserId: '',
-                    date: new Date().toISOString().split('T')[0],
-                    time: '09:00',
-                    duration: 60,
-                    type: 'SHOWING',
-                    notes: '',
-                    clientName: '',
-                    clientPhone: ''
+                    propertyId: '', newAddress: '', newClient: '', assignedUserId: '',
+                    date: new Date().toISOString().split('T')[0], time: '09:00',
+                    duration: 60, type: 'RENTAL_SHOWING', notes: '', clientName: '', clientPhone: ''
                 });
             } else {
                 const err = await res.json();
-                alert(err.error || 'Error al crear la visita');
+                toast.error(err.error || 'Error al crear la visita');
             }
         } catch (error) {
-            alert('Error: ' + error.message);
+            toast.error('Error: ' + error.message);
         }
     };
 
-
     const initiateDelete = (e, id) => {
-        e.stopPropagation(); // Avoid navigating to details
+        e.stopPropagation();
         setDeleteTargetId(id);
         setDeletePassword('');
         setShowDeleteModal(true);
@@ -194,139 +173,198 @@ export default function Agenda() {
         try {
             const res = await fetch(`${API_URL}/api/visits/${deleteTargetId}`, {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ password: deletePassword })
             });
-
             if (res.ok) {
                 setShowDeleteModal(false);
                 fetchVisits();
             } else {
                 const err = await res.json();
-                alert(err.error || 'Error al eliminar');
+                toast.error(err.error || 'Error al eliminar');
             }
         } catch (error) {
-            alert('Error: ' + error.message);
+            toast.error('Error: ' + error.message);
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'COMPLETED': return 'bg-green-100 text-green-800';
-            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800';
-            case 'MISSED': return 'bg-red-100 text-red-800';
-            default: return 'bg-yellow-100 text-yellow-800';
-        }
-    };
+    const formatDate = (d) =>
+        new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 
-    const translateStatus = (status) => {
-        switch (status) {
-            case 'PENDING': return 'Pendiente';
-            case 'IN_PROGRESS': return 'En Curso';
-            case 'COMPLETED': return 'Completada';
-            case 'MISSED': return 'Fallida';
-            default: return status;
-        }
-    };
-
-    const translateType = (type) => {
-        switch (type) {
-            case 'SHOWING': return 'Visita Comercial';
-            case 'APPRAISAL': return 'Avalúo';
-            case 'INSPECTION': return 'Inspección';
-            default: return type;
-        }
-    };
-
-    // Helper for date display
-    const formatDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+    const groupedVisits = groupByTimeSlot(visits);
+    const hasVisits = visits.length > 0;
 
     return (
         <div className="space-y-6 relative min-h-[80vh]">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-xl font-bold">Visitas Programadas</h2>
+                    <h2 className="text-xl font-bold text-gray-900">Visitas Programadas</h2>
                     <span className="text-sm text-gray-500 capitalize">
                         {dateRange.start === dateRange.end
-                            ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-                            : `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`
-                        }
+                            ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', {
+                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                              })
+                            : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`}
                     </span>
                 </div>
-                <div className="flex items-center space-x-3 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
-                    <div className="flex items-center space-x-1">
-                        <span className="text-xs text-gray-500">Del</span>
+
+                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200 w-full md:w-auto">
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-400 pl-1">Del</span>
                         <input
                             type="date"
                             value={dateRange.start}
                             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            className="border border-gray-300 rounded text-sm p-1 max-w-[130px] focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            className="border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
                         />
                     </div>
-                    <div className="flex items-center space-x-1">
-                        <span className="text-xs text-gray-500">al</span>
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-400">al</span>
                         <input
                             type="date"
                             value={dateRange.end}
                             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            className="border border-gray-300 rounded text-sm p-1 max-w-[130px] focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            className="border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
                         />
                     </div>
                     <button
                         onClick={() => setShowModal(true)}
-                        className="bg-brand-600 text-white p-2 rounded-full shadow hover:bg-brand-700 transition ml-2"
+                        className="bg-brand-600 text-white px-3 py-2 rounded-lg shadow hover:bg-brand-700 transition flex items-center gap-1.5 ml-1 whitespace-nowrap text-sm font-medium"
                         title="Nueva Visita"
                     >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-4 h-4" />
+                        Nueva
                     </button>
                 </div>
             </div>
 
-            <div className="space-y-4">
-                {visits.length === 0 ? (
-                    <p className="text-center text-gray-500 py-8">No hay visitas programadas.</p>
-                ) : (
-                    visits.map(visit => (
-                        <div
-                            key={visit.id}
-                            onClick={() => navigate(`/visit/${visit.id}`)}
-                            className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 cursor-pointer hover:shadow-md transition relative group"
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center space-x-2">
-                                    <Clock className="w-4 h-4 text-gray-400" />
-                                    <span className="font-semibold text-gray-700">
-                                        {new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {/* Visit List grouped by time slot */}
+            {!hasVisits ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                        <CalendarX className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <p className="text-gray-600 font-semibold text-lg">Sin visitas programadas</p>
+                    <p className="text-gray-400 text-sm mt-1">
+                        No hay visitas para{' '}
+                        {dateRange.start === dateRange.end ? 'este día' : 'este período'}.
+                    </p>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="mt-5 bg-brand-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-brand-700 transition shadow-md flex items-center gap-2"
+                    >
+                        <Plus className="w-4 h-4" /> Agendar visita
+                    </button>
+                </div>
+            ) : (
+                <div className="space-y-6">
+                    {Object.entries(groupedVisits).map(([slot, slotVisits]) => {
+                        if (slotVisits.length === 0) return null;
+                        return (
+                            <div key={slot}>
+                                {/* Slot header */}
+                                <div className="flex items-center gap-3 mb-3">
+                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                        {slot}
                                     </span>
+                                    <div className="flex-1 h-px bg-gray-100" />
+                                    <span className="text-xs text-gray-400">{slotVisits.length} visita{slotVisits.length > 1 ? 's' : ''}</span>
                                 </div>
-                                <div className="flex items-center space-x-2">
-                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(visit.status)}`}>
-                                        {translateStatus(visit.status)}
-                                    </span>
-                                    {/* Delete Button */}
-                                    <button
-                                        onClick={(e) => initiateDelete(e, visit.id)}
-                                        className="text-gray-300 hover:text-red-500 transition p-1"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+
+                                <div className="space-y-3">
+                                    {slotVisits.map(visit => {
+                                        const typeConfig = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
+                                        const statusConfig = STATUS_CONFIG[visit.status] || STATUS_CONFIG.PENDING;
+                                        const isCompleted = visit.status === 'COMPLETED';
+
+                                        return (
+                                            <div
+                                                key={visit.id}
+                                                onClick={() => navigate(`/visit/${visit.id}`)}
+                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted ? 'opacity-75' : ''}`}
+                                            >
+                                                {/* Franja de color por tipo */}
+                                                <div className={`h-1 w-full ${typeConfig.dot}`} />
+
+                                                <div className="p-4">
+                                                    {/* Row 1: Hora + Tipo + Estado + Eliminar */}
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-1.5 text-gray-700">
+                                                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                                                <span className="font-bold text-sm">
+                                                                    {new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeConfig.bg} ${typeConfig.text}`}>
+                                                                {typeConfig.label}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${statusConfig.bg} ${statusConfig.text}`}>
+                                                                {statusConfig.label}
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => initiateDelete(e, visit.id)}
+                                                                className="text-gray-200 hover:text-red-500 transition p-1 opacity-0 group-hover:opacity-100"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Row 2: Dirección */}
+                                                    <div className="flex items-start gap-2 mb-2">
+                                                        <Home className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                                        <p className="font-semibold text-gray-900 text-sm leading-snug">
+                                                            {visit.property?.address || 'Dirección desconocida'}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Row 3: Cliente + Agente */}
+                                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                                                        {visit.clientName && (
+                                                            <div className="flex items-center gap-1">
+                                                                <User className="w-3 h-3" />
+                                                                <span>{visit.clientName}</span>
+                                                                {visit.clientPhone && (
+                                                                    <span className="text-gray-400">· {visit.clientPhone}</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {user?.role === 'ADMIN' && visit.user?.name && (
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-4 h-4 rounded-full bg-brand-100 flex items-center justify-center">
+                                                                    <span className="text-brand-600 font-bold" style={{ fontSize: '8px' }}>
+                                                                        {visit.user.name.charAt(0)}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="font-medium text-brand-700">{visit.user.name}</span>
+                                                            </div>
+                                                        )}
+                                                        {!visit.clientName && !(user?.role === 'ADMIN' && visit.user?.name) && (
+                                                            <span className="text-gray-300 italic">Sin datos de cliente</span>
+                                                        )}
+                                                        <span className="text-gray-300">· {visit.estimatedDuration} min</span>
+                                                    </div>
+
+                                                    {/* Resultado si completada */}
+                                                    {isCompleted && visit.outcome && (
+                                                        <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                                                            <span className="font-medium">Resultado:</span> {visit.outcome}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
-
-                            <h3 className="font-bold text-lg mb-1">{visit.property?.address || 'Dirección desconocida'}</h3>
-                            <p className="text-sm text-gray-500 mb-3">{translateType(visit.type)} • {visit.estimatedDuration} min</p>
-
-                            <div className="flex items-center text-brand-600 font-medium text-sm">
-                                <span>Ver Detalles</span>
-                                <ChevronRight className="w-4 h-4 ml-1" />
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* New Visit Modal */}
             {showModal && (
@@ -340,8 +378,6 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-
-                            {/* Admin: Agent Selector */}
                             {user?.role === 'ADMIN' && (
                                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                     <label className="block text-sm font-medium text-blue-800 mb-1">Asignar Agente</label>
@@ -363,28 +399,17 @@ export default function Agenda() {
                             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="block text-sm font-medium text-gray-700">Inmueble</label>
-                                    {!isNewProperty && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNewProperty(true)}
-                                            className="text-xs text-brand-600 font-medium hover:underline"
-                                        >
-                                            Registrar nuevo
-                                        </button>
-                                    )}
-                                    {isNewProperty && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNewProperty(false)}
-                                            className="text-xs text-brand-600 font-medium hover:underline"
-                                        >
-                                            Cancelar registro
-                                        </button>
-                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsNewProperty(!isNewProperty)}
+                                        className="text-xs text-brand-600 font-medium hover:underline"
+                                    >
+                                        {isNewProperty ? 'Cancelar registro' : 'Registrar nuevo'}
+                                    </button>
                                 </div>
 
                                 {isNewProperty ? (
-                                    <div className="space-y-3 animate-fade-in">
+                                    <div className="space-y-3">
                                         <input
                                             type="text"
                                             placeholder="Dirección del inmueble"
@@ -472,9 +497,9 @@ export default function Agenda() {
                                                 value={formData.type}
                                                 onChange={e => setFormData({ ...formData, type: e.target.value })}
                                             >
-                                                <option value="RENTAL_SHOWING">Mostrar inmueble en arriendo</option>
-                                                <option value="PROPERTY_INTAKE">Captación de inmueble</option>
-                                                <option value="HANDOVER">Entrega de inmueble</option>
+                                                <option value="RENTAL_SHOWING">Mostrar en Arriendo</option>
+                                                <option value="PROPERTY_INTAKE">Captación</option>
+                                                <option value="HANDOVER">Entrega</option>
                                                 <option value="MOVE_OUT">Desocupación</option>
                                                 <option value="INSPECTION">Inspección</option>
                                                 <option value="OTHER">Otro</option>
@@ -515,8 +540,11 @@ export default function Agenda() {
             {showDeleteModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
-                        <h3 className="text-xl font-bold text-red-600 mb-2">Eliminar Visita</h3>
-                        <p className="text-gray-600 mb-4 text-sm">Esta acción no se puede deshacer. Ingresa la contraseña para confirmar.</p>
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Trash2 className="w-6 h-6 text-red-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-red-600 mb-1 text-center">Eliminar Visita</h3>
+                        <p className="text-gray-500 mb-4 text-sm text-center">Esta acción no se puede deshacer. Ingresa tu contraseña para confirmar.</p>
 
                         <input
                             type="password"
@@ -529,13 +557,13 @@ export default function Agenda() {
                         <div className="flex space-x-3">
                             <button
                                 onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl"
+                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
                             >
                                 Cancelar
                             </button>
                             <button
                                 onClick={confirmDelete}
-                                className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700"
+                                className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
                             >
                                 Eliminar
                             </button>
@@ -543,7 +571,6 @@ export default function Agenda() {
                     </div>
                 </div>
             )}
-
         </div>
     );
 }
