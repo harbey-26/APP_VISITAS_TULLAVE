@@ -5,7 +5,6 @@ import {
     Calendar,
     LogOut,
     MapPin,
-    BarChart2,
     Users,
     Menu,
     X,
@@ -23,11 +22,13 @@ export default function Layout() {
         navigate('/login');
     };
 
-    const isActive = (path) => {
-        return location.pathname.startsWith(path)
+    const isActive = (path) =>
+        location.pathname.startsWith(path)
             ? 'bg-brand-600 text-white'
             : 'text-gray-600 hover:bg-gray-100 hover:text-brand-600';
-    };
+
+    const isMobileActive = (path) =>
+        location.pathname.startsWith(path);
 
     const NavItem = ({ to, icon: Icon, label }) => (
         <Link
@@ -40,15 +41,32 @@ export default function Layout() {
         </Link>
     );
 
+    const isAdmin = user?.role === 'ADMIN';
+
+    // Bottom nav items: show Agenda always; admin gets Dashboard + Properties + Users
+    const bottomNavItems = [
+        { to: '/agenda',     icon: Calendar,       label: 'Agenda'     },
+        ...(isAdmin ? [
+            { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard'  },
+            { to: '/properties', icon: MapPin,          label: 'Inmuebles'  },
+            { to: '/users',      icon: Users,           label: 'Usuarios'   },
+        ] : []),
+    ];
+
     return (
         <div className="min-h-screen bg-gray-50 flex">
             {/* Mobile Header */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b px-4 py-3 flex justify-between items-center h-16 shadow-sm">
+            <div className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b px-4 py-3 flex justify-between items-center h-14 shadow-sm">
                 <div className="flex items-center space-x-3">
-                    <button onClick={() => setIsMobileMenuOpen(true)}>
+                    <button onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
                         <Menu className="w-6 h-6 text-gray-600" />
                     </button>
-                    <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
+                    <img src="/logo.png" alt="Logo" className="h-7 w-auto" />
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-sm">
+                        {user?.name?.charAt(0) || 'U'}
+                    </div>
                 </div>
             </div>
 
@@ -70,25 +88,24 @@ export default function Layout() {
                     <img src="/logo.png" alt="Tu Llave Inmobiliaria" className="h-10 w-auto" />
                     <button
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="lg:hidden text-gray-400 hover:text-gray-600"
+                        className="lg:hidden text-gray-400 hover:text-gray-600 transition"
+                        aria-label="Cerrar menú"
                     >
                         <X className="w-6 h-6" />
                     </button>
                 </div>
 
                 {/* Navigation Links */}
-                <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-                    {/* Common Links */}
+                <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
                     <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Principal</p>
                     <NavItem to="/agenda" icon={Calendar} label="Agenda" />
 
-                    {/* Admin Links */}
-                    {user?.role === 'ADMIN' && (
+                    {isAdmin && (
                         <>
                             <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-6 mb-2">Administración</p>
-                            <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
-                            <NavItem to="/properties" icon={MapPin} label="Inmuebles" />
-                            <NavItem to="/users" icon={Users} label="Usuarios" />
+                            <NavItem to="/dashboard"  icon={LayoutDashboard} label="Dashboard"  />
+                            <NavItem to="/properties" icon={MapPin}          label="Inmuebles"  />
+                            <NavItem to="/users"      icon={Users}           label="Usuarios"   />
                         </>
                     )}
                 </nav>
@@ -96,7 +113,7 @@ export default function Layout() {
                 {/* User Profile Footer */}
                 <div className="p-4 border-t border-gray-100 bg-gray-50/50">
                     <div className="flex items-center gap-3 mb-3 px-2">
-                        <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg">
+                        <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg shrink-0">
                             {user?.name?.charAt(0) || 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -116,13 +133,37 @@ export default function Layout() {
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col min-w-0 min-h-[100dvh]">
-                <div className="h-16 lg:hidden" /> {/* Spacer for Mobile Header */}
-                <div className="flex-1 p-4 lg:p-8 overflow-y-auto">
+                <div className="h-14 lg:hidden" /> {/* Spacer for Mobile Header */}
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-20 lg:pb-8">
                     <div className="max-w-5xl mx-auto w-full">
                         <Outlet />
                     </div>
                 </div>
             </main>
+
+            {/* Mobile Bottom Navigation Bar */}
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 flex items-stretch shadow-[0_-2px_12px_rgba(0,0,0,0.06)]">
+                {bottomNavItems.map(({ to, icon: Icon, label }) => {
+                    const active = isMobileActive(to);
+                    return (
+                        <Link
+                            key={to}
+                            to={to}
+                            className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                                active ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            <Icon className={`w-5 h-5 ${active ? 'stroke-[2.5]' : ''}`} />
+                            <span className={`text-[10px] font-medium leading-tight ${active ? 'text-brand-600' : ''}`}>
+                                {label}
+                            </span>
+                            {active && (
+                                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-brand-600 rounded-b-full" />
+                            )}
+                        </Link>
+                    );
+                })}
+            </nav>
         </div>
     );
 }

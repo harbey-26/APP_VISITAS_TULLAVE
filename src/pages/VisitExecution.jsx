@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft } from 'lucide-react';
+import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, ThumbsUp, ThumbsDown, RefreshCw, UserX, XCircle, HelpCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
-        console.error("ErrorBoundary caught an error", error, errorInfo);
+        console.error('ErrorBoundary caught an error', error, errorInfo);
     }
 
     render() {
@@ -26,16 +26,21 @@ class ErrorBoundary extends React.Component {
                     <h2 className="text-xl font-bold mb-4">Algo salió mal.</h2>
                     <pre className="text-xs bg-white p-4 rounded border overflow-auto">
                         {this.state.error && this.state.error.toString()}
-                        <br />
-                        {this.state.error && this.state.error.stack}
                     </pre>
                 </div>
             );
         }
-
         return this.props.children;
     }
 }
+
+const OUTCOMES = [
+    { value: 'Cliente interesado',     label: 'Interesado',        icon: ThumbsUp,   color: 'border-green-400  bg-green-50  text-green-700'  },
+    { value: 'Cliente no interesado',  label: 'No interesado',     icon: ThumbsDown, color: 'border-red-400    bg-red-50    text-red-700'    },
+    { value: 'Requiere seguimiento',   label: 'Seguimiento',       icon: RefreshCw,  color: 'border-blue-400   bg-blue-50   text-blue-700'   },
+    { value: 'Cliente no asistió',     label: 'No asistió',        icon: UserX,      color: 'border-amber-400  bg-amber-50  text-amber-700'  },
+    { value: 'Cancelada',              label: 'Cancelada',         icon: XCircle,    color: 'border-gray-400   bg-gray-100  text-gray-600'   },
+];
 
 function VisitExecutionContent() {
     const { id } = useParams();
@@ -49,7 +54,6 @@ function VisitExecutionContent() {
     const [errorMsg, setErrorMsg] = useState(null);
     const [outcome, setOutcome] = useState('');
 
-    // Fetch visit details
     useEffect(() => {
         const fetchVisit = async () => {
             try {
@@ -58,24 +62,17 @@ function VisitExecutionContent() {
                 });
                 if (res.ok) {
                     const visits = await res.json();
-                    console.log('Visits fetched:', visits);
                     const v = visits.find(v => v.id === parseInt(id));
-                    console.log('Target visit:', v);
-
                     if (v) {
                         setVisit(v);
                         if (v.notes) setNotes(v.notes);
-
-                        // Set initial position if available or default to Bogota
                         if (v.checkInLat && v.checkInLng) {
                             setCurrentPos([v.checkInLat, v.checkInLng]);
                         } else if (v.property?.lat && v.property?.lng) {
                             setCurrentPos([v.property.lat, v.property.lng]);
                         } else {
-                            setCurrentPos([4.6097, -74.0817]); // Default Bogota
+                            setCurrentPos([4.6097, -74.0817]);
                         }
-                    } else {
-                        console.error('Visit not found in filtered list');
                     }
                 }
             } catch (error) {
@@ -85,7 +82,6 @@ function VisitExecutionContent() {
         fetchVisit();
     }, [id, token]);
 
-    // Timer logic
     useEffect(() => {
         let interval;
         if (visit?.status === 'IN_PROGRESS' && visit.actualStart) {
@@ -104,23 +100,15 @@ function VisitExecutionContent() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
-    const getCurrentLocation = () => {
-        return new Promise((resolve, reject) => {
+    const getCurrentLocation = () =>
+        new Promise((resolve, reject) => {
             if (!navigator.geolocation) reject(new Error('Geolocalización no soportada'));
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    console.log(`Ubicación obtenida con precisión de ${pos.coords.accuracy} metros.`);
-                    resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                },
+                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
                 (err) => reject(err),
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         });
-    };
 
     const handleStart = async () => {
         setLoading(true);
@@ -131,16 +119,12 @@ function VisitExecutionContent() {
 
             const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
             });
 
             if (res.ok) {
-                const updated = await res.json();
-                setVisit(updated);
+                setVisit(await res.json());
             } else {
                 const errData = await res.json();
                 throw new Error(errData.error || 'Error desconocido al iniciar visita');
@@ -157,24 +141,18 @@ function VisitExecutionContent() {
             setErrorMsg('Debes seleccionar un resultado para finalizar la visita.');
             return;
         }
-
         setLoading(true);
         setErrorMsg(null);
         try {
             const { lat, lng } = await getCurrentLocation();
-
             const res = await fetch(`${API_URL}/api/visits/${id}/finish`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ lat, lng, notes, outcome }) // notes field is used for Comments
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ lat, lng, notes, outcome })
             });
 
             if (res.ok) {
-                const updated = await res.json();
-                setVisit(updated);
+                setVisit(await res.json());
                 navigate('/agenda');
             } else {
                 const errData = await res.json();
@@ -187,149 +165,238 @@ function VisitExecutionContent() {
         }
     };
 
-    // Safe date formatter
     const safeFormatTime = (dateString) => {
         try {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return 'Hora inválida';
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch (e) {
+        } catch {
             return 'Hora inválida';
         }
     };
 
-    if (!visit) return <div className="p-4 text-center mt-10">Cargando información de la visita...</div>;
+    if (!visit) return (
+        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+            <div className="w-8 h-8 border-4 border-brand-600 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-sm">Cargando visita...</p>
+        </div>
+    );
+
+    const isInProgress = visit.status === 'IN_PROGRESS';
+    const isCompleted  = visit.status === 'COMPLETED';
+    const isPending    = visit.status === 'PENDING';
 
     return (
-        <div className="flex flex-col h-[calc(100dvh-140px)]">
-            <div className="bg-white p-6 rounded-2xl shadow-sm mb-6 flex-none">
+        <div className="space-y-4 pb-24 lg:pb-8">
+
+            {/* Back + Header card */}
+            <div className="bg-white rounded-2xl shadow-sm p-5">
                 <button
                     onClick={() => navigate('/agenda')}
-                    className="flex items-center text-gray-500 hover:text-brand-600 mb-4 transition-colors font-medium"
+                    className="flex items-center text-gray-400 hover:text-brand-600 mb-4 transition-colors text-sm font-medium gap-1"
                 >
-                    <ArrowLeft className="w-5 h-5 mr-1" />
-                    Regresar
+                    <ArrowLeft className="w-4 h-4" />
+                    Regresar a Agenda
                 </button>
-                <h2 className="text-2xl font-bold mb-2">{visit.property?.address}</h2>
-                <div className="flex items-center text-gray-500 mb-4">
-                    <Clock className="w-5 h-5 mr-2" />
-                    <span>Programada: {safeFormatTime(visit.scheduledStart)}</span>
-                </div>
 
-                <div className="flex justify-center py-6">
-                    <div className="text-5xl font-mono font-bold tracking-wider text-gray-800">
-                        {visit.status === 'IN_PROGRESS' ? formatTime(elapsed) :
-                            visit.status === 'COMPLETED' ? 'Terminada' : '00:00:00'}
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex-1 space-y-4 flex flex-col">
-                {/* Map View */}
-                <div className="bg-gray-200 rounded-xl overflow-hidden h-48 w-full relative z-0">
-                    {currentPos && currentPos[0] && currentPos[1] ? (
-                        <MapContainer center={currentPos} zoom={15} style={{ height: '100%', width: '100%' }}>
-                            <TileLayer
-                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            />
-                            <Marker position={currentPos}>
-                                <Popup>
-                                    {visit.property?.address}
-                                </Popup>
-                            </Marker>
-                            {visit.checkInLat && (
-                                <Marker position={[visit.checkInLat, visit.checkInLng]}>
-                                    <Popup>Inicio de Visita</Popup>
-                                </Marker>
-                            )}
-                        </MapContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            Loading map or location unavailable...
-                        </div>
+                {/* Status pill */}
+                <div className="flex items-center gap-2 mb-3">
+                    {isInProgress && (
+                        <span className="flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full">
+                            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                            En Curso
+                        </span>
+                    )}
+                    {isPending && (
+                        <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-3 py-1 rounded-full">
+                            Pendiente
+                        </span>
+                    )}
+                    {isCompleted && (
+                        <span className="flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Completada
+                        </span>
                     )}
                 </div>
 
-                {visit.status === 'IN_PROGRESS' && (
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Resultado de la Visita</label>
-                            <select
-                                className="w-full p-3 border rounded-xl bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                value={outcome}
-                                onChange={(e) => setOutcome(e.target.value)}
+                <h2 className="text-xl font-bold text-gray-900 mb-1">
+                    {visit.property?.address || 'Sin dirección'}
+                </h2>
+
+                <div className="flex items-center text-gray-500 text-sm gap-1 mb-3">
+                    <Clock className="w-4 h-4" />
+                    <span>Programada: {safeFormatTime(visit.scheduledStart)}</span>
+                    <span className="text-gray-300">·</span>
+                    <span>{visit.estimatedDuration} min estimados</span>
+                </div>
+
+                {/* Client info */}
+                {(visit.clientName || visit.clientPhone) && (
+                    <div className="flex flex-wrap gap-4 text-sm bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                        {visit.clientName && (
+                            <span className="flex items-center gap-1.5 text-gray-700">
+                                <User className="w-4 h-4 text-gray-400" />
+                                {visit.clientName}
+                            </span>
+                        )}
+                        {visit.clientPhone && (
+                            <a
+                                href={`tel:${visit.clientPhone}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex items-center gap-1.5 text-brand-600 font-medium hover:underline"
                             >
-                                <option value="">Seleccionar resultado...</option>
-                                <option value="Cliente interesado">Cliente interesado</option>
-                                <option value="Cliente no interesado">Cliente no interesado</option>
-                                <option value="Requiere seguimiento">Requiere seguimiento</option>
-                                <option value="Cliente no asistió">Cliente no asistió</option>
-                                <option value="Cancelada">Cancelada</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Comentarios</label>
-                            <textarea
-                                className="w-full p-3 border rounded-xl h-32 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                placeholder="Escribe tus comentarios u observaciones aquí..."
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="mt-6 flex-none space-y-4">
-                {errorMsg && (
-                    <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-center text-sm font-medium">
-                        {errorMsg}
-                    </div>
-                )}
-
-                {visit.status === 'PENDING' && (
-                    <button
-                        onClick={handleStart}
-                        disabled={loading}
-                        className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 flex items-center justify-center shadow-lg transform active:scale-95 transition"
-                    >
-                        <Play className="w-6 h-6 mr-2" />
-                        Iniciar Visita
-                    </button>
-                )}
-
-                {visit.status === 'IN_PROGRESS' && (
-                    <button
-                        onClick={handleFinish}
-                        disabled={loading}
-                        className="w-full bg-red-500 text-white py-4 rounded-xl font-bold text-lg hover:bg-red-600 flex items-center justify-center shadow-lg transform active:scale-95 transition"
-                    >
-                        <Square className="w-6 h-6 mr-2 fill-current" />
-                        Finalizar Visita
-                    </button>
-                )}
-
-                {visit.status === 'COMPLETED' && (
-                    <div className="bg-green-50 rounded-xl p-4 border border-green-100 space-y-3">
-                        <div className="text-center text-green-600 font-bold flex items-center justify-center mb-2">
-                            <CheckCircle className="w-6 h-6 mr-2" />
-                            Visita Completada
-                        </div>
-                        <div className="bg-white p-3 rounded-lg border border-green-100">
-                            <p className="text-sm font-semibold text-gray-700">Resultado:</p>
-                            <p className="text-gray-900">{visit.outcome || 'Sin resultado registrado'}</p>
-                        </div>
-                        {visit.notes && (
-                            <div className="bg-white p-3 rounded-lg border border-green-100">
-                                <p className="text-sm font-semibold text-gray-700">Comentarios:</p>
-                                <p className="text-gray-600 italic">"{visit.notes}"</p>
-                            </div>
+                                <Phone className="w-4 h-4" />
+                                {visit.clientPhone}
+                            </a>
                         )}
                     </div>
                 )}
+
+                {/* Timer */}
+                <div className="flex justify-center py-6">
+                    <div className={`text-5xl font-mono font-bold tracking-wider ${isInProgress ? 'text-brand-600' : 'text-gray-400'}`}>
+                        {isInProgress ? formatTime(elapsed) : isCompleted ? 'Completada' : '00:00:00'}
+                    </div>
+                </div>
             </div>
+
+            {/* Map */}
+            <div className="bg-gray-200 rounded-xl overflow-hidden h-52 w-full relative z-0 shadow-sm">
+                {currentPos && currentPos[0] && currentPos[1] ? (
+                    <MapContainer center={currentPos} zoom={15} style={{ height: '100%', width: '100%' }}>
+                        <TileLayer
+                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        />
+                        <Marker position={currentPos}>
+                            <Popup>{visit.property?.address}</Popup>
+                        </Marker>
+                        {visit.checkInLat && (
+                            <Marker position={[visit.checkInLat, visit.checkInLng]}>
+                                <Popup>Check-in</Popup>
+                            </Marker>
+                        )}
+                    </MapContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 gap-2">
+                        <MapPin className="w-5 h-5" />
+                        <span className="text-sm">Ubicación no disponible</span>
+                    </div>
+                )}
+            </div>
+
+            {/* Outcome selector (in progress) */}
+            {isInProgress && (
+                <div className="space-y-4">
+                    <div>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Resultado de la Visita</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {OUTCOMES.map(opt => {
+                                const Icon = opt.icon;
+                                const selected = outcome === opt.value;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => { setOutcome(opt.value); setErrorMsg(null); }}
+                                        className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-semibold transition ${
+                                            selected
+                                                ? opt.color + ' shadow-sm scale-[1.02]'
+                                                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <Icon className="w-5 h-5" />
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">
+                            Comentarios <span className="font-normal text-gray-400">(opcional)</span>
+                        </label>
+                        <textarea
+                            className="w-full p-3 border rounded-xl h-28 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none text-sm"
+                            placeholder="Escribe tus observaciones aquí..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Completed summary */}
+            {isCompleted && (
+                <div className="bg-green-50 rounded-xl p-4 border border-green-100 space-y-3">
+                    <div className="flex items-center gap-2 text-green-700 font-bold">
+                        <CheckCircle className="w-5 h-5" />
+                        Visita Completada
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Resultado</p>
+                        <p className="text-gray-900 font-medium">{visit.outcome || 'Sin resultado registrado'}</p>
+                    </div>
+                    {visit.notes && (
+                        <div className="bg-white p-3 rounded-lg border border-green-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Comentarios</p>
+                            <p className="text-gray-700 italic">"{visit.notes}"</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Error message */}
+            {errorMsg && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm">
+                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    {errorMsg}
+                </div>
+            )}
+
+            {/* Action buttons */}
+            {isPending && (
+                <button
+                    onClick={handleStart}
+                    disabled={loading}
+                    className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 flex items-center justify-center shadow-lg active:scale-95 transition disabled:opacity-60"
+                >
+                    {loading ? (
+                        <span className="flex items-center gap-2">
+                            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Obteniendo ubicación...
+                        </span>
+                    ) : (
+                        <>
+                            <Play className="w-6 h-6 mr-2 fill-current" />
+                            Iniciar Visita
+                        </>
+                    )}
+                </button>
+            )}
+
+            {isInProgress && (
+                <button
+                    onClick={handleFinish}
+                    disabled={loading || !outcome}
+                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 flex items-center justify-center shadow-lg active:scale-95 transition disabled:opacity-50"
+                >
+                    {loading ? (
+                        <span className="flex items-center gap-2">
+                            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Finalizando...
+                        </span>
+                    ) : (
+                        <>
+                            <CheckCircle className="w-6 h-6 mr-2" />
+                            Finalizar Visita
+                            {!outcome && <span className="ml-2 text-sm opacity-70">(elige resultado)</span>}
+                        </>
+                    )}
+                </button>
+            )}
         </div>
     );
 }
