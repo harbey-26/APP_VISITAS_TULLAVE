@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { API_URL } from '../../config';
 import {
     Calendar,
     LogOut,
     MapPin,
+    Radio,
     Users,
     Menu,
     X,
@@ -12,10 +14,30 @@ import {
 } from 'lucide-react';
 
 export default function Layout() {
-    const { logout, user } = useAuth();
+    const { logout, user, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        if (!token || !navigator.geolocation) return;
+        const sendLocation = () => {
+            navigator.geolocation.getCurrentPosition(
+                ({ coords }) => {
+                    fetch(`${API_URL}/api/users/location`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ lat: coords.latitude, lng: coords.longitude })
+                    }).catch(() => {});
+                },
+                () => {},
+                { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 }
+            );
+        };
+        sendLocation();
+        const interval = setInterval(sendLocation, 60000);
+        return () => clearInterval(interval);
+    }, [token]);
 
     const handleLogout = () => {
         logout();
@@ -49,6 +71,7 @@ export default function Layout() {
             { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
             { to: '/properties', icon: MapPin,           label: 'Inmuebles' },
             { to: '/users',      icon: Users,            label: 'Usuarios'  },
+            { to: '/tracking',   icon: Radio,            label: 'Rastreo'   },
         ] : []),
     ];
 
@@ -105,6 +128,7 @@ export default function Layout() {
                             <NavItem to="/dashboard"  icon={LayoutDashboard} label="Dashboard"  />
                             <NavItem to="/properties" icon={MapPin}          label="Inmuebles"  />
                             <NavItem to="/users"      icon={Users}           label="Usuarios"   />
+                            <NavItem to="/tracking"   icon={Radio}           label="Rastreo"    />
                         </>
                     )}
                 </nav>

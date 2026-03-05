@@ -1,14 +1,20 @@
 import { Router } from 'express';
-import { getUsers, createUser, deleteUser } from '../controllers/user.controller.js';
+import { getUsers, createUser, deleteUser, updateLocation, getAgentLocations } from '../controllers/user.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 router.use(authenticate);
+
+// Cualquier usuario autenticado puede actualizar su ubicación
+router.patch('/location', updateLocation);
+
+// Las siguientes rutas solo son accesibles para administradores
 router.use(requireAdmin);
 
 router.get('/', getUsers);
 router.post('/', createUser);
 router.delete('/:id', deleteUser);
+router.get('/locations', getAgentLocations);
 
 export default router;

@@ -8,13 +8,16 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  role      String   @default("AGENT") // AGENT, ADMIN
-  createdAt DateTime @default(now())
-  visits    Visit[]
+  id         Int       @id @default(autoincrement())
+  email      String    @unique
+  password   String
+  name       String
+  role       String    @default("AGENT") // AGENT, ADMIN
+  createdAt  DateTime  @default(now())
+  lastLat    Float?
+  lastLng    Float?
+  lastSeenAt DateTime?
+  visits     Visit[]
 }
 
 model Property {

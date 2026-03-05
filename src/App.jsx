@@ -7,6 +7,7 @@ import VisitExecution from './pages/VisitExecution';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Properties from './pages/Properties';
+import Tracking from './pages/Tracking';
 import Layout from './components/layout/Layout';
 
 const ProtectedRoute = ({ children }) => {
@@ -53,6 +54,11 @@ function App() {
                         <Route path="properties" element={
                             <AdminRoute>
                                 <Properties />
+                            </AdminRoute>
+                        } />
+                        <Route path="tracking" element={
+                            <AdminRoute>
+                                <Tracking />
                             </AdminRoute>
                         } />
                     </Route>

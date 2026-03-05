@@ -2,6 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { hashPassword } from '../utils/auth.js';
 
+const locationSchema = z.object({
+    lat: z.number(),
+    lng: z.number()
+});
+
 const prisma = new PrismaClient();
 
 const createUserSchema = z.object({
@@ -48,6 +53,31 @@ export const createUser = async (req, res) => {
         res.status(201).json(user);
     } catch (error) {
         res.status(400).json({ error: error.message });
+    }
+};
+
+export const updateLocation = async (req, res) => {
+    try {
+        const { lat, lng } = locationSchema.parse(req.body);
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { lastLat: lat, lastLng: lng, lastSeenAt: new Date() }
+        });
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+export const getAgentLocations = async (req, res) => {
+    try {
+        const agents = await prisma.user.findMany({
+            where: { role: 'AGENT' },
+            select: { id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true }
+        });
+        res.json(agents);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
 
