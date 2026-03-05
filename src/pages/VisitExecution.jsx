@@ -5,6 +5,18 @@ import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft, User, Phone, Alert
 import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix Leaflet default marker icons broken by Vite bundler
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+});
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
