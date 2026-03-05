@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft, User, Phone, AlertCircle } from 'lucide-react';
 import { API_URL } from '../config';
+import { STATUS_CONFIG } from '../utils/visitTypes';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 class ErrorBoundary extends React.Component {
@@ -47,6 +48,7 @@ function VisitExecutionContent() {
     const [currentPos, setCurrentPos] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
     const [outcome, setOutcome] = useState('');
+    const [showFinishModal, setShowFinishModal] = useState(false);
 
     useEffect(() => {
         const fetchVisit = async () => {
@@ -199,9 +201,14 @@ function VisitExecutionContent() {
                     Regresar a Agenda
                 </button>
 
-                <h2 className="text-xl font-bold text-gray-900 mb-1">
+                <h2 className="text-xl font-bold text-gray-900 mb-2">
                     {visit.property?.address || 'Dirección desconocida'}
                 </h2>
+                {STATUS_CONFIG[visit.status] && (
+                    <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-semibold mb-3 ${STATUS_CONFIG[visit.status].bg} ${STATUS_CONFIG[visit.status].text}`}>
+                        {STATUS_CONFIG[visit.status].label}
+                    </span>
+                )}
                 <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-4">
                     <Clock className="w-4 h-4" />
                     <span>Programada: {safeFormatTime(visit.scheduledStart)}</span>
@@ -243,19 +250,21 @@ function VisitExecutionContent() {
 
                 {/* Timer */}
                 <div className="mt-4 text-center">
-                    <div className={`text-5xl font-mono font-bold tracking-wider ${
-                        visit.status === 'IN_PROGRESS' && progressPercent >= 100
-                            ? 'text-red-500'
-                            : visit.status === 'IN_PROGRESS' && progressPercent >= 80
-                                ? 'text-yellow-500'
-                                : 'text-gray-800'
-                    }`}>
-                        {visit.status === 'IN_PROGRESS'
-                            ? formatTime(elapsed)
-                            : visit.status === 'COMPLETED'
-                                ? 'Finalizada'
-                                : '00:00:00'}
-                    </div>
+                    {visit.status === 'COMPLETED' ? (
+                        <div className="text-3xl font-bold text-green-600 tracking-wide">
+                            Finalizada
+                        </div>
+                    ) : (
+                        <div className={`text-5xl font-mono font-bold tracking-wider ${
+                            visit.status === 'IN_PROGRESS' && progressPercent >= 100
+                                ? 'text-red-500'
+                                : visit.status === 'IN_PROGRESS' && progressPercent >= 80
+                                    ? 'text-yellow-500'
+                                    : 'text-gray-800'
+                        }`}>
+                            {visit.status === 'IN_PROGRESS' ? formatTime(elapsed) : '00:00:00'}
+                        </div>
+                    )}
 
                     {/* Barra de progreso — solo en curso */}
                     {visit.status === 'IN_PROGRESS' && (
@@ -385,7 +394,7 @@ function VisitExecutionContent() {
 
             {visit.status === 'IN_PROGRESS' && (
                 <button
-                    onClick={handleFinish}
+                    onClick={() => setShowFinishModal(true)}
                     disabled={loading}
                     className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition disabled:opacity-60"
                 >
@@ -396,6 +405,38 @@ function VisitExecutionContent() {
                     )}
                     {loading ? 'Guardando...' : 'Finalizar Visita'}
                 </button>
+            )}
+            {showFinishModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Finalizar Visita</h3>
+                        <p className="text-gray-500 mb-5 text-sm text-center">¿Confirmas que deseas finalizar la visita? Esta acción no se puede deshacer.</p>
+                        {outcome && (
+                            <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
+                                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
+                                <p className="text-gray-800 font-medium">{outcome}</p>
+                            </div>
+                        )}
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setShowFinishModal(false)}
+                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => { setShowFinishModal(false); handleFinish(); }}
+                                disabled={loading}
+                                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition disabled:opacity-70"
+                            >
+                                Confirmar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

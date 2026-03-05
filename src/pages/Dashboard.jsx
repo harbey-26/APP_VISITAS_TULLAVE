@@ -16,7 +16,16 @@ export default function Dashboard() {
     const [completeList, setCompleteList] = useState([]);
 
     const today = new Date().toISOString().split('T')[0];
-    const [dateRange, setDateRange] = useState({ start: today, end: today });
+    const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const [dateRange, setDateRange] = useState({ start: firstOfMonth, end: today });
+
+    const setRangeToday = () => setDateRange({ start: today, end: today });
+    const setRangeWeek = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        setDateRange({ start: d.toISOString().split('T')[0], end: today });
+    };
+    const setRangeMonth = () => setDateRange({ start: firstOfMonth, end: today });
     const [outcomeFilter, setOutcomeFilter] = useState('');
 
     const { token } = useAuth();
@@ -113,18 +122,21 @@ export default function Dashboard() {
             value: stats.totalVisits,
             icon: <Calendar className="w-6 h-6" />,
             iconBg: 'bg-blue-100 text-blue-600',
+            stripe: 'bg-blue-500',
         },
         {
             label: 'Completadas',
             value: stats.completedVisits,
             icon: <CheckCircle className="w-6 h-6" />,
             iconBg: 'bg-green-100 text-green-600',
+            stripe: 'bg-green-500',
         },
         {
             label: 'Duración Prom.',
             value: `${stats.averageDuration} min`,
             icon: <Clock className="w-6 h-6" />,
             iconBg: 'bg-purple-100 text-purple-600',
+            stripe: 'bg-purple-500',
         },
         {
             label: 'Tasa de Conversión',
@@ -132,6 +144,7 @@ export default function Dashboard() {
             icon: <TrendingUp className="w-6 h-6" />,
             iconBg: 'bg-orange-100 text-orange-600',
             subtitle: 'Clientes interesados',
+            stripe: 'bg-orange-500',
         },
     ];
 
@@ -145,6 +158,11 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 bg-white p-3 rounded-xl shadow-sm border border-gray-200 w-full md:w-auto">
+                    <div className="flex items-center gap-1 border-b md:border-b-0 md:border-r pb-2 md:pb-0 md:pr-2">
+                        <button onClick={setRangeToday} className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-brand-600 hover:text-white text-gray-600 transition font-medium whitespace-nowrap">Hoy</button>
+                        <button onClick={setRangeWeek} className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-brand-600 hover:text-white text-gray-600 transition font-medium whitespace-nowrap">7 días</button>
+                        <button onClick={setRangeMonth} className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-brand-600 hover:text-white text-gray-600 transition font-medium whitespace-nowrap">Este mes</button>
+                    </div>
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-400 shrink-0">Desde:</span>
                         <input
@@ -192,16 +210,19 @@ export default function Dashboard() {
             {/* 4 Metric Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {metricCards.map((card) => (
-                    <div key={card.label} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <div className={`p-3 rounded-xl shrink-0 ${card.iconBg}`}>
-                            {card.icon}
-                        </div>
-                        <div className="min-w-0">
-                            <p className="text-xs text-gray-500 truncate">{card.label}</p>
-                            <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-                            {card.subtitle && (
-                                <p className="text-xs text-gray-400 truncate">{card.subtitle}</p>
-                            )}
+                    <div key={card.label} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className={`h-1.5 w-full ${card.stripe}`} />
+                        <div className="p-4 flex items-center gap-4">
+                            <div className={`p-3 rounded-xl shrink-0 ${card.iconBg}`}>
+                                {card.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-xs text-gray-500 truncate">{card.label}</p>
+                                <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+                                {card.subtitle && (
+                                    <p className="text-xs text-gray-400 truncate">{card.subtitle}</p>
+                                )}
+                            </div>
                         </div>
                     </div>
                 ))}

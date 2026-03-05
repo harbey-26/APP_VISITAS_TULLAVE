@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
@@ -197,19 +197,34 @@ export default function Agenda() {
     return (
         <div className="space-y-6 relative min-h-[80vh]">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900">Visitas Programadas</h2>
-                    <span className="text-sm text-gray-500 capitalize">
-                        {dateRange.start === dateRange.end
-                            ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', {
-                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                              })
-                            : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`}
-                    </span>
+            <div className="space-y-3">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Visitas Programadas</h2>
+                        <span className="text-sm text-gray-500 capitalize">
+                            {dateRange.start === dateRange.end
+                                ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', {
+                                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                                  })
+                                : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`}
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="bg-brand-600 text-white px-4 py-2.5 rounded-xl shadow hover:bg-brand-700 transition flex items-center gap-2 font-semibold text-sm whitespace-nowrap"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Nueva Visita
+                    </button>
                 </div>
 
-                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200 w-full md:w-auto">
+                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <button
+                        onClick={() => setDateRange({ start: today, end: today })}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-brand-600 hover:text-white transition whitespace-nowrap"
+                    >
+                        Hoy
+                    </button>
                     <div className="flex items-center gap-1">
                         <span className="text-xs text-gray-400 pl-1">Del</span>
                         <input
@@ -228,14 +243,6 @@ export default function Agenda() {
                             className="border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
                         />
                     </div>
-                    <button
-                        onClick={() => setShowModal(true)}
-                        className="bg-brand-600 text-white px-3 py-2 rounded-lg shadow hover:bg-brand-700 transition flex items-center gap-1.5 ml-1 whitespace-nowrap text-sm font-medium"
-                        title="Nueva Visita"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Nueva
-                    </button>
                 </div>
             </div>
 
@@ -285,7 +292,7 @@ export default function Agenda() {
                                                 className={`bg-white rounded-xl border cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted ? 'opacity-75' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
-                                                <div className={`h-1 w-full ${typeConfig.dot}`} />
+                                                <div className={`h-1.5 w-full ${typeConfig.dot}`} />
 
                                                 <div className="p-4">
                                                     {/* Row 1: Hora + Tipo + Estado + Eliminar */}
@@ -307,10 +314,11 @@ export default function Agenda() {
                                                             </span>
                                                             <button
                                                                 onClick={(e) => initiateDelete(e, visit.id)}
-                                                                className="text-gray-200 hover:text-red-500 transition p-1 opacity-0 group-hover:opacity-100"
+                                                                className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                                                             >
                                                                 <Trash2 className="w-3.5 h-3.5" />
                                                             </button>
+                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-400 transition-colors flex-shrink-0" />
                                                         </div>
                                                     </div>
 
