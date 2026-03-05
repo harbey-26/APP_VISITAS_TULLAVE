@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, ThumbsUp, ThumbsDown, RefreshCw, UserX, XCircle, HelpCircle } from 'lucide-react';
+import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft, User, Phone, AlertCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
-        console.error('ErrorBoundary caught an error', error, errorInfo);
+        console.error("ErrorBoundary caught an error", error, errorInfo);
     }
 
     render() {
@@ -26,6 +26,8 @@ class ErrorBoundary extends React.Component {
                     <h2 className="text-xl font-bold mb-4">Algo salió mal.</h2>
                     <pre className="text-xs bg-white p-4 rounded border overflow-auto">
                         {this.state.error && this.state.error.toString()}
+                        <br />
+                        {this.state.error && this.state.error.stack}
                     </pre>
                 </div>
             );
@@ -33,14 +35,6 @@ class ErrorBoundary extends React.Component {
         return this.props.children;
     }
 }
-
-const OUTCOMES = [
-    { value: 'Cliente interesado',     label: 'Interesado',        icon: ThumbsUp,   color: 'border-green-400  bg-green-50  text-green-700'  },
-    { value: 'Cliente no interesado',  label: 'No interesado',     icon: ThumbsDown, color: 'border-red-400    bg-red-50    text-red-700'    },
-    { value: 'Requiere seguimiento',   label: 'Seguimiento',       icon: RefreshCw,  color: 'border-blue-400   bg-blue-50   text-blue-700'   },
-    { value: 'Cliente no asistió',     label: 'No asistió',        icon: UserX,      color: 'border-amber-400  bg-amber-50  text-amber-700'  },
-    { value: 'Cancelada',              label: 'Cancelada',         icon: XCircle,    color: 'border-gray-400   bg-gray-100  text-gray-600'   },
-];
 
 function VisitExecutionContent() {
     const { id } = useParams();
@@ -82,6 +76,7 @@ function VisitExecutionContent() {
         fetchVisit();
     }, [id, token]);
 
+    // Timer
     useEffect(() => {
         let interval;
         if (visit?.status === 'IN_PROGRESS' && visit.actualStart) {
@@ -100,8 +95,20 @@ function VisitExecutionContent() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
-    const getCurrentLocation = () =>
-        new Promise((resolve, reject) => {
+    // Progreso en porcentaje (elapsed vs estimatedDuration en segundos)
+    const progressPercent = visit?.estimatedDuration
+        ? Math.min(100, Math.round((elapsed / (visit.estimatedDuration * 60)) * 100))
+        : 0;
+
+    // Color de la barra según progreso
+    const progressColor = progressPercent >= 100
+        ? 'bg-red-500'
+        : progressPercent >= 80
+            ? 'bg-yellow-500'
+            : 'bg-green-500';
+
+    const getCurrentLocation = () => {
+        return new Promise((resolve, reject) => {
             if (!navigator.geolocation) reject(new Error('Geolocalización no soportada'));
             navigator.geolocation.getCurrentPosition(
                 (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -109,6 +116,7 @@ function VisitExecutionContent() {
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         });
+    };
 
     const handleStart = async () => {
         setLoading(true);
@@ -116,13 +124,11 @@ function VisitExecutionContent() {
         try {
             const { lat, lng } = await getCurrentLocation();
             setCurrentPos([lat, lng]);
-
             const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
             });
-
             if (res.ok) {
                 setVisit(await res.json());
             } else {
@@ -150,7 +156,6 @@ function VisitExecutionContent() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng, notes, outcome })
             });
-
             if (res.ok) {
                 setVisit(await res.json());
                 navigate('/agenda');
@@ -170,157 +175,163 @@ function VisitExecutionContent() {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return 'Hora inválida';
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch {
+        } catch (e) {
             return 'Hora inválida';
         }
     };
 
     if (!visit) return (
-        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-            <div className="w-8 h-8 border-4 border-brand-600 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm">Cargando visita...</p>
+        <div className="flex flex-col items-center justify-center h-64 gap-3">
+            <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
+            <p className="text-gray-500 text-sm">Cargando visita...</p>
         </div>
     );
 
-    const isInProgress = visit.status === 'IN_PROGRESS';
-    const isCompleted  = visit.status === 'COMPLETED';
-    const isPending    = visit.status === 'PENDING';
-
     return (
-        <div className="space-y-4 pb-24 lg:pb-8">
-
-            {/* Back + Header card */}
-            <div className="bg-white rounded-2xl shadow-sm p-5">
+        <div className="flex flex-col gap-4 max-w-lg mx-auto">
+            {/* Header card */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <button
                     onClick={() => navigate('/agenda')}
-                    className="flex items-center text-gray-400 hover:text-brand-600 mb-4 transition-colors text-sm font-medium gap-1"
+                    className="flex items-center text-gray-400 hover:text-brand-600 mb-4 transition-colors text-sm font-medium"
                 >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ArrowLeft className="w-4 h-4 mr-1" />
                     Regresar a Agenda
                 </button>
 
-                {/* Status pill */}
-                <div className="flex items-center gap-2 mb-3">
-                    {isInProgress && (
-                        <span className="flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full">
-                            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                            En Curso
-                        </span>
-                    )}
-                    {isPending && (
-                        <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-3 py-1 rounded-full">
-                            Pendiente
-                        </span>
-                    )}
-                    {isCompleted && (
-                        <span className="flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Completada
-                        </span>
-                    )}
-                </div>
-
                 <h2 className="text-xl font-bold text-gray-900 mb-1">
-                    {visit.property?.address || 'Sin dirección'}
+                    {visit.property?.address || 'Dirección desconocida'}
                 </h2>
-
-                <div className="flex items-center text-gray-500 text-sm gap-1 mb-3">
+                <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-4">
                     <Clock className="w-4 h-4" />
                     <span>Programada: {safeFormatTime(visit.scheduledStart)}</span>
-                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-300 mx-1">·</span>
                     <span>{visit.estimatedDuration} min estimados</span>
                 </div>
 
-                {/* Client info */}
+                {/* Info del cliente */}
                 {(visit.clientName || visit.clientPhone) && (
-                    <div className="flex flex-wrap gap-4 text-sm bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                    <div className="bg-gray-50 rounded-xl border border-gray-100 p-3 flex flex-col sm:flex-row gap-3">
                         {visit.clientName && (
-                            <span className="flex items-center gap-1.5 text-gray-700">
-                                <User className="w-4 h-4 text-gray-400" />
-                                {visit.clientName}
-                            </span>
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                                <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+                                    <User className="w-4 h-4 text-brand-600" />
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-400">Cliente</p>
+                                    <p className="font-semibold">{visit.clientName}</p>
+                                </div>
+                            </div>
                         )}
                         {visit.clientPhone && (
                             <a
                                 href={`tel:${visit.clientPhone}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex items-center gap-1.5 text-brand-600 font-medium hover:underline"
+                                className="flex items-center gap-2 text-sm text-gray-700 hover:text-brand-600 transition sm:ml-auto"
                             >
-                                <Phone className="w-4 h-4" />
-                                {visit.clientPhone}
+                                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                    <Phone className="w-4 h-4 text-green-600" />
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-400">Teléfono</p>
+                                    <p className="font-semibold">{visit.clientPhone}</p>
+                                </div>
                             </a>
                         )}
                     </div>
                 )}
 
                 {/* Timer */}
-                <div className="flex justify-center py-6">
-                    <div className={`text-5xl font-mono font-bold tracking-wider ${isInProgress ? 'text-brand-600' : 'text-gray-400'}`}>
-                        {isInProgress ? formatTime(elapsed) : isCompleted ? 'Completada' : '00:00:00'}
+                <div className="mt-4 text-center">
+                    <div className={`text-5xl font-mono font-bold tracking-wider ${
+                        visit.status === 'IN_PROGRESS' && progressPercent >= 100
+                            ? 'text-red-500'
+                            : visit.status === 'IN_PROGRESS' && progressPercent >= 80
+                                ? 'text-yellow-500'
+                                : 'text-gray-800'
+                    }`}>
+                        {visit.status === 'IN_PROGRESS'
+                            ? formatTime(elapsed)
+                            : visit.status === 'COMPLETED'
+                                ? 'Finalizada'
+                                : '00:00:00'}
                     </div>
+
+                    {/* Barra de progreso — solo en curso */}
+                    {visit.status === 'IN_PROGRESS' && (
+                        <div className="mt-3 px-2">
+                            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                    className={`h-2.5 rounded-full transition-all duration-1000 ${progressColor}`}
+                                    style={{ width: `${progressPercent}%` }}
+                                />
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                <span>0 min</span>
+                                <span className={progressPercent >= 100 ? 'text-red-500 font-semibold' : ''}>
+                                    {progressPercent >= 100
+                                        ? `+${Math.round((elapsed - visit.estimatedDuration * 60) / 60)} min extra`
+                                        : `${visit.estimatedDuration} min`}
+                                </span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Map */}
-            <div className="bg-gray-200 rounded-xl overflow-hidden h-52 w-full relative z-0 shadow-sm">
-                {currentPos && currentPos[0] && currentPos[1] ? (
-                    <MapContainer center={currentPos} zoom={15} style={{ height: '100%', width: '100%' }}>
-                        <TileLayer
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        />
-                        <Marker position={currentPos}>
-                            <Popup>{visit.property?.address}</Popup>
-                        </Marker>
-                        {visit.checkInLat && (
-                            <Marker position={[visit.checkInLat, visit.checkInLng]}>
-                                <Popup>Check-in</Popup>
+            {/* Mapa */}
+            <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                <div className="h-52 relative z-0">
+                    {currentPos && currentPos[0] && currentPos[1] ? (
+                        <MapContainer center={currentPos} zoom={15} style={{ height: '100%', width: '100%' }}>
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                            />
+                            <Marker position={currentPos}>
+                                <Popup>{visit.property?.address}</Popup>
                             </Marker>
-                        )}
-                    </MapContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400 gap-2">
-                        <MapPin className="w-5 h-5" />
-                        <span className="text-sm">Ubicación no disponible</span>
-                    </div>
-                )}
+                            {visit.checkInLat && (
+                                <Marker position={[visit.checkInLat, visit.checkInLng]}>
+                                    <Popup>Inicio de Visita</Popup>
+                                </Marker>
+                            )}
+                        </MapContainer>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+                            <MapPin className="w-6 h-6" />
+                            <span className="text-sm">Ubicación no disponible</span>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Outcome selector (in progress) */}
-            {isInProgress && (
-                <div className="space-y-4">
+            {/* Resultado y comentarios — solo en progreso */}
+            {visit.status === 'IN_PROGRESS' && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4">
                     <div>
-                        <p className="text-sm font-semibold text-gray-700 mb-2">Resultado de la Visita</p>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            {OUTCOMES.map(opt => {
-                                const Icon = opt.icon;
-                                const selected = outcome === opt.value;
-                                return (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => { setOutcome(opt.value); setErrorMsg(null); }}
-                                        className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-semibold transition ${
-                                            selected
-                                                ? opt.color + ' shadow-sm scale-[1.02]'
-                                                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                                        }`}
-                                    >
-                                        <Icon className="w-5 h-5" />
-                                        {opt.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Resultado de la Visita <span className="text-red-400">*</span>
+                        </label>
+                        <select
+                            className="w-full p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            value={outcome}
+                            onChange={(e) => setOutcome(e.target.value)}
+                        >
+                            <option value="">Seleccionar resultado...</option>
+                            <option value="Cliente interesado">Cliente interesado</option>
+                            <option value="Cliente no interesado">Cliente no interesado</option>
+                            <option value="Requiere seguimiento">Requiere seguimiento</option>
+                            <option value="Cliente no asistió">Cliente no asistió</option>
+                            <option value="Cancelada">Cancelada</option>
+                        </select>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">
-                            Comentarios <span className="font-normal text-gray-400">(opcional)</span>
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Comentarios</label>
                         <textarea
-                            className="w-full p-3 border rounded-xl h-28 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none text-sm"
-                            placeholder="Escribe tus observaciones aquí..."
+                            className="w-full p-3 border border-gray-200 rounded-xl h-28 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none text-sm"
+                            placeholder="Observaciones, detalles de la visita..."
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                         />
@@ -328,21 +339,21 @@ function VisitExecutionContent() {
                 </div>
             )}
 
-            {/* Completed summary */}
-            {isCompleted && (
-                <div className="bg-green-50 rounded-xl p-4 border border-green-100 space-y-3">
-                    <div className="flex items-center gap-2 text-green-700 font-bold">
+            {/* Resultado si completada */}
+            {visit.status === 'COMPLETED' && (
+                <div className="bg-green-50 rounded-2xl p-4 border border-green-100 space-y-3">
+                    <div className="text-center text-green-600 font-bold flex items-center justify-center gap-2">
                         <CheckCircle className="w-5 h-5" />
                         Visita Completada
                     </div>
-                    <div className="bg-white p-3 rounded-lg border border-green-100">
+                    <div className="bg-white p-3 rounded-xl border border-green-100">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Resultado</p>
                         <p className="text-gray-900 font-medium">{visit.outcome || 'Sin resultado registrado'}</p>
                     </div>
                     {visit.notes && (
-                        <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <div className="bg-white p-3 rounded-xl border border-green-100">
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Comentarios</p>
-                            <p className="text-gray-700 italic">"{visit.notes}"</p>
+                            <p className="text-gray-600 italic text-sm">"{visit.notes}"</p>
                         </div>
                     )}
                 </div>
@@ -350,51 +361,40 @@ function VisitExecutionContent() {
 
             {/* Error message */}
             {errorMsg && (
-                <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm">
-                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    {errorMsg}
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 flex items-start gap-3 text-sm">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <span>{errorMsg}</span>
                 </div>
             )}
 
             {/* Action buttons */}
-            {isPending && (
+            {visit.status === 'PENDING' && (
                 <button
                     onClick={handleStart}
                     disabled={loading}
-                    className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 flex items-center justify-center shadow-lg active:scale-95 transition disabled:opacity-60"
+                    className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition disabled:opacity-60"
                 >
                     {loading ? (
-                        <span className="flex items-center gap-2">
-                            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Obteniendo ubicación...
-                        </span>
+                        <div className="w-6 h-6 border-3 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
-                        <>
-                            <Play className="w-6 h-6 mr-2 fill-current" />
-                            Iniciar Visita
-                        </>
+                        <Play className="w-6 h-6" />
                     )}
+                    {loading ? 'Obteniendo ubicación...' : 'Iniciar Visita'}
                 </button>
             )}
 
-            {isInProgress && (
+            {visit.status === 'IN_PROGRESS' && (
                 <button
                     onClick={handleFinish}
-                    disabled={loading || !outcome}
-                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 flex items-center justify-center shadow-lg active:scale-95 transition disabled:opacity-50"
+                    disabled={loading}
+                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition disabled:opacity-60"
                 >
                     {loading ? (
-                        <span className="flex items-center gap-2">
-                            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Finalizando...
-                        </span>
+                        <div className="w-6 h-6 border-3 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
-                        <>
-                            <CheckCircle className="w-6 h-6 mr-2" />
-                            Finalizar Visita
-                            {!outcome && <span className="ml-2 text-sm opacity-70">(elige resultado)</span>}
-                        </>
+                        <CheckCircle className="w-6 h-6" />
                     )}
+                    {loading ? 'Guardando...' : 'Finalizar Visita'}
                 </button>
             )}
         </div>

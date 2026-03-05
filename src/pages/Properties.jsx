@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
 import { Plus, Pencil, Trash2, MapPin, X, Building, CheckCircle } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 export default function Properties() {
     const [properties, setProperties] = useState([]);
@@ -22,6 +23,7 @@ export default function Properties() {
     const [deleteTargetId, setDeleteTargetId] = useState(null);
 
     const { token } = useAuth();
+    const toast = useToast();
 
     const fetchProperties = async () => {
         try {
@@ -86,12 +88,13 @@ export default function Properties() {
             if (res.ok) {
                 setShowModal(false);
                 fetchProperties();
+                toast.success(isEditing ? 'Inmueble actualizado' : 'Inmueble registrado correctamente');
             } else {
                 const err = await res.json();
-                alert(err.error || 'Error al guardar');
+                toast.error(err.error || 'Error al guardar');
             }
         } catch (error) {
-            alert('Error: ' + error.message);
+            toast.error('Error: ' + error.message);
         }
     };
 
@@ -105,12 +108,13 @@ export default function Properties() {
             if (res.ok) {
                 setShowDeleteModal(false);
                 fetchProperties();
+                toast.success('Inmueble eliminado');
             } else {
                 const err = await res.json();
-                alert(err.error || 'Error al eliminar');
+                toast.error(err.error || 'Error al eliminar');
             }
         } catch (error) {
-            alert('Error: ' + error.message);
+            toast.error('Error: ' + error.message);
         }
     };
 
