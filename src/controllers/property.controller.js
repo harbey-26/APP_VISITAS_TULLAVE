@@ -13,49 +13,43 @@ export const getProperties = async (req, res) => {
 
 const geocodeAddress = async (address) => {
     try {
+        const apiKey = process.env.GOOGLE_MAPS_API_KEY;
         const queries = [];
 
-        // 1. Cleaned address (remove # and special chars)
-        let cleanAddress = address.replace(/[#\-]/g, ' ').replace(/\s+/g, ' ').trim();
-        queries.push(`${cleanAddress}, Bogotá, Colombia`);
-
-        // 2. Original address
-        queries.push(`${address}, Bogotá, Colombia`);
-
-        // 3. Smart Intersection Logic for Bogota
-        // Pattern: Calle X # Y -> Calle X Carrera Y (Approximation)
+        // 1. Smart Intersection Logic for Bogota
+        // Pattern: Calle X # Y -> Calle X Carrera Y
         const calleMatch = address.match(/(?:Calle|Cl|Cale)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
         if (calleMatch) {
-            queries.unshift(`Calle ${calleMatch[1]} Carrera ${calleMatch[2]}, Bogotá, Colombia`);
-            queries.push(`Calle ${calleMatch[1]}B Carrera ${calleMatch[2]}, Bogotá, Colombia`); // Try 'B' suffix specific to this case
+            queries.push(`Calle ${calleMatch[1]} Carrera ${calleMatch[2]}, Bogotá, Colombia`);
         }
 
         // Pattern: Carrera X # Y -> Carrera X Calle Y
         const craMatch = address.match(/(?:Carrera|Cra|Kra|Kr)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
         if (craMatch) {
-            queries.unshift(`Carrera ${craMatch[1]} Calle ${craMatch[2]}, Bogotá, Colombia`);
+            queries.push(`Carrera ${craMatch[1]} Calle ${craMatch[2]}, Bogotá, Colombia`);
         }
+
+        // 2. Original address
+        queries.push(`${address}, Bogotá, Colombia`);
+
+        // 3. Cleaned address (remove # and special chars)
+        const cleanAddress = address.replace(/[#\-]/g, ' ').replace(/\s+/g, ' ').trim();
+        queries.push(`${cleanAddress}, Bogotá, Colombia`);
 
         for (const q of queries) {
             console.log(`Attempting geocoding for: "${q}"`);
-            const query = encodeURIComponent(q);
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`;
+            const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${apiKey}`;
 
-            const response = await fetch(url, {
-                headers: { 'User-Agent': 'TullaveVisitApp/1.0' }
-            });
+            const response = await fetch(url);
 
             if (response.ok) {
                 const data = await response.json();
-                if (data && data.length > 0) {
-                    console.log(`Geocoding success for "${q}":`, data[0].lat, data[0].lon);
-                    return {
-                        lat: parseFloat(data[0].lat),
-                        lng: parseFloat(data[0].lon)
-                    };
+                if (data.status === 'OK' && data.results.length > 0) {
+                    const { lat, lng } = data.results[0].geometry.location;
+                    console.log(`Geocoding success for "${q}":`, lat, lng);
+                    return { lat, lng };
                 }
             }
-            await new Promise(resolve => setTimeout(resolve, 800));
         }
     } catch (error) {
         console.error("Geocoding service error:", error);
