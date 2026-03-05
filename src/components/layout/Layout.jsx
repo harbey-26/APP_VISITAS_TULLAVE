@@ -19,6 +19,23 @@ export default function Layout() {
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // Wake Lock: evita que la pantalla se apague para mantener el GPS activo
+    useEffect(() => {
+        if (!token || !('wakeLock' in navigator)) return;
+        let wakeLock = null;
+        const acquire = async () => {
+            try { wakeLock = await navigator.wakeLock.request('screen'); } catch { /* batería baja, modo ahorro */ }
+        };
+        acquire();
+        const onVisibility = () => { if (document.visibilityState === 'visible') acquire(); };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility);
+            wakeLock?.release();
+        };
+    }, [token]);
+
+    // GPS: envía ubicación cada 60 s y también al volver a la app tras desbloquear
     useEffect(() => {
         if (!token || !navigator.geolocation) return;
         const sendLocation = () => {
@@ -36,7 +53,12 @@ export default function Layout() {
         };
         sendLocation();
         const interval = setInterval(sendLocation, 60000);
-        return () => clearInterval(interval);
+        const onFocus = () => { if (document.visibilityState === 'visible') sendLocation(); };
+        document.addEventListener('visibilitychange', onFocus);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onFocus);
+        };
     }, [token]);
 
     const handleLogout = () => {
