@@ -12,5 +12,16 @@ export default defineConfig({
                 changeOrigin: true,
             }
         }
+    },
+    build: {
+        rollupOptions: {
+            // Los plugins nativos de Capacitor no se bundlean — los resuelve
+            // el runtime nativo del APK. En web nunca se importan porque
+            // Capacitor.isNativePlatform() devuelve false.
+            external: [
+                '@capacitor-community/background-geolocation',
+                '@capacitor/geolocation'
+            ]
+        }
     }
 })

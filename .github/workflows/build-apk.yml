@@ -25,7 +25,10 @@ jobs:
           distribution: 'temurin'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema prisma/schema.pg.prisma
 
       - name: Build web app
         run: npm run build
