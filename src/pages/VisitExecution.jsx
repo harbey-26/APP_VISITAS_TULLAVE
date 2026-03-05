@@ -62,9 +62,8 @@ function VisitExecutionContent() {
                     if (v) {
                         setVisit(v);
                         if (v.notes) setNotes(v.notes);
-                        if (v.checkInLat && v.checkInLng) {
-                            setCurrentPos([v.checkInLat, v.checkInLng]);
-                        } else if (v.property?.lat && v.property?.lng) {
+                        // Center map on property location, not agent GPS
+                        if (v.property?.lat && v.property?.lng) {
                             setCurrentPos([v.property.lat, v.property.lng]);
                         } else {
                             setCurrentPos([4.6097, -74.0817]);
@@ -125,14 +124,15 @@ function VisitExecutionContent() {
         setErrorMsg(null);
         try {
             const { lat, lng } = await getCurrentLocation();
-            setCurrentPos([lat, lng]);
             const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
             });
             if (res.ok) {
-                setVisit(await res.json());
+                const updated = await res.json();
+                // Preserve property data (startVisit response doesn't include it)
+                setVisit(prev => ({ ...updated, property: prev.property }));
             } else {
                 const errData = await res.json();
                 throw new Error(errData.error || 'Error desconocido al iniciar visita');
@@ -297,12 +297,24 @@ function VisitExecutionContent() {
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                             />
-                            <Marker position={currentPos}>
-                                <Popup>{visit.property?.address}</Popup>
-                            </Marker>
-                            {visit.checkInLat && (
+                            {/* Marker: geocoded property location */}
+                            {visit.property?.lat && visit.property?.lng && (
+                                <Marker position={[visit.property.lat, visit.property.lng]}>
+                                    <Popup>
+                                        <strong>Inmueble</strong><br />{visit.property.address}
+                                    </Popup>
+                                </Marker>
+                            )}
+                            {/* Marker: agent check-in GPS */}
+                            {visit.checkInLat && visit.checkInLng && (
                                 <Marker position={[visit.checkInLat, visit.checkInLng]}>
-                                    <Popup>Inicio de Visita</Popup>
+                                    <Popup>Inicio de visita</Popup>
+                                </Marker>
+                            )}
+                            {/* Marker: agent check-out GPS */}
+                            {visit.checkOutLat && visit.checkOutLng && (
+                                <Marker position={[visit.checkOutLat, visit.checkOutLng]}>
+                                    <Popup>Fin de visita</Popup>
                                 </Marker>
                             )}
                         </MapContainer>

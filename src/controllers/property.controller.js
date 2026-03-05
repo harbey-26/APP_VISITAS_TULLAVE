@@ -68,12 +68,12 @@ export const createProperty = async (req, res) => {
     try {
         let { address, client, lat, lng } = req.body;
 
-        // Check if using suspect default coordinates (within generic Bogota center range)
-        const isDefaultLat = Math.abs(lat - 4.6097) < 0.0001;
-        const isDefaultLng = Math.abs(lng - (-74.0817)) < 0.0001;
+        // Geocodificar si: no hay coords (null/undefined) o son las coords por defecto de Bogotá
+        const isDefaultLat = lat != null && Math.abs(lat - 4.6097) < 0.0001;
+        const isDefaultLng = lng != null && Math.abs(lng - (-74.0817)) < 0.0001;
 
-        if (isDefaultLat && isDefaultLng) {
-            console.log(`Detected default coordinates for ${address}. Attempting auto-geocoding...`);
+        if (!lat || !lng || (isDefaultLat && isDefaultLng)) {
+            console.log(`Attempting auto-geocoding for ${address}...`);
             const geocoded = await geocodeAddress(address);
 
             if (geocoded) {
@@ -81,7 +81,9 @@ export const createProperty = async (req, res) => {
                 lat = geocoded.lat;
                 lng = geocoded.lng;
             } else {
-                console.warn(`Geocoding failed for ${address}. Using defaults.`);
+                console.warn(`Geocoding failed for ${address}. Coordinates will be null.`);
+                lat = null;
+                lng = null;
             }
         }
 

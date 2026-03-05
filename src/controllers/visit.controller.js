@@ -40,37 +40,30 @@ const finishVisitSchema = z.object({
 });
 
 export const getVisits = async (req, res) => {
-    const { id: userId, role } = req.user; // From auth middleware
+    const { id: userId, role } = req.user;
 
-    const { date, startDate, endDate, id, outcome } = req.query; // YYYY-MM-DD or specific ID or Outcome
-
-
+    const { date, startDate, endDate, id, outcome } = req.query;
 
     try {
         const where = {};
 
-        // Only filter by userId if NOT admin
         if (role !== 'ADMIN') {
             where.userId = userId;
         }
 
         if (id) {
-            // Filter by specific ID if provided
             where.id = parseInt(id);
         } else if (startDate && endDate) {
-            // Filter by Date Range
             const start = new Date(startDate);
             start.setHours(0, 0, 0, 0);
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
             where.scheduledStart = { gte: start, lte: end };
         } else if (date) {
-            // Fallback to single date
             const start = new Date(date);
             start.setHours(0, 0, 0, 0);
             const end = new Date(date);
             end.setHours(23, 59, 59, 999);
-
             where.scheduledStart = { gte: start, lte: end };
         }
 
@@ -99,39 +92,15 @@ export const createVisit = async (req, res) => {
         });
         const data = schema.parse(req.body);
 
-        // Determine target user (Admin can assign, Agent assigns self)
         let targetUserId = req.user.id;
         if (req.user.role === 'ADMIN' && data.assignedUserId) {
             targetUserId = data.assignedUserId;
         }
 
-        // Parse date
         const scheduledStart = new Date(data.scheduledStart);
         const durationMs = data.estimatedDuration * 60 * 1000;
         const scheduledEnd = new Date(scheduledStart.getTime() + durationMs);
 
-        // Validation: Check for overlaps for the target user
-        const overlap = await prisma.visit.findFirst({
-            where: {
-                userId: targetUserId,
-                status: { not: 'MISSED' }, // Assume MISSED/CANCELLED doesn't block (adjust if needed)
-                AND: [
-                    { scheduledStart: { lt: scheduledEnd } },
-                    {
-                        // We need to calculate end time of existing visit to compare
-                        // OR we trust that we don't need exact end-time storage if we compute it on fly?
-                        // Prisma doesn't support computed columns in where easily without raw query or storing 'scheduledEnd'.
-                        // Let's assume we need to check if existing visit overlaps.
-                        // Since we don't store scheduledEnd in DB (only estimatedDuration), validation is trickier in pure Prisma findFirst without fetching all.
-                        // Optimization: Fetch visits around that day/time and filter in code, or better:
-                        // Just fetch visits that start within a range (e.g. -2 hours to +duration) to minimize fetch size.
-                    }
-                ]
-            }
-        });
-
-        // BETTER APPROACH: Fetch visits for that user on that day to be safe and check overlaps in JS
-        // to avoid complex/impossible Prisma queries without stored end_date.
         const dayStart = new Date(scheduledStart);
         dayStart.setHours(0, 0, 0, 0);
         const dayEnd = new Date(scheduledStart);
@@ -140,19 +109,14 @@ export const createVisit = async (req, res) => {
         const potentialOverlaps = await prisma.visit.findMany({
             where: {
                 userId: targetUserId,
-                status: { notIn: ['MISSED'] }, // Exclude status that doesn't block. Add 'CANCELLED' if you have it.
-                scheduledStart: {
-                    gte: dayStart,
-                    lte: dayEnd
-                }
+                status: { notIn: ['MISSED'] },
+                scheduledStart: { gte: dayStart, lte: dayEnd }
             }
         });
 
         const hasConflict = potentialOverlaps.some(v => {
             const vStart = new Date(v.scheduledStart);
             const vEnd = new Date(vStart.getTime() + (v.estimatedDuration * 60 * 1000));
-
-            // Check intersection: (StartA < EndB) and (EndA > StartB)
             return (scheduledStart < vEnd && scheduledEnd > vStart);
         });
 
@@ -184,9 +148,9 @@ export const createVisit = async (req, res) => {
 };
 
 
-// Helper: Calculate distance in meters
+// Helper: Calculate distance in meters (Haversine formula)
 function getDistanceInMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // Earth radius in meters
+    const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
     const Δφ = (lat2 - lat1) * Math.PI / 180;
@@ -200,12 +164,16 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// Helper: Get max allowed distance based on role
+function getMaxDistance(role) {
+    return role === 'ADMIN' ? 50000 : 1500; // ADMIN: 50km, AGENT: 1500m
+}
+
 export const startVisit = async (req, res) => {
     const { id } = req.params;
     try {
         const data = startVisitSchema.parse(req.body);
 
-        // Fetch visit with property location
         const visit = await prisma.visit.findUnique({
             where: { id: parseInt(id) },
             include: { property: true }
@@ -215,19 +183,31 @@ export const startVisit = async (req, res) => {
             return res.status(404).json({ error: 'Visita no encontrada' });
         }
 
-        if (visit.property && visit.property.lat && visit.property.lng) {
-            const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
-            // Dynamic Geofencing:
-            // - ADMIN: 50km radius (allows remote support/testing/demos)
-            // - AGENT: 1500m radius (increased from 500m to accommodate GPS/Map discrepancies)
-            const { role } = req.user;
-            const MAX_DISTANCE_METERS = role === 'ADMIN' ? 50000 : 1500;
+        // FIX BUG 4: Verificar que la visita pertenece al agente autenticado
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'No tienes permiso para iniciar esta visita.' });
+        }
 
-            if (distance > MAX_DISTANCE_METERS) {
-                return res.status(400).json({
-                    error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${MAX_DISTANCE_METERS}m.`
-                });
-            }
+        // FIX BUG 5: Verificar que la visita está en estado PENDING
+        if (visit.status !== 'PENDING') {
+            return res.status(400).json({ error: 'Solo se pueden iniciar visitas pendientes.' });
+        }
+
+        // FIX BUG 3: Bloquear si el inmueble no tiene coordenadas
+        if (!visit.property?.lat || !visit.property?.lng) {
+            return res.status(400).json({
+                error: 'El inmueble no tiene coordenadas registradas. Contacta al administrador para configurarlas antes de iniciar la visita.'
+            });
+        }
+
+        // Geofencing: verificar distancia al inmueble
+        const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
+        const maxDistance = getMaxDistance(req.user.role);
+
+        if (distance > maxDistance) {
+            return res.status(400).json({
+                error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para iniciar la visita.`
+            });
         }
 
         const updatedVisit = await prisma.visit.update({
@@ -251,7 +231,39 @@ export const finishVisit = async (req, res) => {
     try {
         const data = finishVisitSchema.parse(req.body);
 
-        const visit = await prisma.visit.update({
+        // FIX BUG 1: Fetchear la visita con su propiedad para poder validar ubicación
+        const visit = await prisma.visit.findUnique({
+            where: { id: parseInt(id) },
+            include: { property: true }
+        });
+
+        if (!visit) {
+            return res.status(404).json({ error: 'Visita no encontrada' });
+        }
+
+        // FIX BUG 4: Verificar que la visita pertenece al agente autenticado
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'No tienes permiso para finalizar esta visita.' });
+        }
+
+        // FIX BUG 5: Verificar que la visita está en estado IN_PROGRESS
+        if (visit.status !== 'IN_PROGRESS') {
+            return res.status(400).json({ error: 'Solo se pueden finalizar visitas que estén en curso.' });
+        }
+
+        // FIX BUG 1: Geofencing al finalizar — el agente debe estar en el inmueble
+        if (visit.property?.lat && visit.property?.lng) {
+            const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
+            const maxDistance = getMaxDistance(req.user.role);
+
+            if (distance > maxDistance) {
+                return res.status(400).json({
+                    error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para finalizar la visita.`
+                });
+            }
+        }
+
+        const updatedVisit = await prisma.visit.update({
             where: { id: parseInt(id) },
             data: {
                 status: 'COMPLETED',
@@ -262,7 +274,7 @@ export const finishVisit = async (req, res) => {
                 outcome: data.outcome
             }
         });
-        res.json(visit);
+        res.json(updatedVisit);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
@@ -278,11 +290,12 @@ export const deleteVisit = async (req, res) => {
 
     let isAuthorized = false;
 
-    // 1. Check specific requested password
-    if (password === 'Daniel2809') {
+    // FIX BUG 6: Eliminar contraseña hardcoded. Validar con contraseña del usuario.
+    // Opcionalmente, también aceptar variable de entorno MASTER_DELETE_PASSWORD si está configurada.
+    const masterPwd = process.env.MASTER_DELETE_PASSWORD;
+    if (masterPwd && password === masterPwd) {
         isAuthorized = true;
     } else {
-        // 2. Fallback: Check User Login Password
         try {
             const user = await prisma.user.findUnique({ where: { id: req.user.id } });
             if (user) {
