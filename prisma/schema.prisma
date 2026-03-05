@@ -14,10 +14,11 @@ model User {
   name       String
   role       String    @default("AGENT") // AGENT, ADMIN
   createdAt  DateTime  @default(now())
-  lastLat    Float?
-  lastLng    Float?
-  lastSeenAt DateTime?
-  visits     Visit[]
+  lastLat        Float?
+  lastLng        Float?
+  lastSeenAt     DateTime?
+  connectedSince DateTime?
+  visits         Visit[]
 }
 
 model Property {

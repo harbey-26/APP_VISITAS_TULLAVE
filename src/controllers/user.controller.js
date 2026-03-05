@@ -73,7 +73,7 @@ export const getAgentLocations = async (req, res) => {
     try {
         const agents = await prisma.user.findMany({
             where: { role: 'AGENT' },
-            select: { id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true }
+            select: { id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true, connectedSince: true }
         });
         res.json(agents);
     } catch (error) {

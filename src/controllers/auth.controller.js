@@ -49,6 +49,11 @@ export const login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { connectedSince: new Date() }
+        });
+
         const token = generateToken(user);
         res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
     } catch (error) {

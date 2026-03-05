@@ -12,8 +12,27 @@ function getMinutesSince(dateStr) {
     return Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
 }
 
-function StatusBadge({ minutes }) {
-    if (minutes === null) {
+function formatDuration(dateStr) {
+    if (!dateStr) return null;
+    const totalMinutes = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+    if (totalMinutes < 1) return 'Menos de 1 min';
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}min`;
+}
+
+function isActive(lastSeenAt) {
+    if (!lastSeenAt) return false;
+    return getMinutesSince(lastSeenAt) <= 2;
+}
+
+function StatusBadge({ agent }) {
+    const active = isActive(agent.lastSeenAt);
+    const mins = getMinutesSince(agent.lastSeenAt);
+
+    if (mins === null) {
         return (
             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
@@ -21,7 +40,7 @@ function StatusBadge({ minutes }) {
             </span>
         );
     }
-    if (minutes <= 5) {
+    if (active) {
         return (
             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse" />
@@ -29,18 +48,10 @@ function StatusBadge({ minutes }) {
             </span>
         );
     }
-    if (minutes <= 15) {
-        return (
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
-                Hace {minutes} min
-            </span>
-        );
-    }
     return (
         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-            Hace {minutes} min
+            Desconectado
         </span>
     );
 }
@@ -131,7 +142,7 @@ export default function Tracking() {
                         </div>
                     )}
                     {agents.map(agent => {
-                        const mins = getMinutesSince(agent.lastSeenAt);
+                        const active = isActive(agent.lastSeenAt);
                         const isSelected = selectedAgent?.id === agent.id;
                         return (
                             <button
@@ -142,25 +153,36 @@ export default function Tracking() {
                                 }`}
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-sm flex-shrink-0">
+                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                                        active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                                    }`}>
                                         {agent.name.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-gray-900 truncate">{agent.name}</p>
                                         <div className="mt-0.5">
-                                            <StatusBadge minutes={mins} />
+                                            <StatusBadge agent={agent} />
                                         </div>
                                     </div>
                                     {agent.lastLat && (
                                         <MapPin className="w-4 h-4 text-brand-500 flex-shrink-0" />
                                     )}
                                 </div>
-                                {agent.lastSeenAt && (
-                                    <div className="flex items-center gap-1 mt-2 text-xs text-gray-400 pl-12">
-                                        <Clock className="w-3 h-3" />
-                                        {new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </div>
-                                )}
+                                {/* Tiempo activo o hora de desconexión */}
+                                <div className="flex items-center gap-1 mt-2 text-xs pl-12">
+                                    <Clock className="w-3 h-3 flex-shrink-0" />
+                                    {active && agent.connectedSince ? (
+                                        <span className="text-green-600 font-medium">
+                                            Conectado hace {formatDuration(agent.connectedSince)}
+                                        </span>
+                                    ) : agent.lastSeenAt ? (
+                                        <span className="text-gray-400">
+                                            Desconectado a las {new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400">Sin actividad registrada</span>
+                                    )}
+                                </div>
                             </button>
                         );
                     })}
@@ -181,12 +203,17 @@ export default function Tracking() {
                             zoom={selectedAgent ? 15 : 12}
                         >
                             {agentsWithLocation.map(agent => {
-                                const mins = getMinutesSince(agent.lastSeenAt);
+                                const active = isActive(agent.lastSeenAt);
+                                const subtitle = active && agent.connectedSince
+                                    ? `Activo — conectado hace ${formatDuration(agent.connectedSince)}`
+                                    : agent.lastSeenAt
+                                        ? `Desconectado a las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                        : '';
                                 return (
                                     <Marker
                                         key={agent.id}
                                         position={{ lat: agent.lastLat, lng: agent.lastLng }}
-                                        title={`${agent.name}${mins !== null ? ` — visto hace ${mins} min` : ''}`}
+                                        title={`${agent.name}${subtitle ? ' — ' + subtitle : ''}`}
                                         onClick={() => setSelectedAgent(agent)}
                                     />
                                 );
