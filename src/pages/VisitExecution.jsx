@@ -4,19 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft, User, Phone, AlertCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-// Fix Leaflet default marker icons broken by Vite bundler
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-});
+import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -53,6 +41,10 @@ function VisitExecutionContent() {
     const { id } = useParams();
     const { token } = useAuth();
     const navigate = useNavigate();
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    });
     const [visit, setVisit] = useState(null);
     const [elapsed, setElapsed] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -76,9 +68,9 @@ function VisitExecutionContent() {
                         if (v.notes) setNotes(v.notes);
                         // Center map on property location, not agent GPS
                         if (v.property?.lat && v.property?.lng) {
-                            setCurrentPos([v.property.lat, v.property.lng]);
+                            setCurrentPos({ lat: v.property.lat, lng: v.property.lng });
                         } else {
-                            setCurrentPos([4.6097, -74.0817]);
+                            setCurrentPos({ lat: 4.6097, lng: -74.0817 });
                         }
                     }
                 }
@@ -303,33 +295,41 @@ function VisitExecutionContent() {
             {/* Mapa */}
             <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
                 <div className="h-52 relative z-0">
-                    {currentPos && currentPos[0] && currentPos[1] ? (
-                        <MapContainer center={currentPos} zoom={15} style={{ height: '100%', width: '100%' }}>
-                            <TileLayer
-                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                            />
-                            {/* Marker: geocoded property location */}
-                            {visit.property?.lat && visit.property?.lng && (
-                                <Marker position={[visit.property.lat, visit.property.lng]}>
-                                    <Popup>
-                                        <strong>Inmueble</strong><br />{visit.property.address}
-                                    </Popup>
-                                </Marker>
-                            )}
-                            {/* Marker: agent check-in GPS */}
-                            {visit.checkInLat && visit.checkInLng && (
-                                <Marker position={[visit.checkInLat, visit.checkInLng]}>
-                                    <Popup>Inicio de visita</Popup>
-                                </Marker>
-                            )}
-                            {/* Marker: agent check-out GPS */}
-                            {visit.checkOutLat && visit.checkOutLng && (
-                                <Marker position={[visit.checkOutLat, visit.checkOutLng]}>
-                                    <Popup>Fin de visita</Popup>
-                                </Marker>
-                            )}
-                        </MapContainer>
+                    {currentPos ? (
+                        isLoaded ? (
+                            <GoogleMap
+                                mapContainerStyle={{ height: '100%', width: '100%' }}
+                                center={currentPos}
+                                zoom={15}
+                            >
+                                {/* Marker: propiedad geocodificada */}
+                                {visit.property?.lat && visit.property?.lng && (
+                                    <Marker
+                                        position={{ lat: visit.property.lat, lng: visit.property.lng }}
+                                        title={`Inmueble: ${visit.property.address}`}
+                                    />
+                                )}
+                                {/* Marker: check-in del agente */}
+                                {visit.checkInLat && visit.checkInLng && (
+                                    <Marker
+                                        position={{ lat: visit.checkInLat, lng: visit.checkInLng }}
+                                        title="Inicio de visita"
+                                    />
+                                )}
+                                {/* Marker: check-out del agente */}
+                                {visit.checkOutLat && visit.checkOutLng && (
+                                    <Marker
+                                        position={{ lat: visit.checkOutLat, lng: visit.checkOutLng }}
+                                        title="Fin de visita"
+                                    />
+                                )}
+                            </GoogleMap>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+                                <MapPin className="w-6 h-6" />
+                                <span className="text-sm">Cargando mapa...</span>
+                            </div>
+                        )
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
                             <MapPin className="w-6 h-6" />
