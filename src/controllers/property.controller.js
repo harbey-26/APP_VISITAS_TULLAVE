@@ -16,23 +16,28 @@ const geocodeAddress = async (address) => {
         const apiKey = process.env.GOOGLE_MAPS_API_KEY;
         const queries = [];
 
-        // 1. Smart Intersection Logic for Bogota
-        // Pattern: Calle X # Y -> Calle X Carrera Y
-        const calleMatch = address.match(/(?:Calle|Cl|Cale)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
-        if (calleMatch) {
-            queries.push(`Calle ${calleMatch[1]} Carrera ${calleMatch[2]}, Bogotá, Colombia`);
-        }
-
-        // Pattern: Carrera X # Y -> Carrera X Calle Y
-        const craMatch = address.match(/(?:Carrera|Cra|Kra|Kr)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
-        if (craMatch) {
-            queries.push(`Carrera ${craMatch[1]} Calle ${craMatch[2]}, Bogotá, Colombia`);
-        }
-
-        // 2. Original address
+        // 1. Dirección original completa — Google Maps entiende el formato colombiano
+        //    "Calle 45 # 23-15" incluye el número de casa, es la más precisa
         queries.push(`${address}, Bogotá, Colombia`);
 
-        // 3. Cleaned address (remove # and special chars)
+        // 2. Reemplazar # por "No." que Google también reconoce bien
+        const withNo = address.replace('#', 'No.').replace(/\s+/g, ' ').trim();
+        if (withNo !== address) {
+            queries.push(`${withNo}, Bogotá, Colombia`);
+        }
+
+        // 3. Fallback: formato de intersección (solo si no resolvió antes)
+        //    Calle X # Y-Z → Calle X con Carrera Y (pierde número de casa)
+        const calleMatch = address.match(/(?:Calle|Cl|Cale)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
+        if (calleMatch) {
+            queries.push(`Calle ${calleMatch[1]} con Carrera ${calleMatch[2]}, Bogotá, Colombia`);
+        }
+        const craMatch = address.match(/(?:Carrera|Cra|Kra|Kr)\s+(\d+[A-Z]*)\s*#\s*(\d+[A-Z]*)/i);
+        if (craMatch) {
+            queries.push(`Carrera ${craMatch[1]} con Calle ${craMatch[2]}, Bogotá, Colombia`);
+        }
+
+        // 4. Último fallback: dirección limpia sin caracteres especiales
         const cleanAddress = address.replace(/[#\-]/g, ' ').replace(/\s+/g, ' ').trim();
         queries.push(`${cleanAddress}, Bogotá, Colombia`);
 
