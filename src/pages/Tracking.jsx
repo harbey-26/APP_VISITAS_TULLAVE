@@ -175,6 +175,10 @@ export default function Tracking() {
                                         <span className="text-green-600 font-medium">
                                             Conectado hace {formatDuration(agent.connectedSince)}
                                         </span>
+                                    ) : active && agent.lastSeenAt ? (
+                                        <span className="text-green-600 font-medium">
+                                            Activo · {new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
                                     ) : agent.lastSeenAt ? (
                                         <span className="text-gray-400">
                                             Desconectado a las {new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -206,9 +210,11 @@ export default function Tracking() {
                                 const active = isActive(agent.lastSeenAt);
                                 const subtitle = active && agent.connectedSince
                                     ? `Activo — conectado hace ${formatDuration(agent.connectedSince)}`
-                                    : agent.lastSeenAt
-                                        ? `Desconectado a las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                                        : '';
+                                    : active && agent.lastSeenAt
+                                        ? `Activo desde las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                        : agent.lastSeenAt
+                                            ? `Desconectado a las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                            : '';
                                 return (
                                     <Marker
                                         key={agent.id}
