@@ -6,3 +6,7 @@ prisma/dev.db
 .DS_Store
 ngrok.log
 coverage
+
+# Capacitor — generado en CI, no se commitea
+android/
+ios/

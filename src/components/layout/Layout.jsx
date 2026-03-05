@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_URL } from '../../config';
+import { Capacitor } from '@capacitor/core';
+import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
 import {
     Calendar,
     LogOut,
@@ -35,29 +37,40 @@ export default function Layout() {
         };
     }, [token]);
 
-    // GPS: envía ubicación cada 60 s y también al volver a la app tras desbloquear
+    // GPS: en APK usa rastreo nativo en background; en web usa setInterval cada 60 s
     useEffect(() => {
-        if (!token || !navigator.geolocation) return;
-        const sendLocation = () => {
-            navigator.geolocation.getCurrentPosition(
-                ({ coords }) => {
-                    fetch(`${API_URL}/api/users/location`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ lat: coords.latitude, lng: coords.longitude })
-                    }).catch(() => {});
-                },
-                () => {},
-                { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 }
-            );
+        if (!token) return;
+
+        const sendCoords = ({ lat, lng }) => {
+            fetch(`${API_URL}/api/users/location`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ lat, lng })
+            }).catch(() => {});
         };
-        sendLocation();
-        const interval = setInterval(sendLocation, 60000);
-        const onFocus = () => { if (document.visibilityState === 'visible') sendLocation(); };
-        document.addEventListener('visibilitychange', onFocus);
+
+        let watchId = null;
+        let interval = null;
+
+        if (Capacitor.isNativePlatform()) {
+            // APK: GPS nativo continuo en background (foreground service de Android)
+            startBackgroundTracking(sendCoords).then(id => { watchId = id; });
+        } else {
+            // Web: setInterval cada 60 s + ping inmediato al volver al foco
+            if (!navigator.geolocation) return;
+            const send = () => getCurrentPosition().then(sendCoords).catch(() => {});
+            send();
+            interval = setInterval(send, 60000);
+            const onFocus = () => { if (document.visibilityState === 'visible') send(); };
+            document.addEventListener('visibilitychange', onFocus);
+            return () => {
+                clearInterval(interval);
+                document.removeEventListener('visibilitychange', onFocus);
+            };
+        }
+
         return () => {
-            clearInterval(interval);
-            document.removeEventListener('visibilitychange', onFocus);
+            if (watchId) stopBackgroundTracking(watchId);
         };
     }, [token]);
 
