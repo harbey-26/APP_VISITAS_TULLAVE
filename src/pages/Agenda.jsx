@@ -205,7 +205,7 @@ export default function Agenda() {
                             {dateRange.start === dateRange.end
                                 ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', {
                                     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                                  })
+                                })
                                 : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`}
                         </span>
                     </div>
@@ -386,7 +386,7 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {user?.role === 'ADMIN' && (
+                            {user?.role === 'ADMIN' && !isNewProperty && (
                                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                     <label className="block text-sm font-medium text-blue-800 mb-1">Asignar Agente</label>
                                     <select
