@@ -112,8 +112,8 @@ export default function Layout() {
 
     return (
         <div className="min-h-screen bg-gray-100 flex">
-            {/* Mobile Header */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b border-gray-200 px-4 py-3 flex justify-between items-center h-14 shadow-sm">
+            {/* Mobile Header — safe-area-inset-top para status bar de Android/iOS */}
+            <div className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)', minHeight: '3.5rem' }}>
                 <div className="flex items-center space-x-3">
                     <button onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
                         <Menu className="w-6 h-6 text-gray-600" />
