@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
-import { Radio, MapPin, Clock, AlertCircle } from 'lucide-react';
+import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 const REFRESH_INTERVAL = 60000;
@@ -28,9 +28,23 @@ function isActive(lastSeenAt) {
     return getMinutesSince(lastSeenAt) <= 2;
 }
 
+// Verifica si estamos en horario laboral (8am–5pm)
+function isBusinessHours() {
+    const h = new Date().getHours();
+    return h >= 8 && h <= 17;
+}
+
+// Agente no respondió a la última notificación horaria (>70 min sin actualizar en horario laboral)
+function missedCheckIn(lastSeenAt) {
+    if (!isBusinessHours()) return false;
+    if (!lastSeenAt) return true;
+    return getMinutesSince(lastSeenAt) > 70;
+}
+
 function StatusBadge({ agent }) {
     const active = isActive(agent.lastSeenAt);
     const mins = getMinutesSince(agent.lastSeenAt);
+    const missed = missedCheckIn(agent.lastSeenAt);
 
     if (mins === null) {
         return (
@@ -45,6 +59,14 @@ function StatusBadge({ agent }) {
             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse" />
                 Activo
+            </span>
+        );
+    }
+    if (missed) {
+        return (
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
+                Sin respuesta
             </span>
         );
     }
@@ -92,6 +114,11 @@ export default function Tracking() {
     const agentsWithLocation = agents.filter(a => a.lastLat && a.lastLng);
     const agentsWithoutLocation = agents.filter(a => !a.lastLat || !a.lastLng);
 
+    // Métricas de check-in (solo relevantes en horario laboral)
+    const inBusinessHours = isBusinessHours();
+    const respondieron = agents.filter(a => !missedCheckIn(a.lastSeenAt) && a.lastSeenAt);
+    const sinRespuesta = agents.filter(a => missedCheckIn(a.lastSeenAt));
+
     const mapCenter = selectedAgent && selectedAgent.lastLat
         ? { lat: selectedAgent.lastLat, lng: selectedAgent.lastLng }
         : agentsWithLocation.length > 0
@@ -127,6 +154,43 @@ export default function Tracking() {
                 <div className="bg-red-50 text-red-600 p-3 rounded-xl border border-red-200 flex items-center gap-2 text-sm">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     {error}
+                </div>
+            )}
+
+            {/* Panel de check-in — visible solo en horario laboral con agentes registrados */}
+            {inBusinessHours && agents.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        Seguimiento de check-in — {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    <div className="flex gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2 flex-1 min-w-[140px]">
+                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            <div>
+                                <p className="text-lg font-bold text-green-700 leading-none">{respondieron.length}</p>
+                                <p className="text-xs text-green-600 mt-0.5">Respondieron</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 flex-1 min-w-[140px]">
+                            <XCircle className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                            <div>
+                                <p className="text-lg font-bold text-orange-700 leading-none">{sinRespuesta.length}</p>
+                                <p className="text-xs text-orange-600 mt-0.5">Sin respuesta</p>
+                            </div>
+                        </div>
+                    </div>
+                    {sinRespuesta.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs text-gray-500 font-medium mb-1">No han abierto la app en la última hora:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {sinRespuesta.map(a => (
+                                    <span key={a.id} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                                        {a.name}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

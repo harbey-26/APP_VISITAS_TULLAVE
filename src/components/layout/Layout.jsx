@@ -38,24 +38,33 @@ export default function Layout() {
         };
     }, [token]);
 
-    // Notificaciones 8am–5pm: recuerda al asesor abrir la app cada hora en horario laboral (solo APK)
+    // Notificaciones 8am–5pm con mensaje según la hora (solo APK)
     useEffect(() => {
         if (!token || !Capacitor.isNativePlatform()) return;
+        const NOTIF_MESSAGES = {
+            8:  'Buenos días — confirma tu ubicación para iniciar la jornada.',
+            9:  'Son las 9am — abre la app para registrar tu posición.',
+            10: 'Son las 10am — abre la app para registrar tu posición.',
+            11: 'Son las 11am — abre la app para registrar tu posición.',
+            12: 'Mediodía — registra tu ubicación antes de almorzar.',
+            13: 'Son las 1pm — abre la app para registrar tu posición.',
+            14: 'Son las 2pm — abre la app para registrar tu posición.',
+            15: 'Son las 3pm — abre la app para registrar tu posición.',
+            16: 'Son las 4pm — abre la app para registrar tu posición.',
+            17: 'Fin de jornada — registra tu última ubicación del día.',
+        };
         const scheduleDaily = async () => {
             try {
                 const perm = await LocalNotifications.requestPermissions();
                 if (perm.display !== 'granted') return;
-                // Cancela las anteriores antes de reprogramar
                 await LocalNotifications.cancel({
                     notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
                 });
-                // Horas laborales: 8am a 5pm — schedule.on repite todos los días automáticamente
-                const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-                const notifications = hours.map((hour, i) => ({
+                const notifications = Object.entries(NOTIF_MESSAGES).map(([hour, body], i) => ({
                     id: 1001 + i,
                     title: 'VisitTrack — Confirma tu ubicación',
-                    body: 'Abre la app para registrar tu posición actual.',
-                    schedule: { on: { hour, minute: 0 }, allowWhileIdle: true },
+                    body,
+                    schedule: { on: { hour: Number(hour), minute: 0 }, allowWhileIdle: true },
                     sound: null,
                     smallIcon: 'ic_launcher',
                     channelId: 'visittrack',
@@ -70,6 +79,15 @@ export default function Layout() {
             }).catch(() => {});
         };
     }, [token]);
+
+    // Al tocar la notificación → ir directamente a /agenda (solo APK)
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+        const sub = LocalNotifications.addListener('localNotificationActionPerformed', () => {
+            navigate('/agenda');
+        });
+        return () => { sub.then(l => l.remove()).catch(() => {}); };
+    }, [navigate]);
 
     // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {
