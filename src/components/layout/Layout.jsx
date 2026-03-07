@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_URL } from '../../config';
-import { Capacitor } from '@capacitor/core';
-import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
+import { getCurrentPosition } from '../../utils/geo';
 import {
     Calendar,
     LogOut,
@@ -37,9 +36,10 @@ export default function Layout() {
         };
     }, [token]);
 
-    // GPS: en APK usa rastreo nativo en background; en web usa setInterval cada 60 s
+    // GPS: setInterval cada 30 s + ping inmediato — funciona en web y APK (WebView)
     useEffect(() => {
         if (!token) return;
+        if (!navigator.geolocation) return;
 
         const sendCoords = ({ lat, lng }) => {
             fetch(`${API_URL}/api/users/location`, {
@@ -47,34 +47,19 @@ export default function Layout() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
             })
-            .then(res => {
-                if (res.status === 401) logout(); // Token expirado: forzar re-login
-            })
-            .catch(() => {}); // errores de red: silenciosos
+            .then(res => { if (res.status === 401) logout(); })
+            .catch(() => {});
         };
 
-        let watchId = null;
-        let interval = null;
-
-        if (Capacitor.isNativePlatform()) {
-            // APK: GPS nativo continuo en background (foreground service de Android)
-            startBackgroundTracking(sendCoords).then(id => { watchId = id; });
-        } else {
-            // Web: setInterval cada 60 s + ping inmediato al volver al foco
-            if (!navigator.geolocation) return;
-            const send = () => getCurrentPosition().then(sendCoords).catch(() => {});
-            send();
-            interval = setInterval(send, 60000);
-            const onFocus = () => { if (document.visibilityState === 'visible') send(); };
-            document.addEventListener('visibilitychange', onFocus);
-            return () => {
-                clearInterval(interval);
-                document.removeEventListener('visibilitychange', onFocus);
-            };
-        }
+        const send = () => getCurrentPosition().then(sendCoords).catch(() => {});
+        send();
+        const interval = setInterval(send, 30000);
+        const onFocus = () => { if (document.visibilityState === 'visible') send(); };
+        document.addEventListener('visibilitychange', onFocus);
 
         return () => {
-            if (watchId) stopBackgroundTracking(watchId);
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onFocus);
         };
     }, [token]);
 
