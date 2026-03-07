@@ -59,13 +59,49 @@ export const createUser = async (req, res) => {
 export const updateLocation = async (req, res) => {
     try {
         const { lat, lng } = locationSchema.parse(req.body);
+        const now = new Date();
         await prisma.user.update({
             where: { id: req.user.id },
-            data: { lastLat: lat, lastLng: lng, lastSeenAt: new Date() }
+            data: { lastLat: lat, lastLng: lng, lastSeenAt: now }
         });
+        // Registrar check-in horario: máximo 1 log por hora por usuario
+        const hourStart = new Date(now);
+        hourStart.setMinutes(0, 0, 0);
+        const existing = await prisma.locationLog.findFirst({
+            where: { userId: req.user.id, createdAt: { gte: hourStart } }
+        });
+        if (!existing) {
+            await prisma.locationLog.create({ data: { userId: req.user.id } });
+        }
         res.json({ ok: true });
     } catch (error) {
         res.status(400).json({ error: error.message });
+    }
+};
+
+export const getTodayCheckIns = async (req, res) => {
+    try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayEnd.getDate() + 1);
+
+        const logs = await prisma.locationLog.findMany({
+            where: { createdAt: { gte: todayStart, lt: todayEnd } },
+            select: { userId: true, createdAt: true }
+        });
+
+        // Agrupar por usuario: { userId → Set de horas con check-in }
+        const byUser = {};
+        logs.forEach(({ userId, createdAt }) => {
+            if (!byUser[userId]) byUser[userId] = [];
+            const h = new Date(createdAt).getHours();
+            if (!byUser[userId].includes(h)) byUser[userId].push(h);
+        });
+
+        res.json(byUser);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
 

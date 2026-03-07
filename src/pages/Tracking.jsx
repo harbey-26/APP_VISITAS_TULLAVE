@@ -78,6 +78,13 @@ function StatusBadge({ agent }) {
     );
 }
 
+const BUSINESS_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+
+function formatHour(h) {
+    if (h === 12) return '12pm';
+    return h < 12 ? `${h}am` : `${h - 12}pm`;
+}
+
 export default function Tracking() {
     const { token } = useAuth();
     const { isLoaded } = useJsApiLoader({
@@ -85,21 +92,19 @@ export default function Tracking() {
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     });
     const [agents, setAgents] = useState([]);
+    const [checkIns, setCheckIns] = useState({});
     const [lastUpdate, setLastUpdate] = useState(null);
     const [error, setError] = useState(null);
     const [selectedAgent, setSelectedAgent] = useState(null);
 
     const loadAgents = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/users/locations`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setAgents(data);
-                setLastUpdate(new Date());
-                setError(null);
-            }
+            const [agentsRes, checkInsRes] = await Promise.all([
+                fetch(`${API_URL}/api/users/locations`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/api/users/checkins/today`, { headers: { Authorization: `Bearer ${token}` } }),
+            ]);
+            if (agentsRes.ok) { setAgents(await agentsRes.json()); setLastUpdate(new Date()); setError(null); }
+            if (checkInsRes.ok) setCheckIns(await checkInsRes.json());
         } catch {
             setError('No se pudo obtener la ubicación de los agentes.');
         }
@@ -157,40 +162,78 @@ export default function Tracking() {
                 </div>
             )}
 
-            {/* Panel de check-in — visible solo en horario laboral con agentes registrados */}
-            {inBusinessHours && agents.length > 0 && (
+            {/* Grid de check-in horario */}
+            {agents.length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                        Seguimiento de check-in — {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    <div className="flex gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2 flex-1 min-w-[140px]">
-                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                            <div>
-                                <p className="text-lg font-bold text-green-700 leading-none">{respondieron.length}</p>
-                                <p className="text-xs text-green-600 mt-0.5">Respondieron</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 flex-1 min-w-[140px]">
-                            <XCircle className="w-4 h-4 text-orange-600 flex-shrink-0" />
-                            <div>
-                                <p className="text-lg font-bold text-orange-700 leading-none">{sinRespuesta.length}</p>
-                                <p className="text-xs text-orange-600 mt-0.5">Sin respuesta</p>
-                            </div>
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Check-in horario — hoy
+                        </p>
+                        <div className="flex items-center gap-3 text-xs text-gray-400">
+                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Registró</span>
+                            <span className="flex items-center gap-1"><XCircle className="w-3.5 h-3.5 text-red-400" /> No registró</span>
+                            <span className="flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full bg-gray-100 inline-block border border-gray-200" /> Pendiente</span>
                         </div>
                     </div>
-                    {sinRespuesta.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-xs text-gray-500 font-medium mb-1">No han abierto la app en la última hora:</p>
-                            <div className="flex flex-wrap gap-1.5">
-                                {sinRespuesta.map(a => (
-                                    <span key={a.id} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-                                        {a.name}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr>
+                                    <th className="text-left font-semibold text-gray-500 py-1.5 pr-3 whitespace-nowrap min-w-[120px]">Agente</th>
+                                    {BUSINESS_HOURS.map(h => (
+                                        <th key={h} className={`text-center font-medium py-1.5 px-1 whitespace-nowrap ${new Date().getHours() === h ? 'text-brand-600' : 'text-gray-400'}`}>
+                                            {formatHour(h)}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {agents.map(agent => {
+                                    const agentHours = checkIns[agent.id] || [];
+                                    const currentHour = new Date().getHours();
+                                    return (
+                                        <tr key={agent.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="py-2 pr-3 font-medium text-gray-700 whitespace-nowrap">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${isActive(agent.lastSeenAt) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                        {agent.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className="truncate max-w-[100px]">{agent.name}</span>
+                                                </div>
+                                            </td>
+                                            {BUSINESS_HOURS.map(h => {
+                                                const checked = agentHours.includes(h);
+                                                const isPast = h < currentHour && inBusinessHours || h < currentHour;
+                                                const isCurrent = h === currentHour;
+                                                return (
+                                                    <td key={h} className="text-center py-2 px-1">
+                                                        {checked ? (
+                                                            <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
+                                                        ) : isPast ? (
+                                                            <XCircle className="w-4 h-4 text-red-400 mx-auto" />
+                                                        ) : (
+                                                            <span className={`w-4 h-4 rounded-full inline-block border ${isCurrent ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-gray-50'}`} />
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    {/* Totales */}
+                    <div className="flex gap-3 mt-3 pt-3 border-t border-gray-100">
+                        <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> {respondieron.length} respondieron hoy
+                        </span>
+                        {sinRespuesta.length > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                                <XCircle className="w-3.5 h-3.5" /> {sinRespuesta.length} sin registro hoy
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
 
