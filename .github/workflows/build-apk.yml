@@ -41,25 +41,25 @@ jobs:
 
       - name: Generate custom app icon from logo
         run: |
-          sudo apt-get install -y imagemagick
+          sudo apt-get install -y -q imagemagick
           LOGO="public/logo.png"
           BG="#e31c25"
-          declare -A SIZES=([mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192)
-          for DENSITY in "${!SIZES[@]}"; do
-            SIZE=${SIZES[$DENSITY]}
+          # formato "densidad:tamaño" — sin declare -A para compatibilidad con sh
+          for entry in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            DENSITY="${entry%%:*}"
+            SIZE="${entry##*:}"
+            LOGO_SIZE=$((SIZE * 70 / 100))
             DEST="android/app/src/main/res/mipmap-${DENSITY}"
             mkdir -p "$DEST"
-            # Fondo rojo + logo centrado al 70% del tamaño
-            LOGO_SIZE=$((SIZE * 70 / 100))
+            # Fondo rojo sólido + logo con transparencia conservada, centrado
             convert -size ${SIZE}x${SIZE} xc:"$BG" \
-              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} \) \
-              -gravity center -composite \
+              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} -background none \) \
+              -gravity center -composite -flatten \
               "$DEST/ic_launcher.png"
-            convert -size ${SIZE}x${SIZE} xc:"$BG" \
-              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} \) \
-              -gravity center -composite \
-              "$DEST/ic_launcher_round.png"
+            cp "$DEST/ic_launcher.png" "$DEST/ic_launcher_round.png"
           done
+          echo "Íconos generados:"
+          ls android/app/src/main/res/mipmap-hdpi/
 
       - name: Sync Capacitor
         run: npx cap sync android

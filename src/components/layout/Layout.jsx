@@ -38,19 +38,24 @@ export default function Layout() {
         };
     }, [token]);
 
-    // Notificaciones horarias: recuerda al asesor abrir la app para capturar ubicación (solo APK)
+    // Notificaciones 8am–5pm: recuerda al asesor abrir la app cada hora en horario laboral (solo APK)
     useEffect(() => {
         if (!token || !Capacitor.isNativePlatform()) return;
-        const scheduleHourly = async () => {
+        const scheduleDaily = async () => {
             try {
                 const perm = await LocalNotifications.requestPermissions();
                 if (perm.display !== 'granted') return;
-                await LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
-                const notifications = Array.from({ length: 24 }, (_, i) => ({
+                // Cancela las anteriores antes de reprogramar
+                await LocalNotifications.cancel({
+                    notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
+                });
+                // Horas laborales: 8am a 5pm — schedule.on repite todos los días automáticamente
+                const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+                const notifications = hours.map((hour, i) => ({
                     id: 1001 + i,
                     title: 'VisitTrack — Confirma tu ubicación',
                     body: 'Abre la app para registrar tu posición actual.',
-                    schedule: { at: new Date(Date.now() + (i + 1) * 60 * 60 * 1000), allowWhileIdle: true },
+                    schedule: { on: { hour, minute: 0 }, allowWhileIdle: true },
                     sound: null,
                     smallIcon: 'ic_launcher',
                     channelId: 'visittrack',
@@ -58,10 +63,10 @@ export default function Layout() {
                 await LocalNotifications.schedule({ notifications });
             } catch { /* silencioso */ }
         };
-        scheduleHourly();
+        scheduleDaily();
         return () => {
             LocalNotifications.cancel({
-                notifications: Array.from({ length: 24 }, (_, i) => ({ id: 1001 + i }))
+                notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
             }).catch(() => {});
         };
     }, [token]);
