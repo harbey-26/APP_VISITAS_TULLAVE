@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_URL } from '../../config';
-import { getCurrentPosition } from '../../utils/geo';
+import { Capacitor } from '@capacitor/core';
+import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
 import {
     Calendar,
     LogOut,
@@ -36,10 +37,9 @@ export default function Layout() {
         };
     }, [token]);
 
-    // GPS: setInterval cada 30 s + ping inmediato — funciona en web y APK (WebView)
+    // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {
         if (!token) return;
-        if (!navigator.geolocation) return;
 
         const sendCoords = ({ lat, lng }) => {
             fetch(`${API_URL}/api/users/location`, {
@@ -51,12 +51,21 @@ export default function Layout() {
             .catch(() => {});
         };
 
+        let watchId = null;
+
+        if (Capacitor.isNativePlatform()) {
+            // APK: Foreground Service nativo — continúa con pantalla apagada
+            startBackgroundTracking(sendCoords).then(id => { watchId = id; });
+            return () => { if (watchId) stopBackgroundTracking(watchId); };
+        }
+
+        // Web: setInterval cada 30 s + ping al volver al foco
+        if (!navigator.geolocation) return;
         const send = () => getCurrentPosition().then(sendCoords).catch(() => {});
         send();
         const interval = setInterval(send, 30000);
         const onFocus = () => { if (document.visibilityState === 'visible') send(); };
         document.addEventListener('visibilitychange', onFocus);
-
         return () => {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', onFocus);

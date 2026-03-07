@@ -9,6 +9,10 @@ const config: CapacitorConfig = {
         url: 'https://tu-llave-visitas-e66b.up.railway.app',
         cleartext: false
     },
+    android: {
+        // Necesario para que @capacitor-community/background-geolocation funcione con Capacitor 8
+        useLegacyBridge: true
+    },
     plugins: {
         BackgroundGeolocation: {
             // Notificación persistente que Android requiere para GPS en background
