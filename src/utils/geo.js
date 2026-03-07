@@ -49,8 +49,8 @@ export async function startBackgroundTracking(onLocation) {
             backgroundMessage: 'Rastreo activo',
             backgroundTitle: 'VisitTrack',
             requestPermissions: true,
-            stale: false,
-            distanceFilter: 50  // metros — evita pings innecesarios
+            stale: true,       // acepta ubicación cacheada (importante en emulador)
+            distanceFilter: 0  // reporta cualquier cambio de ubicación
         },
         (location, error) => {
             if (error) return;
