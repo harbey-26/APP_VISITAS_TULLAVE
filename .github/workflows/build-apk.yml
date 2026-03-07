@@ -39,6 +39,28 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Generate custom app icon from logo
+        run: |
+          sudo apt-get install -y imagemagick
+          LOGO="public/logo.png"
+          BG="#e31c25"
+          declare -A SIZES=([mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192)
+          for DENSITY in "${!SIZES[@]}"; do
+            SIZE=${SIZES[$DENSITY]}
+            DEST="android/app/src/main/res/mipmap-${DENSITY}"
+            mkdir -p "$DEST"
+            # Fondo rojo + logo centrado al 70% del tamaño
+            LOGO_SIZE=$((SIZE * 70 / 100))
+            convert -size ${SIZE}x${SIZE} xc:"$BG" \
+              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} \) \
+              -gravity center -composite \
+              "$DEST/ic_launcher.png"
+            convert -size ${SIZE}x${SIZE} xc:"$BG" \
+              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} \) \
+              -gravity center -composite \
+              "$DEST/ic_launcher_round.png"
+          done
+
       - name: Sync Capacitor
         run: npx cap sync android
 

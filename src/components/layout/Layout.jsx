@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { API_URL } from '../../config';
 import { Capacitor } from '@capacitor/core';
 import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import {
     Calendar,
     LogOut,
@@ -34,6 +35,34 @@ export default function Layout() {
         return () => {
             document.removeEventListener('visibilitychange', onVisibility);
             wakeLock?.release();
+        };
+    }, [token]);
+
+    // Notificaciones horarias: recuerda al asesor abrir la app para capturar ubicación (solo APK)
+    useEffect(() => {
+        if (!token || !Capacitor.isNativePlatform()) return;
+        const scheduleHourly = async () => {
+            try {
+                const perm = await LocalNotifications.requestPermissions();
+                if (perm.display !== 'granted') return;
+                await LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+                const notifications = Array.from({ length: 24 }, (_, i) => ({
+                    id: 1001 + i,
+                    title: 'VisitTrack — Confirma tu ubicación',
+                    body: 'Abre la app para registrar tu posición actual.',
+                    schedule: { at: new Date(Date.now() + (i + 1) * 60 * 60 * 1000), allowWhileIdle: true },
+                    sound: null,
+                    smallIcon: 'ic_launcher',
+                    channelId: 'visittrack',
+                }));
+                await LocalNotifications.schedule({ notifications });
+            } catch { /* silencioso */ }
+        };
+        scheduleHourly();
+        return () => {
+            LocalNotifications.cancel({
+                notifications: Array.from({ length: 24 }, (_, i) => ({ id: 1001 + i }))
+            }).catch(() => {});
         };
     }, [token]);
 
@@ -138,8 +167,8 @@ export default function Layout() {
                 fixed lg:sticky top-0 left-0 h-[100dvh] w-72 bg-gray-900 border-r border-white/5 z-50 transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl lg:shadow-none
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}>
-                {/* Logo Section */}
-                <div className="p-6 border-b border-white/10 flex justify-between items-center h-20">
+                {/* Logo Section — safe-area-inset-top para status bar de Android/iOS */}
+                <div className="border-b border-white/10 flex justify-between items-center px-6 pb-4" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.25rem)', minHeight: '5rem' }}>
                     <img src="/logo.png" alt="Tu Llave Inmobiliaria" className="h-10 w-auto" />
                     <button
                         onClick={() => setIsMobileMenuOpen(false)}
