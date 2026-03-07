@@ -25,10 +25,12 @@ export async function getCurrentPosition() {
 }
 
 /**
- * Inicia el rastreo continuo con watchPosition (solo APK).
+ * Inicia el rastreo continuo con setInterval + getCurrentPosition (solo APK).
  * Usa @capacitor/geolocation v8 — compatible con Capacitor 8.
+ * Se prefiere setInterval sobre watchPosition porque watchPosition no dispara
+ * callbacks cuando el dispositivo está estático.
  * @param {function} onLocation - callback con { lat, lng }
- * @returns {string|null} watchId para detener el rastreo, o null en web
+ * @returns {number|null} intervalId para detener el rastreo, o null en web
  */
 export async function startBackgroundTracking(onLocation) {
     if (!Capacitor.isNativePlatform()) return null;
@@ -39,29 +41,23 @@ export async function startBackgroundTracking(onLocation) {
     const permission = await Geolocation.requestPermissions().catch(() => null);
     if (!permission || permission.location !== 'granted') return null;
 
-    // Enviar posición inicial inmediatamente
-    try {
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
-        onLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    } catch { /* sin GPS inicial — se reintenta con watchPosition */ }
+    const fetchAndSend = async () => {
+        try {
+            const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+            onLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        } catch { /* fallo silencioso — reintenta en el siguiente ciclo */ }
+    };
 
-    // Rastreo continuo mientras la app esté activa
-    const watchId = await Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 10000 },
-        (position, error) => {
-            if (error || !position) return;
-            onLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-        }
-    );
-    return watchId;
+    fetchAndSend(); // ping inmediato al arrancar
+    const intervalId = setInterval(fetchAndSend, 30000); // cada 30 s
+    return intervalId;
 }
 
 /**
  * Detiene el rastreo continuo (solo APK).
- * @param {string} watchId
+ * @param {number} intervalId
  */
-export async function stopBackgroundTracking(watchId) {
-    if (!Capacitor.isNativePlatform() || !watchId) return;
-    const { Geolocation } = await import('@capacitor/geolocation');
-    await Geolocation.clearWatch({ id: watchId });
+export async function stopBackgroundTracking(intervalId) {
+    if (!Capacitor.isNativePlatform() || intervalId == null) return;
+    clearInterval(intervalId);
 }

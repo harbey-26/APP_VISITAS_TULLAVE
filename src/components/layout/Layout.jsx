@@ -46,7 +46,11 @@ export default function Layout() {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
-            }).catch(() => {});
+            })
+            .then(res => {
+                if (res.status === 401) logout(); // Token expirado: forzar re-login
+            })
+            .catch(() => {}); // errores de red: silenciosos
         };
 
         let watchId = null;
