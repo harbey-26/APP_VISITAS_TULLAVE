@@ -57,6 +57,13 @@ export default function Layout() {
             try {
                 const perm = await LocalNotifications.requestPermissions();
                 if (perm.display !== 'granted') return;
+                // Crear el canal ANTES de programar notificaciones (Android 8+ lo requiere)
+                await LocalNotifications.createChannel({
+                    id: 'visittrack',
+                    name: 'VisitTrack Recordatorios',
+                    importance: 4, // HIGH
+                    vibration: true,
+                });
                 await LocalNotifications.cancel({
                     notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
                 });
@@ -65,12 +72,10 @@ export default function Layout() {
                     title: 'VisitTrack — Confirma tu ubicación',
                     body,
                     schedule: { on: { hour: Number(hour), minute: 0 }, allowWhileIdle: true },
-                    sound: null,
-                    smallIcon: 'ic_launcher',
                     channelId: 'visittrack',
                 }));
                 await LocalNotifications.schedule({ notifications });
-            } catch { /* silencioso */ }
+            } catch (e) { console.warn('[Notif]', e); }
         };
         scheduleDaily();
         return () => {
