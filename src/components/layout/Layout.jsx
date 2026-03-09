@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { API_URL } from '../../config';
 import { Capacitor } from '@capacitor/core';
 import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
@@ -21,6 +22,7 @@ export default function Layout() {
     const { logout, user, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const toast = useToast();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Wake Lock: evita que la pantalla se apague para mantener el GPS activo
@@ -111,13 +113,15 @@ export default function Layout() {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}` }
                     });
-                    // Mostrar como notificación local en APK, o alerta en web
+                    // Toast inmediato: visible en web Y en APK cuando la app está en primer plano
+                    toast.info(`📢 ${broadcast.title}: ${broadcast.body}`);
+                    // Notificación local en APK: visible cuando el celular está bloqueado/app en background
                     if (Capacitor.isNativePlatform()) {
                         try {
                             await LocalNotifications.createChannel({
                                 id: 'visittrack-comunicados',
                                 name: 'VisitTrack Comunicados',
-                                importance: 5, // URGENT
+                                importance: 5,
                                 vibration: true,
                             });
                             await LocalNotifications.schedule({
@@ -125,11 +129,11 @@ export default function Layout() {
                                     id: 2000 + broadcast.id,
                                     title: `📢 ${broadcast.title}`,
                                     body: broadcast.body,
-                                    schedule: { at: new Date(Date.now() + 500), allowWhileIdle: true },
+                                    schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
                                     channelId: 'visittrack-comunicados',
                                 }]
                             });
-                        } catch { /* silencioso */ }
+                        } catch (e) { console.warn('[Broadcast notif]', e); }
                     }
                 }
             } catch { /* silencioso */ }
@@ -137,7 +141,7 @@ export default function Layout() {
         checkBroadcasts();
         const interval = setInterval(checkBroadcasts, 60000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, toast]);
 
     // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {
