@@ -117,6 +117,20 @@ export const getAgentLocations = async (req, res) => {
     }
 };
 
+export const saveFcmToken = async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) return res.status(400).json({ error: 'token requerido' });
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { fcmToken: token }
+        });
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 export const deleteUser = async (req, res) => {
     const { id } = req.params;
 

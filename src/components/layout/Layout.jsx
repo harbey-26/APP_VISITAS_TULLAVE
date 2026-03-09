@@ -6,6 +6,7 @@ import { API_URL } from '../../config';
 import { Capacitor } from '@capacitor/core';
 import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import {
     Calendar,
     LogOut,
@@ -88,7 +89,7 @@ export default function Layout() {
         };
     }, [token]);
 
-    // Al tocar la notificación → ir directamente a /agenda (solo APK)
+    // Al tocar la notificación local → ir directamente a /agenda (solo APK)
     useEffect(() => {
         if (!Capacitor.isNativePlatform()) return;
         const sub = LocalNotifications.addListener('localNotificationActionPerformed', () => {
@@ -96,6 +97,29 @@ export default function Layout() {
         });
         return () => { sub.then(l => l.remove()).catch(() => {}); };
     }, [navigate]);
+
+    // FCM: registrar token del dispositivo en el servidor (solo APK)
+    useEffect(() => {
+        if (!token || !Capacitor.isNativePlatform()) return;
+        const registerFcm = async () => {
+            try {
+                await FirebaseMessaging.requestPermissions();
+                const { token: fcmToken } = await FirebaseMessaging.getToken();
+                await fetch(`${API_URL}/api/users/fcm-token`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ token: fcmToken }),
+                });
+            } catch (e) { console.warn('[FCM register]', e); }
+        };
+        registerFcm();
+
+        // Notificación FCM recibida con la app en primer plano → mostrar toast
+        const sub = FirebaseMessaging.addListener('notificationReceived', ({ notification }) => {
+            toast.info(`📢 ${notification.title}: ${notification.body}`);
+        });
+        return () => { sub.then(l => l.remove()).catch(() => {}); };
+    }, [token]);
 
     // Polling de comunicados: verifica cada 60s si hay mensajes nuevos del admin
     useEffect(() => {

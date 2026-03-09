@@ -18,6 +18,7 @@ model User {
   lastLng        Float?
   lastSeenAt     DateTime?
   connectedSince DateTime?
+  fcmToken       String?
   visits         Visit[]
   locationLogs   LocationLog[]
   broadcastReads BroadcastRead[]

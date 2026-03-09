@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { messaging } from '../utils/firebase.js';
 
 const prisma = new PrismaClient();
 
@@ -16,6 +17,23 @@ export const createBroadcast = async (req, res) => {
             data: { title, body },
             select: { id: true, title: true, body: true, createdAt: true },
         });
+
+        // Enviar push FCM a todos los agentes con token registrado
+        if (messaging) {
+            const users = await prisma.user.findMany({
+                where: { fcmToken: { not: null } },
+                select: { fcmToken: true },
+            });
+            const tokens = users.map(u => u.fcmToken).filter(Boolean);
+            if (tokens.length > 0) {
+                messaging.sendEachForMulticast({
+                    tokens,
+                    notification: { title: `📢 ${title}`, body },
+                    android: { priority: 'high', notification: { channelId: 'visittrack-comunicados' } },
+                }).catch(e => console.warn('[FCM broadcast]', e.message));
+            }
+        }
+
         res.status(201).json(broadcast);
     } catch (error) {
         res.status(400).json({ error: error.message });
