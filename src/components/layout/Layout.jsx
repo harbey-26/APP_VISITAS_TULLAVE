@@ -95,6 +95,50 @@ export default function Layout() {
         return () => { sub.then(l => l.remove()).catch(() => {}); };
     }, [navigate]);
 
+    // Polling de comunicados: verifica cada 60s si hay mensajes nuevos del admin
+    useEffect(() => {
+        if (!token) return;
+        const checkBroadcasts = async () => {
+            try {
+                const res = await fetch(`${API_URL}/api/broadcasts/pending`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const pending = await res.json();
+                for (const broadcast of pending) {
+                    // Marcar como visto antes de mostrar (evita duplicados)
+                    await fetch(`${API_URL}/api/broadcasts/${broadcast.id}/read`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    // Mostrar como notificación local en APK, o alerta en web
+                    if (Capacitor.isNativePlatform()) {
+                        try {
+                            await LocalNotifications.createChannel({
+                                id: 'visittrack-comunicados',
+                                name: 'VisitTrack Comunicados',
+                                importance: 5, // URGENT
+                                vibration: true,
+                            });
+                            await LocalNotifications.schedule({
+                                notifications: [{
+                                    id: 2000 + broadcast.id,
+                                    title: `📢 ${broadcast.title}`,
+                                    body: broadcast.body,
+                                    schedule: { at: new Date(Date.now() + 500), allowWhileIdle: true },
+                                    channelId: 'visittrack-comunicados',
+                                }]
+                            });
+                        } catch { /* silencioso */ }
+                    }
+                }
+            } catch { /* silencioso */ }
+        };
+        checkBroadcasts();
+        const interval = setInterval(checkBroadcasts, 60000);
+        return () => clearInterval(interval);
+    }, [token]);
+
     // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {
         if (!token) return;

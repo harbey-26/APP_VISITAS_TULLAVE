@@ -20,6 +20,7 @@ model User {
   connectedSince DateTime?
   visits         Visit[]
   locationLogs   LocationLog[]
+  broadcastReads BroadcastRead[]
 }
 
 model LocationLog {
@@ -27,6 +28,24 @@ model LocationLog {
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Broadcast {
+  id        Int             @id @default(autoincrement())
+  title     String
+  body      String
+  createdAt DateTime        @default(now())
+  reads     BroadcastRead[]
+}
+
+model BroadcastRead {
+  id          Int       @id @default(autoincrement())
+  broadcastId Int
+  userId      Int
+  seenAt      DateTime  @default(now())
+  broadcast   Broadcast @relation(fields: [broadcastId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  @@unique([broadcastId, userId])
 }
 
 model Property {
