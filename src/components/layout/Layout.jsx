@@ -106,14 +106,24 @@ export default function Layout() {
         };
     }, [token]);
 
-    // Al tocar la notificación local → ir directamente a /agenda (solo APK)
+    // Al tocar la notificación local → ir a /agenda y registrar ubicación inmediatamente (solo APK)
     useEffect(() => {
-        if (!Capacitor.isNativePlatform()) return;
-        const sub = LocalNotifications.addListener('localNotificationActionPerformed', () => {
+        if (!Capacitor.isNativePlatform() || !token) return;
+        const sub = LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
             navigate('/agenda');
+            // Si es notificación horaria (IDs 1001-1070) → registrar ubicación al instante
+            if (action.notification?.id >= 1001) {
+                getCurrentPosition()
+                    .then(pos => fetch(`${API_URL}/api/users/location`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+                    }))
+                    .catch(() => {});
+            }
         });
         return () => { sub.then(l => l.remove()).catch(() => {}); };
-    }, [navigate]);
+    }, [navigate, token]);
 
     // FCM: registrar token del dispositivo en el servidor (solo APK)
     useEffect(() => {
