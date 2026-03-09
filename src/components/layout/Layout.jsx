@@ -215,24 +215,26 @@ export default function Layout() {
         navigate('/login');
     };
 
-    const isActive = (path) =>
-        location.pathname.startsWith(path)
-            ? 'bg-brand-600 text-white shadow-sm'
-            : 'text-gray-400 hover:bg-white/10 hover:text-white';
-
     const isMobileActive = (path) =>
         location.pathname.startsWith(path);
 
-    const NavItem = ({ to, icon: Icon, label }) => (
-        <Link
-            to={to}
-            onClick={() => setIsMobileMenuOpen(false)}
-            className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${isActive(to)}`}
-        >
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            <span>{label}</span>
-        </Link>
-    );
+    const NavItem = ({ to, icon: Icon, label }) => {
+        const active = location.pathname.startsWith(to);
+        return (
+            <Link
+                to={to}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 text-sm font-semibold
+                    ${active
+                        ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/30'
+                        : 'text-slate-400 hover:bg-white/10 hover:text-white'
+                    }`}
+            >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span>{label}</span>
+            </Link>
+        );
+    };
 
     const isAdmin = user?.role === 'ADMIN';
 
@@ -247,78 +249,96 @@ export default function Layout() {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-100 flex">
-            {/* Mobile Header — safe-area-inset-top para status bar de Android/iOS */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b border-gray-200 px-4 py-3 flex justify-between items-center shadow-sm" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)', minHeight: '3.5rem' }}>
-                <div className="flex items-center space-x-3">
-                    <button onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
-                        <Menu className="w-6 h-6 text-gray-600" />
+        <div className="min-h-screen bg-gray-50 flex">
+
+            {/* ── Header móvil fijo ─────────────────────────────────────── */}
+            {/* max() garantiza ≥28px aunque env() devuelva 0 (Android sin notch) */}
+            <div
+                className="lg:hidden fixed top-0 left-0 right-0 bg-white z-30 border-b border-gray-100 px-4 flex justify-between items-center shadow-sm"
+                style={{ paddingTop: 'max(env(safe-area-inset-top), 1.75rem)', paddingBottom: '0.75rem' }}
+            >
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsMobileMenuOpen(true)}
+                        aria-label="Abrir menú"
+                        className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition"
+                    >
+                        <Menu className="w-5 h-5" />
                     </button>
                     <img src="/logo.png" alt="Logo" className="h-7 w-auto" />
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-sm">
-                        {user?.name?.charAt(0) || 'U'}
-                    </div>
+                <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                    {user?.name?.charAt(0) || 'U'}
                 </div>
             </div>
 
-            {/* Mobile Sidebar Overlay */}
+            {/* ── Backdrop del sidebar ──────────────────────────────────── */}
             {isMobileMenuOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm"
+                    className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
                     onClick={() => setIsMobileMenuOpen(false)}
                 />
             )}
 
-            {/* Sidebar Navigation */}
+            {/* ── Sidebar ───────────────────────────────────────────────── */}
             <aside className={`
-                fixed lg:sticky top-0 left-0 h-[100dvh] w-72 bg-gray-900 border-r border-white/5 z-50 transform transition-transform duration-300 ease-in-out flex flex-col shadow-2xl lg:shadow-none
+                fixed lg:sticky top-0 left-0 h-[100dvh] w-72 lg:w-64
+                bg-slate-900 z-50 flex flex-col
+                transform transition-transform duration-300 ease-in-out
+                rounded-r-3xl lg:rounded-none
+                shadow-[8px_0_40px_rgba(0,0,0,0.45)] lg:shadow-none
+                border-r border-white/5
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}>
-                {/* Logo Section — safe-area-inset-top para status bar de Android/iOS */}
-                <div className="border-b border-white/10 flex justify-between items-center px-6 pb-4" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.25rem)', minHeight: '5rem' }}>
-                    <img src="/logo.png" alt="Tu Llave Inmobiliaria" className="h-10 w-auto" />
+                {/* Logo */}
+                <div
+                    className="flex-shrink-0 flex justify-between items-center px-5 pb-5 border-b border-white/10"
+                    style={{ paddingTop: 'max(env(safe-area-inset-top), 1.75rem)' }}
+                >
+                    <img src="/logo.png" alt="Tu Llave Inmobiliaria" className="h-9 w-auto" />
                     <button
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="lg:hidden text-gray-500 hover:text-gray-200 transition"
+                        className="lg:hidden w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/20 transition"
                         aria-label="Cerrar menú"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
-                {/* Navigation Links */}
-                <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-                    <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Principal</p>
+                {/* Navegación */}
+                <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
+                    <p className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        Principal
+                    </p>
                     <NavItem to="/agenda" icon={Calendar} label="Agenda" />
 
                     {isAdmin && (
                         <>
-                            <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-6 mb-2">Administración</p>
+                            <p className="px-3 mt-5 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                Administración
+                            </p>
                             <NavItem to="/dashboard"  icon={LayoutDashboard} label="Dashboard"  />
                             <NavItem to="/properties" icon={MapPin}          label="Inmuebles"  />
                             <NavItem to="/users"      icon={Users}           label="Usuarios"   />
                             <NavItem to="/tracking"   icon={Radio}           label="Rastreo"    />
                         </>
                     )}
-
                 </nav>
 
-                {/* User Profile Footer */}
-                <div className="p-4 border-t border-white/10 bg-black/20">
-                    <div className="flex items-center gap-3 mb-3 px-2">
-                        <div className="w-10 h-10 rounded-full bg-brand-600/25 border border-brand-500/30 flex items-center justify-center text-brand-400 font-bold text-lg shrink-0">
+                {/* Perfil + Logout */}
+                <div className="flex-shrink-0 p-4">
+                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 mb-3">
+                        <div className="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-base flex-shrink-0 shadow">
                             {user?.name?.charAt(0) || 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-                            <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+                            <p className="text-xs text-slate-400 truncate">{user?.email}</p>
                         </div>
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all font-medium"
                     >
                         <LogOut className="w-4 h-4" />
                         <span>Cerrar Sesión</span>
@@ -326,30 +346,34 @@ export default function Layout() {
                 </div>
             </aside>
 
-            {/* Main Content Area */}
+            {/* ── Contenido principal ───────────────────────────────────── */}
             <main className="flex-1 flex flex-col min-w-0 min-h-[100dvh]">
-                <div className="h-14 lg:hidden" />
-                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-20 lg:pb-8">
+                {/* Espaciador para el header fijo móvil (altura = safe-area + 3.5rem) */}
+                <div
+                    className="lg:hidden flex-shrink-0"
+                    style={{ height: 'calc(max(env(safe-area-inset-top), 1.75rem) + 3.5rem)' }}
+                />
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-24 lg:pb-8">
                     <div className="max-w-5xl mx-auto w-full">
                         <Outlet />
                     </div>
                 </div>
             </main>
 
-            {/* Mobile Bottom Navigation Bar */}
-            <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 flex items-stretch shadow-[0_-2px_12px_rgba(0,0,0,0.06)]">
+            {/* ── Barra de navegación inferior (solo móvil) ─────────────── */}
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-30 flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
                 {bottomNavItems.map(({ to, icon: Icon, label }) => {
                     const active = isMobileActive(to);
                     return (
                         <Link
                             key={to}
                             to={to}
-                            className={`relative flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                            className={`relative flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${
                                 active ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
                             }`}
                         >
                             <Icon className={`w-5 h-5 ${active ? 'stroke-[2.5]' : ''}`} />
-                            <span className={`text-[10px] font-medium leading-tight ${active ? 'text-brand-600' : ''}`}>
+                            <span className={`text-[10px] font-semibold leading-tight ${active ? 'text-brand-600' : ''}`}>
                                 {label}
                             </span>
                             {active && (
