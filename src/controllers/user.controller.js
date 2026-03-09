@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { hashPassword } from '../utils/auth.js';
 
@@ -6,8 +6,6 @@ const locationSchema = z.object({
     lat: z.number(),
     lng: z.number()
 });
-
-const prisma = new PrismaClient();
 
 const createUserSchema = z.object({
     email: z.string().email(),

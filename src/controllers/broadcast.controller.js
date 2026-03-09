@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { messaging } from '../utils/firebase.js';
-
-const prisma = new PrismaClient();
 
 const broadcastSchema = z.object({
     title: z.string().min(1).max(100),

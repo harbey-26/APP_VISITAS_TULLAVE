@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma.js';
 import { hashPassword, generateToken, comparePassword } from '../utils/auth.js';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
 
 const registerSchema = z.object({
     email: z.string().email(),

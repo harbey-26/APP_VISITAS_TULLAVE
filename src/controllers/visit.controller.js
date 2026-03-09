@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { comparePassword } from '../utils/auth.js';
-
-const prisma = new PrismaClient();
 
 const createVisitSchema = z.object({
     propertyId: z.number(),

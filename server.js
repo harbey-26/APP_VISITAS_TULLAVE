@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import prisma from './src/utils/prisma.js';
 import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
 import path from 'path';
@@ -10,9 +10,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
-
-const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
