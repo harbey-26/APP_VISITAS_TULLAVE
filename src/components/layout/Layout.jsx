@@ -15,8 +15,7 @@ import {
     Users,
     Menu,
     X,
-    LayoutDashboard,
-    Bell
+    LayoutDashboard
 } from 'lucide-react';
 
 export default function Layout() {
@@ -188,27 +187,6 @@ export default function Layout() {
         navigate('/login');
     };
 
-    const sendTestNotification = async () => {
-        try {
-            await LocalNotifications.createChannel({
-                id: 'visittrack',
-                name: 'VisitTrack Recordatorios',
-                importance: 4,
-                vibration: true,
-            });
-            const fireAt = new Date(Date.now() + 5000);
-            await LocalNotifications.schedule({
-                notifications: [{
-                    id: 9999,
-                    title: 'VisitTrack — Notificación de prueba',
-                    body: 'Las notificaciones funcionan correctamente.',
-                    schedule: { at: fireAt, allowWhileIdle: true },
-                    channelId: 'visittrack',
-                }]
-            });
-        } catch (e) { console.warn('[TestNotif]', e); }
-    };
-
     const isActive = (path) =>
         location.pathname.startsWith(path)
             ? 'bg-brand-600 text-white shadow-sm'
@@ -297,19 +275,6 @@ export default function Layout() {
                         </>
                     )}
 
-                    {/* Botón de prueba — solo en APK */}
-                    {Capacitor.isNativePlatform() && (
-                        <div className="pt-6 px-0">
-                            <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Diagnóstico</p>
-                            <button
-                                onClick={sendTestNotification}
-                                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-gray-400 hover:bg-white/10 hover:text-white"
-                            >
-                                <Bell className="w-5 h-5 flex-shrink-0" />
-                                <span>Probar notificación</span>
-                            </button>
-                        </div>
-                    )}
                 </nav>
 
                 {/* User Profile Footer */}
