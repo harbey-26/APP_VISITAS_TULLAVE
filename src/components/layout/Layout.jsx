@@ -138,27 +138,8 @@ export default function Layout() {
                         headers: { Authorization: `Bearer ${token}` }
                     });
                     // Toast inmediato: visible en web Y en APK cuando la app está en primer plano
+                    // (FCM maneja la notificación push en background — no se usa LocalNotifications aquí)
                     toast.info(`📢 ${broadcast.title}: ${broadcast.body}`);
-                    // Notificación local en APK: visible cuando el celular está bloqueado/app en background
-                    if (Capacitor.isNativePlatform()) {
-                        try {
-                            await LocalNotifications.createChannel({
-                                id: 'visittrack-comunicados',
-                                name: 'VisitTrack Comunicados',
-                                importance: 5,
-                                vibration: true,
-                            });
-                            await LocalNotifications.schedule({
-                                notifications: [{
-                                    id: 2000 + broadcast.id,
-                                    title: `📢 ${broadcast.title}`,
-                                    body: broadcast.body,
-                                    schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
-                                    channelId: 'visittrack-comunicados',
-                                }]
-                            });
-                        } catch (e) { console.warn('[Broadcast notif]', e); }
-                    }
                 }
             } catch { /* silencioso */ }
         };
