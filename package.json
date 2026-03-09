@@ -5,7 +5,7 @@
     "main": "server.js",
     "type": "module",
     "scripts": {
-        "start": "until npx prisma db push --schema prisma/schema.pg.prisma; do echo 'DB no lista, reintentando en 5s...'; sleep 5; done && node prisma/seed.js || true && node server.js",
+        "start": "for i in 1 2 3 4 5 6 7 8 9 10; do npx prisma db push --schema prisma/schema.pg.prisma && break; echo \"DB no lista (intento $i/10), reintentando en 10s...\"; sleep 10; done && node prisma/seed.js || true && node server.js",
         "server": "node --watch server.js",
         "dev": "vite",
         "build": "vite build",
