@@ -25,13 +25,17 @@ export const createBroadcast = async (req, res) => {
                 select: { fcmToken: true },
             });
             const tokens = users.map(u => u.fcmToken).filter(Boolean);
+            console.log(`[FCM] Enviando broadcast a ${tokens.length} dispositivo(s)`);
             if (tokens.length > 0) {
                 messaging.sendEachForMulticast({
                     tokens,
                     notification: { title: `📢 ${title}`, body },
-                    android: { priority: 'high', notification: { channelId: 'visittrack-comunicados' } },
-                }).catch(e => console.warn('[FCM broadcast]', e.message));
+                    android: { priority: 'high' },
+                }).then(r => console.log(`[FCM] Éxito: ${r.successCount}, Fallos: ${r.failureCount}`))
+                  .catch(e => console.warn('[FCM broadcast]', e.message));
             }
+        } else {
+            console.warn('[FCM] messaging es null — FIREBASE_SERVICE_ACCOUNT no configurada en Railway');
         }
 
         res.status(201).json(broadcast);
