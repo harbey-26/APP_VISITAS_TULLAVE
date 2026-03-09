@@ -42,6 +42,7 @@ export default function Layout() {
     }, [token]);
 
     // Notificaciones 8am–5pm con mensaje según la hora (solo APK)
+    // Usa `at` con fechas exactas (7 días) en lugar de `on` (repeating inexacto en Android 6+)
     useEffect(() => {
         if (!token || !Capacitor.isNativePlatform()) return;
         const NOTIF_MESSAGES = {
@@ -56,34 +57,51 @@ export default function Layout() {
             16: 'Son las 4pm — abre la app para registrar tu posición.',
             17: 'Fin de jornada — registra tu última ubicación del día.',
         };
-        const scheduleDaily = async () => {
+        const WORK_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+        const scheduleReminders = async () => {
             try {
                 const perm = await LocalNotifications.requestPermissions();
                 if (perm.display !== 'granted') return;
-                // Crear el canal ANTES de programar notificaciones (Android 8+ lo requiere)
                 await LocalNotifications.createChannel({
                     id: 'visittrack',
                     name: 'VisitTrack Recordatorios',
-                    importance: 4, // HIGH
+                    importance: 4,
                     vibration: true,
                 });
+                // Cancelar recordatorios anteriores (IDs 1001–1070: 7 días × 10 horas)
                 await LocalNotifications.cancel({
-                    notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
+                    notifications: Array.from({ length: 70 }, (_, i) => ({ id: 1001 + i }))
                 });
-                const notifications = Object.entries(NOTIF_MESSAGES).map(([hour, body], i) => ({
-                    id: 1001 + i,
-                    title: 'VisitTrack — Confirma tu ubicación',
-                    body,
-                    schedule: { on: { hour: Number(hour), minute: 0 }, allowWhileIdle: true },
-                    channelId: 'visittrack',
-                }));
-                await LocalNotifications.schedule({ notifications });
+                // Programar cada hora de los próximos 7 días con fecha exacta
+                const now = new Date();
+                const notifications = [];
+                let id = 1001;
+                for (let day = 0; day < 7; day++) {
+                    for (const hour of WORK_HOURS) {
+                        const fireAt = new Date(now);
+                        fireAt.setDate(now.getDate() + day);
+                        fireAt.setHours(hour, 0, 0, 0);
+                        if (fireAt > now) {
+                            notifications.push({
+                                id: id++,
+                                title: 'VisitTrack — Confirma tu ubicación',
+                                body: NOTIF_MESSAGES[hour],
+                                schedule: { at: fireAt, allowWhileIdle: true },
+                                channelId: 'visittrack',
+                            });
+                        }
+                    }
+                }
+                if (notifications.length > 0) {
+                    await LocalNotifications.schedule({ notifications });
+                    console.log(`[Notif] ${notifications.length} recordatorios programados`);
+                }
             } catch (e) { console.warn('[Notif]', e); }
         };
-        scheduleDaily();
+        scheduleReminders();
         return () => {
             LocalNotifications.cancel({
-                notifications: Array.from({ length: 10 }, (_, i) => ({ id: 1001 + i }))
+                notifications: Array.from({ length: 70 }, (_, i) => ({ id: 1001 + i }))
             }).catch(() => {});
         };
     }, [token]);
