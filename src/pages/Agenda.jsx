@@ -218,29 +218,29 @@ export default function Agenda() {
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <button
                         onClick={() => setDateRange({ start: today, end: today })}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-brand-600 hover:text-white transition whitespace-nowrap"
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-brand-600 hover:text-white transition whitespace-nowrap flex-shrink-0"
                     >
                         Hoy
                     </button>
-                    <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-400 pl-1">Del</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <span className="text-xs text-gray-400 whitespace-nowrap">Del</span>
                         <input
                             type="date"
                             value={dateRange.start}
                             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            className="border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            className="border border-gray-200 rounded-lg text-xs px-1.5 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none min-w-0 w-full"
                         />
                     </div>
-                    <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-400">al</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <span className="text-xs text-gray-400 whitespace-nowrap">al</span>
                         <input
                             type="date"
                             value={dateRange.end}
                             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            className="border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            className="border border-gray-200 rounded-lg text-xs px-1.5 py-1.5 focus:ring-2 focus:ring-brand-500 focus:outline-none min-w-0 w-full"
                         />
                     </div>
                 </div>

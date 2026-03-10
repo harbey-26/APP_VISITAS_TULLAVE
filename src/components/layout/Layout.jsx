@@ -353,7 +353,7 @@ export default function Layout() {
                     className="lg:hidden flex-shrink-0"
                     style={{ height: 'calc(max(env(safe-area-inset-top), 1.75rem) + 3.5rem)' }}
                 />
-                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-24 lg:pb-8">
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-32 lg:pb-8">
                     <div className="max-w-5xl mx-auto w-full">
                         <Outlet />
                     </div>
@@ -361,14 +361,18 @@ export default function Layout() {
             </main>
 
             {/* ── Barra de navegación inferior (solo móvil) ─────────────── */}
-            <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-30 flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+            {/* paddingBottom: max() garantiza espacio sobre los botones del sistema Android */}
+            <nav
+                className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-30 flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.08)]"
+                style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}
+            >
                 {bottomNavItems.map(({ to, icon: Icon, label }) => {
                     const active = isMobileActive(to);
                     return (
                         <Link
                             key={to}
                             to={to}
-                            className={`relative flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${
+                            className={`relative flex-1 flex flex-col items-center justify-center pt-3 pb-1 gap-1 transition-colors ${
                                 active ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
                             }`}
                         >
