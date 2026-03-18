@@ -29,6 +29,10 @@ model LocationLog {
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+
+  // A1: Índices para queries por usuario y por rango de fechas
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Broadcast {
@@ -47,6 +51,7 @@ model BroadcastRead {
   broadcast   Broadcast @relation(fields: [broadcastId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
   @@unique([broadcastId, userId])
+  @@index([userId])
 }
 
 model Property {
@@ -82,6 +87,11 @@ model Visit {
   user     User     @relation(fields: [userId], references: [id])
   property Property @relation(fields: [propertyId], references: [id])
   images   VisitImage[]
+
+  // A1: Índices para filtros frecuentes en Agenda y Dashboard
+  @@index([userId])
+  @@index([propertyId])
+  @@index([scheduledStart])
 }
 
 model VisitImage {

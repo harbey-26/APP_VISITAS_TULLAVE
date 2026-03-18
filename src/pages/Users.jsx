@@ -3,9 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, X, User as UserIcon, Shield, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
+import { friendlyError } from '../utils/api';
 
 export default function Users() {
     const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true); // M1
     const [showModal, setShowModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
@@ -19,6 +21,7 @@ export default function Users() {
     const toast = useToast();
 
     const fetchUsers = async () => {
+        setLoading(true); // M1
         try {
             const res = await fetch(`${API_URL}/api/users`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -28,6 +31,8 @@ export default function Users() {
             }
         } catch (error) {
             console.error(error);
+        } finally {
+            setLoading(false); // M1
         }
     };
 
@@ -57,7 +62,7 @@ export default function Users() {
                 toast.error(err.error || 'Error al crear usuario');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -82,7 +87,7 @@ export default function Users() {
                 toast.error(err.error || 'Error al eliminar');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -102,8 +107,15 @@ export default function Users() {
                 </button>
             </div>
 
+            {/* M1: Loading state */}
+            {loading && (
+                <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+                    <div className="w-6 h-6 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+                    <span className="text-sm">Cargando usuarios...</span>
+                </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {users.map(u => (
+                {!loading && users.map(u => (
                     <div key={u.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between group">
                         <div className="flex items-center space-x-3">
                             <div className={`p-3 rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -134,7 +146,7 @@ export default function Users() {
                     </div>
                 ))}
 
-                {users.length === 0 && (
+                {!loading && users.length === 0 && (
                     <div className="col-span-2 text-center py-12 text-gray-400">
                         No hay usuarios registrados.
                     </div>

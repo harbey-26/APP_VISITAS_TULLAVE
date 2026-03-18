@@ -5,6 +5,7 @@ import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight } fr
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
+import { friendlyError } from '../utils/api';
 
 // Agrupa visitas en bloques horarios
 function groupByTimeSlot(visits) {
@@ -20,6 +21,7 @@ function groupByTimeSlot(visits) {
 
 export default function Agenda() {
     const [visits, setVisits] = useState([]);
+    const [loadingVisits, setLoadingVisits] = useState(true); // M1
     const [showModal, setShowModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
@@ -51,6 +53,7 @@ export default function Agenda() {
     const toast = useToast();
 
     const fetchVisits = async () => {
+        setLoadingVisits(true); // M1
         try {
             const query = `?startDate=${dateRange.start}&endDate=${dateRange.end}`;
             const res = await fetch(`${API_URL}/api/visits${query}`, {
@@ -62,6 +65,8 @@ export default function Agenda() {
             }
         } catch (error) {
             console.error('Error al cargar visitas', error);
+        } finally {
+            setLoadingVisits(false); // M1
         }
     };
 
@@ -157,7 +162,7 @@ export default function Agenda() {
                 toast.error(err.error || 'Error al crear la visita');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -184,7 +189,7 @@ export default function Agenda() {
                 toast.error(err.error || 'Error al eliminar');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -246,8 +251,16 @@ export default function Agenda() {
                 </div>
             </div>
 
+            {/* M1: Spinner mientras carga */}
+            {loadingVisits && (
+                <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+                    <div className="w-6 h-6 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+                    <span className="text-sm">Cargando visitas...</span>
+                </div>
+            )}
+
             {/* Visit List grouped by time slot */}
-            {!hasVisits ? (
+            {!loadingVisits && !hasVisits ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
                         <CalendarX className="w-8 h-8 text-gray-400" />
@@ -264,7 +277,7 @@ export default function Agenda() {
                         <Plus className="w-4 h-4" /> Agendar visita
                     </button>
                 </div>
-            ) : (
+            ) : !loadingVisits && (
                 <div className="space-y-6">
                     {Object.entries(groupedVisits).map(([slot, slotVisits]) => {
                         if (slotVisits.length === 0) return null;
@@ -458,6 +471,7 @@ export default function Agenda() {
                                                 type="date"
                                                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                                 value={formData.date}
+                                                min={today} // B2: No permitir fechas pasadas
                                                 onChange={e => setFormData({ ...formData, date: e.target.value })}
                                                 required
                                             />

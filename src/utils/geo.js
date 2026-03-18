@@ -31,7 +31,7 @@ export async function startBackgroundTracking(onLocation) {
                 backgroundMessage: 'Rastreo de ubicación en curso',
                 requestPermissions: true,
                 stale: false,
-                distanceFilter: 0,
+                distanceFilter: 30, // A3: Ignorar movimientos < 30m — reduce carga en servidor y batería
             },
             (location, error) => {
                 if (error || !location) return;

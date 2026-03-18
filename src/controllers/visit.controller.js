@@ -162,9 +162,16 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// Helper: Get max allowed distance based on role
+// C5: Validar que un ID de URL sea un entero válido
+function parseId(raw) {
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0) throw new Error('ID inválido');
+    return n;
+}
+
+// B3: Admin reducido a 5km (antes 50km) — mantiene utilidad operativa sin anular el geofencing
 function getMaxDistance(role) {
-    return role === 'ADMIN' ? 50000 : 1500; // ADMIN: 50km, AGENT: 1500m
+    return role === 'ADMIN' ? 5000 : 1500;
 }
 
 export const startVisit = async (req, res) => {
@@ -173,7 +180,7 @@ export const startVisit = async (req, res) => {
         const data = startVisitSchema.parse(req.body);
 
         const visit = await prisma.visit.findUnique({
-            where: { id: parseInt(id) },
+            where: { id: parseId(id) },
             include: { property: true }
         });
 
@@ -209,7 +216,7 @@ export const startVisit = async (req, res) => {
         }
 
         const updatedVisit = await prisma.visit.update({
-            where: { id: parseInt(id) },
+            where: { id: parseId(id) },
             data: {
                 status: 'IN_PROGRESS',
                 actualStart: new Date(),
@@ -231,7 +238,7 @@ export const finishVisit = async (req, res) => {
 
         // FIX BUG 1: Fetchear la visita con su propiedad para poder validar ubicación
         const visit = await prisma.visit.findUnique({
-            where: { id: parseInt(id) },
+            where: { id: parseId(id) },
             include: { property: true }
         });
 
@@ -262,7 +269,7 @@ export const finishVisit = async (req, res) => {
         }
 
         const updatedVisit = await prisma.visit.update({
-            where: { id: parseInt(id) },
+            where: { id: parseId(id) },
             data: {
                 status: 'COMPLETED',
                 actualEnd: new Date(),
@@ -286,10 +293,14 @@ export const deleteVisit = async (req, res) => {
         return res.status(400).json({ error: 'Debes ingresar tu contraseña para confirmar.' });
     }
 
+    // C5: Validar ID
+    let visitId;
+    try { visitId = parseId(id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+
     let isAuthorized = false;
 
-    // FIX BUG 6: Eliminar contraseña hardcoded. Validar con contraseña del usuario.
-    // Opcionalmente, también aceptar variable de entorno MASTER_DELETE_PASSWORD si está configurada.
     const masterPwd = process.env.MASTER_DELETE_PASSWORD;
     if (masterPwd && password === masterPwd) {
         isAuthorized = true;
@@ -299,8 +310,8 @@ export const deleteVisit = async (req, res) => {
             if (user) {
                 isAuthorized = await comparePassword(password, user.password);
             }
-        } catch (error) {
-            console.error('Error verifying password:', error);
+        } catch {
+            // Error interno — no exponer detalles
         }
     }
 
@@ -309,9 +320,7 @@ export const deleteVisit = async (req, res) => {
     }
 
     try {
-        await prisma.visit.delete({
-            where: { id: parseInt(id) }
-        });
+        await prisma.visit.delete({ where: { id: visitId } });
         res.json({ message: 'Visita eliminada correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });

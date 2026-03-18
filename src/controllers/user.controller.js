@@ -129,18 +129,28 @@ export const saveFcmToken = async (req, res) => {
     }
 };
 
+// C5: Validar IDs de URL
+function parseId(raw) {
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0) throw new Error('ID inválido');
+    return n;
+}
+
 export const deleteUser = async (req, res) => {
     const { id } = req.params;
 
+    let userId;
+    try { userId = parseId(id); } catch {
+        return res.status(400).json({ error: 'ID de usuario inválido' });
+    }
+
     // Prevent deleting yourself
-    if (parseInt(id) === req.user.id) {
+    if (userId === req.user.id) {
         return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
     }
 
     try {
-        await prisma.user.delete({
-            where: { id: parseInt(id) }
-        });
+        await prisma.user.delete({ where: { id: userId } });
         res.json({ message: 'Usuario eliminado correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });

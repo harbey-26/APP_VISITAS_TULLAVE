@@ -46,6 +46,7 @@ function VisitExecutionContent() {
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     });
     const [visit, setVisit] = useState(null);
+    const [fetchError, setFetchError] = useState(null); // M3
     const [elapsed, setElapsed] = useState(0);
     const [loading, setLoading] = useState(false);
     const [notes, setNotes] = useState('');
@@ -66,16 +67,20 @@ function VisitExecutionContent() {
                     if (v) {
                         setVisit(v);
                         if (v.notes) setNotes(v.notes);
-                        // Center map on property location, not agent GPS
                         if (v.property?.lat && v.property?.lng) {
                             setCurrentPos({ lat: v.property.lat, lng: v.property.lng });
                         } else {
                             setCurrentPos({ lat: 4.6097, lng: -74.0817 });
                         }
+                    } else {
+                        // M3: Visita no encontrada — mostrar error en lugar de spinner infinito
+                        setFetchError('Visita no encontrada. Puede haber sido eliminada.');
                     }
+                } else {
+                    setFetchError('No se pudo cargar la visita. Intenta de nuevo.');
                 }
             } catch (error) {
-                console.error(error);
+                setFetchError('Sin conexión. Verifica tu internet.');
             }
         };
         fetchVisit();
@@ -185,6 +190,22 @@ function VisitExecutionContent() {
             return 'Hora inválida';
         }
     };
+
+    // M3: Mostrar error si la visita no existe o falló la carga
+    if (fetchError) return (
+        <div className="flex flex-col items-center justify-center h-64 gap-4 p-6">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-7 h-7 text-red-500" />
+            </div>
+            <p className="text-gray-700 font-semibold text-center">{fetchError}</p>
+            <button
+                onClick={() => navigate('/agenda')}
+                className="flex items-center gap-2 text-brand-600 font-medium hover:underline text-sm"
+            >
+                <ArrowLeft className="w-4 h-4" /> Volver a Agenda
+            </button>
+        </div>
+    );
 
     if (!visit) return (
         <div className="flex flex-col items-center justify-center h-64 gap-3">

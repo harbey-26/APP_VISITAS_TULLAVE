@@ -43,6 +43,7 @@ export default function Layout() {
 
     // Notificaciones 8am–5pm con mensaje según la hora (solo APK)
     // Usa `at` con fechas exactas (7 días) en lugar de `on` (repeating inexacto en Android 6+)
+    // M4: Renueva automáticamente si han pasado ≥ 6 días desde la última programación
     useEffect(() => {
         if (!token || !Capacitor.isNativePlatform()) return;
         const NOTIF_MESSAGES = {
@@ -58,8 +59,15 @@ export default function Layout() {
             17: 'Fin de jornada — registra tu última ubicación del día.',
         };
         const WORK_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+        const NOTIF_KEY = 'visittrack_notif_scheduled_at';
+        const RENEW_AFTER_MS = 6 * 24 * 60 * 60 * 1000; // 6 días
+
         const scheduleReminders = async () => {
             try {
+                // M4: Verificar si ya se programaron recientemente — evitar re-programar innecesariamente
+                const lastScheduled = parseInt(localStorage.getItem(NOTIF_KEY) || '0', 10);
+                if (Date.now() - lastScheduled < RENEW_AFTER_MS) return;
+
                 const perm = await LocalNotifications.requestPermissions();
                 if (perm.display !== 'granted') return;
                 await LocalNotifications.createChannel({
@@ -94,9 +102,9 @@ export default function Layout() {
                 }
                 if (notifications.length > 0) {
                     await LocalNotifications.schedule({ notifications });
-                    console.log(`[Notif] ${notifications.length} recordatorios programados`);
+                    localStorage.setItem(NOTIF_KEY, Date.now().toString()); // M4: Guardar timestamp
                 }
-            } catch (e) { console.warn('[Notif]', e); }
+            } catch { /* silencioso — no interrumpir la UI */ }
         };
         scheduleReminders();
         return () => {

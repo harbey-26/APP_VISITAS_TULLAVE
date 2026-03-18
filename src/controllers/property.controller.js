@@ -40,7 +40,6 @@ const geocodeAddress = async (address) => {
         queries.push(`${cleanAddress}, Bogotá, Colombia`);
 
         for (const q of queries) {
-            console.log(`Attempting geocoding for: "${q}"`);
             const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${apiKey}`;
 
             const response = await fetch(url);
@@ -49,7 +48,6 @@ const geocodeAddress = async (address) => {
                 const data = await response.json();
                 if (data.status === 'OK' && data.results.length > 0) {
                     const { lat, lng } = data.results[0].geometry.location;
-                    console.log(`Geocoding success for "${q}":`, lat, lng);
                     return { lat, lng };
                 }
             }
@@ -60,8 +58,14 @@ const geocodeAddress = async (address) => {
     return null;
 };
 
+// C5: Validar ID de URL
+function parseId(raw) {
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0) throw new Error('ID inválido');
+    return n;
+}
+
 export const createProperty = async (req, res) => {
-    console.log('Received Create Property Request:', req.body);
     try {
         let { address, client, lat, lng } = req.body;
 
@@ -70,27 +74,16 @@ export const createProperty = async (req, res) => {
         const isDefaultLng = lng != null && Math.abs(lng - (-74.0817)) < 0.0001;
 
         if (!lat || !lng || (isDefaultLat && isDefaultLng)) {
-            console.log(`Attempting auto-geocoding for ${address}...`);
             const geocoded = await geocodeAddress(address);
-
-            if (geocoded) {
-                console.log(`Geocoding success: ${geocoded.lat}, ${geocoded.lng}`);
-                lat = geocoded.lat;
-                lng = geocoded.lng;
-            } else {
-                console.warn(`Geocoding failed for ${address}. Coordinates will be null.`);
-                lat = null;
-                lng = null;
-            }
+            lat = geocoded?.lat ?? null;
+            lng = geocoded?.lng ?? null;
         }
 
         const property = await prisma.property.create({
             data: { address, client, lat, lng }
         });
-        console.log('Property created:', property);
         res.status(201).json(property);
     } catch (error) {
-        console.error('Error creating property:', error);
         res.status(400).json({ error: error.message });
     }
 };
@@ -107,7 +100,6 @@ export const updateProperty = async (req, res) => {
             const isDefaultLng = !lng || Math.abs(lng - (-74.0817)) < 0.0001;
 
             if (isDefaultLat && isDefaultLng) {
-                console.log(`Update: attempting auto-geocoding for ${address}...`);
                 const geocoded = await geocodeAddress(address);
                 if (geocoded) {
                     lat = geocoded.lat;
@@ -117,7 +109,7 @@ export const updateProperty = async (req, res) => {
         }
 
         const property = await prisma.property.update({
-            where: { id: parseInt(id) },
+            where: { id: parseId(id) },
             data: { address, client, lat, lng }
         });
         res.json(property);
@@ -130,9 +122,8 @@ export const deleteProperty = async (req, res) => {
     const { id } = req.params;
     try {
         // Check for existing visits
-        const visitCount = await prisma.visit.count({
-            where: { propertyId: parseInt(id) }
-        });
+        const propId = parseId(id);
+        const visitCount = await prisma.visit.count({ where: { propertyId: propId } });
 
         if (visitCount > 0) {
             return res.status(400).json({
@@ -140,9 +131,7 @@ export const deleteProperty = async (req, res) => {
             });
         }
 
-        await prisma.property.delete({
-            where: { id: parseInt(id) }
-        });
+        await prisma.property.delete({ where: { id: propId } });
         res.json({ message: 'Inmueble eliminado correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });

@@ -14,13 +14,35 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// C2: CORS restringido a orígenes conocidos (configurable vía ALLOWED_ORIGINS)
+const defaultOrigins = [
+    'https://tu-llave-visitas-e66b.up.railway.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'capacitor://localhost',
+    'http://localhost'
+];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : defaultOrigins;
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Sin origin = peticiones nativas (APK, curl, Postman) → permitir
+        if (!origin) return callback(null, true);
+        const allowed = allowedOrigins.some(o => origin === o || origin.startsWith(o));
+        callback(allowed ? null : new Error(`CORS: origen no permitido (${origin})`), allowed);
+    },
+    credentials: true
+}));
 app.use(express.json());
 
+// C1: Solo loguear método + URL en producción (nunca el body — puede contener contraseñas)
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log('Body:', JSON.stringify(req.body, null, 2));
-  next();
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    }
+    next();
 });
 
 // Basic health check

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
-import { Plus, Pencil, Trash2, MapPin, X, Building, CheckCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, MapPin, X, Building } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { friendlyError } from '../utils/api';
 
 export default function Properties() {
     const [properties, setProperties] = useState([]);
+    const [loading, setLoading] = useState(true); // M1
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
 
@@ -26,6 +28,7 @@ export default function Properties() {
     const toast = useToast();
 
     const fetchProperties = async () => {
+        setLoading(true); // M1
         try {
             const res = await fetch(`${API_URL}/api/properties`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -35,6 +38,8 @@ export default function Properties() {
             }
         } catch (error) {
             console.error('Error fetching properties:', error);
+        } finally {
+            setLoading(false); // M1
         }
     };
 
@@ -94,7 +99,7 @@ export default function Properties() {
                 toast.error(err.error || 'Error al guardar');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -114,7 +119,7 @@ export default function Properties() {
                 toast.error(err.error || 'Error al eliminar');
             }
         } catch (error) {
-            toast.error('Error: ' + error.message);
+            toast.error(friendlyError(error)); // M2
         }
     };
 
@@ -135,6 +140,13 @@ export default function Properties() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                {/* M1: Loading state */}
+                {loading && (
+                    <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+                        <div className="w-6 h-6 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+                        <span className="text-sm">Cargando inmuebles...</span>
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 text-gray-700 uppercase font-bold text-xs">

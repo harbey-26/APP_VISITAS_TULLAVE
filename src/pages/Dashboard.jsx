@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Download, TrendingUp, CheckCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
+import { friendlyError } from '../utils/api';
 
 export default function Dashboard() {
     const [stats, setStats] = useState({
@@ -14,6 +15,7 @@ export default function Dashboard() {
         visitsByType: {}
     });
     const [completeList, setCompleteList] = useState([]);
+    const [loading, setLoading] = useState(true); // M1
 
     const today = new Date().toISOString().split('T')[0];
     const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -33,6 +35,7 @@ export default function Dashboard() {
 
     useEffect(() => {
         const fetchStats = async () => {
+            setLoading(true); // M1
             try {
                 const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
                 if (outcomeFilter) params.append('outcome', outcomeFilter);
@@ -62,7 +65,9 @@ export default function Dashboard() {
                     });
                 }
             } catch (error) {
-                console.error(error);
+                console.error(friendlyError(error)); // M2
+            } finally {
+                setLoading(false); // M1
             }
         };
         fetchStats();
@@ -147,6 +152,13 @@ export default function Dashboard() {
             stripe: 'bg-orange-500',
         },
     ];
+
+    if (loading) return (
+        <div className="flex items-center justify-center py-24 gap-3 text-gray-400">
+            <div className="w-7 h-7 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+            <span className="text-sm">Cargando estadísticas...</span>
+        </div>
+    );
 
     return (
         <div className="space-y-8">
