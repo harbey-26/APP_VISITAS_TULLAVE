@@ -43,6 +43,7 @@ const loginSchema = z.object({
 export const register = async (req, res) => {
     try {
         const data = registerSchema.parse(req.body);
+        data.email = data.email.toLowerCase(); // U5: normalizar email
 
         const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
         if (existingUser) {
@@ -89,7 +90,8 @@ export const login = async (req, res) => {
     }
 
     try {
-        const { email, password } = loginSchema.parse(req.body);
+        const { email: rawEmail, password } = loginSchema.parse(req.body);
+        const email = rawEmail.toLowerCase(); // U5: normalizar email
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !(await comparePassword(password, user.password))) {

@@ -16,21 +16,32 @@ export const createBroadcast = async (req, res) => {
             select: { id: true, title: true, body: true, createdAt: true },
         });
 
-        // Enviar push FCM a todos los agentes con token registrado
+        // M6: Leer tokens de la tabla UserFcmToken (soporte multi-dispositivo)
         if (messaging) {
-            const users = await prisma.user.findMany({
-                where: { fcmToken: { not: null } },
-                select: { fcmToken: true },
-            });
-            const tokens = users.map(u => u.fcmToken).filter(Boolean);
+            const tokenRecords = await prisma.userFcmToken.findMany({ select: { token: true } });
+            const tokens = tokenRecords.map(r => r.token);
             console.log(`[FCM] Enviando broadcast a ${tokens.length} dispositivo(s)`);
             if (tokens.length > 0) {
                 messaging.sendEachForMulticast({
                     tokens,
                     notification: { title: `📢 ${title}`, body },
                     android: { priority: 'high' },
-                }).then(r => console.log(`[FCM] Éxito: ${r.successCount}, Fallos: ${r.failureCount}`))
-                  .catch(e => console.warn('[FCM broadcast]', e.message));
+                }).then(r => {
+                    // M6: Podar tokens inválidos o desregistrados
+                    const staleTokens = r.responses
+                        .map((resp, i) => {
+                            if (!resp.success) {
+                                const code = resp.error?.code || '';
+                                return (code.includes('registration') || code.includes('invalid')) ? tokens[i] : null;
+                            }
+                            return null;
+                        })
+                        .filter(Boolean);
+                    if (staleTokens.length > 0) {
+                        prisma.userFcmToken.deleteMany({ where: { token: { in: staleTokens } } }).catch(() => {});
+                    }
+                    console.log(`[FCM] Éxito: ${r.successCount}, Fallos: ${r.failureCount}, Podados: ${staleTokens.length}`);
+                }).catch(e => console.warn('[FCM broadcast]', e.message));
             }
         } else {
             console.warn('[FCM] messaging es null — FIREBASE_SERVICE_ACCOUNT no configurada en Railway');

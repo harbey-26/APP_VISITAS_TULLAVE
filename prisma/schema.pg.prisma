@@ -18,10 +18,21 @@ model User {
   lastLng        Float?
   lastSeenAt     DateTime?
   connectedSince DateTime?
-  fcmToken       String?
+  fcmToken       String?         // legado — reemplazado por UserFcmToken
   visits         Visit[]
   locationLogs   LocationLog[]
   broadcastReads BroadcastRead[]
+  fcmTokens      UserFcmToken[]  // M6: soporte multi-dispositivo
+}
+
+model UserFcmToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model LocationLog {

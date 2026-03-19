@@ -251,11 +251,25 @@ export default function Agenda() {
                 </div>
             </div>
 
-            {/* M1: Spinner mientras carga */}
+            {/* U2: Skeleton mientras carga */}
             {loadingVisits && (
-                <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
-                    <div className="w-6 h-6 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
-                    <span className="text-sm">Cargando visitas...</span>
+                <div className="space-y-3 animate-pulse">
+                    {[...Array(3)].map((_, i) => (
+                        <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                            <div className="h-1.5 bg-gray-200 w-full" />
+                            <div className="p-4 space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex gap-3">
+                                        <div className="h-4 bg-gray-200 rounded w-14" />
+                                        <div className="h-4 bg-gray-200 rounded w-20" />
+                                    </div>
+                                    <div className="h-5 bg-gray-200 rounded-full w-20" />
+                                </div>
+                                <div className="h-4 bg-gray-200 rounded w-3/4" />
+                                <div className="h-3 bg-gray-200 rounded w-1/2" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 

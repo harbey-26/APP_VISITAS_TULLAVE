@@ -130,9 +130,12 @@ export const saveFcmToken = async (req, res) => {
     try {
         const { token } = req.body;
         if (!token) return res.status(400).json({ error: 'token requerido' });
-        await prisma.user.update({
-            where: { id: req.user.id },
-            data: { fcmToken: token }
+
+        // M6: Upsert en tabla de tokens — un usuario puede tener múltiples dispositivos
+        await prisma.userFcmToken.upsert({
+            where: { token },
+            update: { userId: req.user.id },
+            create: { userId: req.user.id, token }
         });
         res.json({ ok: true });
     } catch (error) {

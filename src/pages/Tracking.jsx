@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
+import { useEffect, useRef, useState } from 'react';
+import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
+import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
 import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History } from 'lucide-react';
@@ -91,6 +92,7 @@ export default function Tracking() {
         id: 'google-map-script',
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     });
+    const mapRef = useRef(null);
     const [agents, setAgents] = useState([]);
     const [checkIns, setCheckIns] = useState({});
     const [broadcasts, setBroadcasts] = useState([]);
@@ -147,6 +149,43 @@ export default function Tracking() {
     }, [token]);
 
     const agentsWithLocation = agents.filter(a => a.lastLat && a.lastLng);
+
+    // U4: Recrear markers con clustering cuando cambian los agentes o el mapa
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !window.google || agentsWithLocation.length === 0) return;
+
+        const markers = agentsWithLocation.map(agent => {
+            const active = isActive(agent.lastSeenAt);
+            const subtitle = active && agent.connectedSince
+                ? `Activo — conectado hace ${formatDuration(agent.connectedSince)}`
+                : agent.lastSeenAt
+                    ? `Última vez: ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : '';
+
+            const marker = new window.google.maps.Marker({
+                position: { lat: agent.lastLat, lng: agent.lastLng },
+                title: `${agent.name}${subtitle ? ' — ' + subtitle : ''}`,
+                icon: {
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 9,
+                    fillColor: active ? '#22c55e' : '#ef4444',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                },
+            });
+            marker.addListener('click', () => setSelectedAgent(agent));
+            return marker;
+        });
+
+        const clusterer = new MarkerClusterer({ map, markers });
+
+        return () => {
+            markers.forEach(m => m.setMap(null));
+            clusterer.clearMarkers();
+        };
+    }, [mapRef.current, agentsWithLocation]);
     const agentsWithoutLocation = agents.filter(a => !a.lastLat || !a.lastLng);
 
     // Métricas de check-in (solo relevantes en horario laboral)
@@ -463,26 +502,9 @@ export default function Tracking() {
                             mapContainerStyle={{ height: '100%', width: '100%', minHeight: '480px' }}
                             center={mapCenter}
                             zoom={selectedAgent ? 15 : 12}
-                        >
-                            {agentsWithLocation.map(agent => {
-                                const active = isActive(agent.lastSeenAt);
-                                const subtitle = active && agent.connectedSince
-                                    ? `Activo — conectado hace ${formatDuration(agent.connectedSince)}`
-                                    : active && agent.lastSeenAt
-                                        ? `Activo desde las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                                        : agent.lastSeenAt
-                                            ? `Desconectado a las ${new Date(agent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                                            : '';
-                                return (
-                                    <Marker
-                                        key={agent.id}
-                                        position={{ lat: agent.lastLat, lng: agent.lastLng }}
-                                        title={`${agent.name}${subtitle ? ' — ' + subtitle : ''}`}
-                                        onClick={() => setSelectedAgent(agent)}
-                                    />
-                                );
-                            })}
-                        </GoogleMap>
+                            onLoad={map => { mapRef.current = map; }}
+                            onUnmount={() => { mapRef.current = null; }}
+                        />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2" style={{ minHeight: '480px' }}>
                             <Radio className="w-6 h-6" />
