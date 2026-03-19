@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight, UserX, UserCheck } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
@@ -330,17 +330,23 @@ export default function Agenda() {
             {/* Visit List grouped by time slot */}
             {!loadingVisits && !hasVisits ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                        <CalendarX className="w-8 h-8 text-gray-400" />
+                    <div className="relative mb-5">
+                        <div className="w-20 h-20 bg-brand-50 rounded-3xl flex items-center justify-center">
+                            <CalendarX className="w-9 h-9 text-brand-400" />
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-gray-100 rounded-full border-2 border-white flex items-center justify-center">
+                            <Plus className="w-3 h-3 text-gray-500" />
+                        </div>
                     </div>
-                    <p className="text-gray-600 font-semibold text-lg">Sin visitas programadas</p>
-                    <p className="text-gray-400 text-sm mt-1">
-                        No hay visitas para{' '}
-                        {dateRange.start === dateRange.end ? 'este día' : 'este período'}.
+                    <p className="text-gray-800 font-bold text-lg">
+                        {dateRange.start === dateRange.end ? 'Día libre de visitas' : 'Sin visitas en este período'}
+                    </p>
+                    <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
+                        Agenda la primera visita del {dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.
                     </p>
                     <button
                         onClick={() => setShowModal(true)}
-                        className="mt-5 bg-brand-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-brand-700 transition shadow-md flex items-center gap-2"
+                        className="mt-6 bg-brand-600 text-white px-6 py-2.5 rounded-xl font-semibold hover:bg-brand-700 active:scale-95 transition-all shadow-lg shadow-brand-600/25 flex items-center gap-2"
                     >
                         <Plus className="w-4 h-4" /> Agendar visita
                     </button>
@@ -371,71 +377,60 @@ export default function Agenda() {
                                             <div
                                                 key={visit.id}
                                                 onClick={() => navigate(`/visit/${visit.id}`)}
-                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted ? 'opacity-75' : ''}`}
+                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted ? 'opacity-70' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
-                                                <div className={`h-1.5 w-full ${typeConfig.dot}`} />
+                                                <div className={`h-1 w-full ${typeConfig.dot}`} />
 
                                                 <div className="p-4">
-                                                    {/* Row 1: Hora + Tipo + Estado + Eliminar */}
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex items-center gap-1.5 text-gray-700">
+                                                    {/* Row 1: Hora + Tipo */}
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="flex items-center gap-1.5">
                                                                 <Clock className="w-3.5 h-3.5 text-gray-400" />
-                                                                <span className="font-bold text-sm">
+                                                                <span className="font-extrabold text-base text-gray-900 tabular-nums">
                                                                     {new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                             </div>
-                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeConfig.bg} ${typeConfig.text}`}>
+                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${typeConfig.bg} ${typeConfig.text}`}>
                                                                 {typeConfig.label}
                                                             </span>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${statusConfig.bg} ${statusConfig.text}`}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.bg} ${statusConfig.text}`}>
                                                                 {statusConfig.label}
                                                             </span>
                                                             {isPastPending && (
-                                                                <button
-                                                                    onClick={(e) => handleMarkMissed(e, visit.id)}
-                                                                    className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
-                                                                    title="Marcar como no atendida"
-                                                                >
+                                                                <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
                                                                     <UserX className="w-3.5 h-3.5" />
                                                                 </button>
                                                             )}
                                                             {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                <button
-                                                                    onClick={(e) => initiateReassign(e, visit.id)}
-                                                                    className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
-                                                                    title="Reasignar agente"
-                                                                >
+                                                                <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
                                                                     <UserCheck className="w-3.5 h-3.5" />
                                                                 </button>
                                                             )}
-                                                            <button
-                                                                onClick={(e) => initiateDelete(e, visit.id)}
-                                                                className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
-                                                            >
+                                                            <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100">
                                                                 <Trash2 className="w-3.5 h-3.5" />
                                                             </button>
-                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-400 transition-colors flex-shrink-0" />
+                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
                                                         </div>
                                                     </div>
 
-                                                    {/* Row 2: Dirección */}
-                                                    <div className="flex items-start gap-2 mb-2">
-                                                        <Home className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                                        <p className="font-semibold text-gray-900 text-sm leading-snug">
+                                                    {/* Row 2: Dirección — protagonista visual */}
+                                                    <div className="flex items-start gap-2 mb-2.5">
+                                                        <Home className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
+                                                        <p className="font-bold text-gray-900 text-base leading-snug">
                                                             {visit.property?.address || 'Dirección desconocida'}
                                                         </p>
                                                     </div>
 
-                                                    {/* Row 3: Cliente + Agente */}
-                                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                                                    {/* Row 3: Cliente + Agente + Duración */}
+                                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 pl-6">
                                                         {visit.clientName && (
                                                             <div className="flex items-center gap-1">
                                                                 <User className="w-3 h-3" />
-                                                                <span>{visit.clientName}</span>
+                                                                <span className="font-medium text-gray-600">{visit.clientName}</span>
                                                                 {visit.clientPhone && (
                                                                     <span className="text-gray-400">· {visit.clientPhone}</span>
                                                                 )}
@@ -443,24 +438,23 @@ export default function Agenda() {
                                                         )}
                                                         {user?.role === 'ADMIN' && visit.user?.name && (
                                                             <div className="flex items-center gap-1">
-                                                                <div className="w-4 h-4 rounded-full bg-brand-100 flex items-center justify-center">
-                                                                    <span className="text-brand-600 font-bold" style={{ fontSize: '8px' }}>
-                                                                        {visit.user.name.charAt(0)}
-                                                                    </span>
+                                                                <div className="w-4 h-4 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+                                                                    <span className="text-brand-600 font-bold" style={{ fontSize: '8px' }}>{visit.user.name.charAt(0)}</span>
                                                                 </div>
-                                                                <span className="font-medium text-brand-700">{visit.user.name}</span>
+                                                                <span className="font-semibold text-brand-700">{visit.user.name}</span>
                                                             </div>
                                                         )}
                                                         {!visit.clientName && !(user?.role === 'ADMIN' && visit.user?.name) && (
                                                             <span className="text-gray-300 italic">Sin datos de cliente</span>
                                                         )}
-                                                        <span className="text-gray-300">· {visit.estimatedDuration} min</span>
+                                                        <span className="text-gray-400">{visit.estimatedDuration} min</span>
                                                     </div>
 
                                                     {/* Resultado si completada */}
                                                     {isCompleted && visit.outcome && (
-                                                        <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                                                            <span className="font-medium">Resultado:</span> {visit.outcome}
+                                                        <div className="mt-2.5 pt-2.5 border-t border-gray-100 text-xs text-gray-500 flex items-center gap-1.5 pl-6">
+                                                            <CheckCircle className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                                                            <span className="font-medium text-gray-700">{visit.outcome}</span>
                                                         </div>
                                                     )}
                                                 </div>

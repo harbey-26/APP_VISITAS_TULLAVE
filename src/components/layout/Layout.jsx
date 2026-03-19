@@ -337,15 +337,21 @@ export default function Layout() {
             )}
 
             {/* ── Sidebar ───────────────────────────────────────────────── */}
-            <aside className={`
-                fixed lg:sticky top-0 left-0 h-[100dvh] w-72 lg:w-64
-                bg-slate-900 z-50 flex flex-col
-                transform transition-transform duration-300 ease-in-out
-                rounded-r-3xl lg:rounded-none
-                shadow-[8px_0_40px_rgba(0,0,0,0.45)] lg:shadow-none
-                border-r border-white/5
-                ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-            `}>
+            <aside
+                className={`
+                    fixed lg:sticky top-0 left-0 h-[100dvh] w-72 lg:w-64
+                    z-50 flex flex-col
+                    transform transition-transform duration-300 ease-in-out
+                    rounded-r-3xl lg:rounded-none
+                    shadow-[8px_0_40px_rgba(0,0,0,0.45)] lg:shadow-none
+                    border-r border-white/5
+                    ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+                `}
+                style={{ background: 'linear-gradient(180deg, #1a1f2e 0%, #0f172a 100%)' }}
+            >
+                {/* Acento de marca en el tope */}
+                <div className="h-0.5 w-full bg-gradient-to-r from-brand-600 via-brand-400 to-transparent flex-shrink-0" />
+
                 {/* Logo */}
                 <div
                     className="flex-shrink-0 flex justify-between items-center px-5 pb-5 border-b border-white/10"

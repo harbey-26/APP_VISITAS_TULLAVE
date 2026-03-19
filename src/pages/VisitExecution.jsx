@@ -560,10 +560,11 @@ function VisitExecutionContent() {
                 <button
                     onClick={handleStart}
                     disabled={loading}
-                    className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition disabled:opacity-60"
+                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #e31c25 0%, #b91c1c 100%)', boxShadow: '0 8px 24px rgba(227,28,37,0.35)' }}
                 >
                     {loading ? (
-                        <div className="w-6 h-6 border-3 border-white/40 border-t-white rounded-full animate-spin" />
+                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
                         <Play className="w-6 h-6" />
                     )}
@@ -575,10 +576,11 @@ function VisitExecutionContent() {
                 <button
                     onClick={() => setShowFinishModal(true)}
                     disabled={loading}
-                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition disabled:opacity-60"
+                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', boxShadow: '0 8px 24px rgba(22,163,74,0.35)' }}
                 >
                     {loading ? (
-                        <div className="w-6 h-6 border-3 border-white/40 border-t-white rounded-full animate-spin" />
+                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
                         <CheckCircle className="w-6 h-6" />
                     )}
