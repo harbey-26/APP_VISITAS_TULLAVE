@@ -85,10 +85,20 @@ export const getPendingBroadcasts = async (req, res) => {
     }
 };
 
+// A1: Validar IDs de URL
+function parseId(raw) {
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0) throw new Error('ID inválido');
+    return n;
+}
+
 // Agente: marcar un comunicado como visto
 export const markBroadcastRead = async (req, res) => {
+    let broadcastId;
+    try { broadcastId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de comunicado inválido' });
+    }
     try {
-        const broadcastId = parseInt(req.params.id);
         await prisma.broadcastRead.upsert({
             where: { broadcastId_userId: { broadcastId, userId: req.user.id } },
             update: {},

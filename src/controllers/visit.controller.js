@@ -1,6 +1,15 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
-import { comparePassword } from '../utils/auth.js';
+import { comparePassword, hashPassword } from '../utils/auth.js';
+
+// C2: Cachear el hash de MASTER_DELETE_PASSWORD al primer uso para nunca comparar plaintext
+let _masterHash = null;
+async function getMasterHash() {
+    if (!_masterHash && process.env.MASTER_DELETE_PASSWORD) {
+        _masterHash = await hashPassword(process.env.MASTER_DELETE_PASSWORD);
+    }
+    return _masterHash;
+}
 
 const createVisitSchema = z.object({
     propertyId: z.number(),
@@ -306,16 +315,21 @@ export const finishVisit = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden finalizar visitas que estén en curso.' });
         }
 
-        // FIX BUG 1: Geofencing al finalizar — el agente debe estar en el inmueble
-        if (visit.property?.lat && visit.property?.lng) {
-            const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
-            const maxDistance = getMaxDistance(req.user.role);
+        // C1: Bloquear si el inmueble no tiene coordenadas — igual que startVisit
+        if (!visit.property?.lat || !visit.property?.lng) {
+            return res.status(400).json({
+                error: 'El inmueble no tiene coordenadas registradas. Contacta al administrador para configurarlas antes de finalizar la visita.'
+            });
+        }
 
-            if (distance > maxDistance) {
-                return res.status(400).json({
-                    error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para finalizar la visita.`
-                });
-            }
+        // Geofencing al finalizar — el agente debe estar en el inmueble
+        const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
+        const maxDistance = getMaxDistance(req.user.role);
+
+        if (distance > maxDistance) {
+            return res.status(400).json({
+                error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para finalizar la visita.`
+            });
         }
 
         const updatedVisit = await prisma.visit.update({
@@ -351,8 +365,9 @@ export const deleteVisit = async (req, res) => {
 
     let isAuthorized = false;
 
-    const masterPwd = process.env.MASTER_DELETE_PASSWORD;
-    if (masterPwd && password === masterPwd) {
+    // C2: Comparar con hash en lugar de plaintext
+    const masterHash = await getMasterHash();
+    if (masterHash && await comparePassword(password, masterHash)) {
         isAuthorized = true;
     } else {
         try {

@@ -69,7 +69,7 @@ export default function Properties() {
         e.preventDefault();
         try {
             const endpoint = isEditing ? `${API_URL}/api/properties/${formData.id}` : `${API_URL}/api/properties`;
-            const method = isEditing ? 'PUT' : 'POST';
+            const method = isEditing ? 'PATCH' : 'POST';
 
             const payload = {
                 address: formData.address,
