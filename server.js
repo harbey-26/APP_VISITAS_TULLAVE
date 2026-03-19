@@ -70,6 +70,67 @@ app.use((err, req, res, next) => {
   });
 });
 
+// M6: Limpieza diaria de tokens FCM inactivos (> 30 días sin renovar)
+function startFcmCleanupCron() {
+    const run = async () => {
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        try {
+            const { count } = await prisma.userFcmToken.deleteMany({
+                where: { updatedAt: { lt: cutoff } }
+            });
+            if (count > 0) console.log(`[FCM Cron] Eliminados ${count} tokens inactivos`);
+        } catch (e) { console.warn('[FCM Cron]', e.message); }
+    };
+    setInterval(run, 24 * 60 * 60 * 1000); // cada 24 h
+}
+
+// L1: Reporte semanal — se ejecuta cada lunes a las 9am como broadcast
+async function generateWeeklyReport() {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const where = { deletedAt: null, scheduledStart: { gte: weekAgo } };
+
+    const [total, completed, interested, byAgent] = await Promise.all([
+        prisma.visit.count({ where }),
+        prisma.visit.count({ where: { ...where, status: 'COMPLETED' } }),
+        prisma.visit.count({ where: { ...where, outcome: 'Cliente interesado' } }),
+        prisma.visit.groupBy({
+            by: ['userId'], where: { ...where, status: 'COMPLETED' },
+            _count: { id: true }, orderBy: { _count: { id: 'desc' } }, take: 1
+        })
+    ]);
+
+    let topAgentName = null;
+    if (byAgent[0]?.userId) {
+        const agent = await prisma.user.findUnique({
+            where: { id: byAgent[0].userId }, select: { name: true }
+        });
+        topAgentName = agent?.name;
+    }
+
+    const convRate = total > 0 ? Math.round((interested / total) * 100) : 0;
+    const body = [
+        `Visitas programadas: ${total}`,
+        `Completadas: ${completed}`,
+        `Tasa de conversión: ${convRate}%`,
+        topAgentName ? `Agente destacado: ${topAgentName}` : null
+    ].filter(Boolean).join(' · ');
+
+    await prisma.broadcast.create({ data: { title: '📊 Resumen semanal', body } });
+    console.log('[Weekly Report] Broadcast creado:', body);
+}
+
+function startWeeklyReportCron() {
+    let lastRanWeek = -1; // evitar doble ejecución en el mismo lunes
+    setInterval(() => {
+        const now = new Date();
+        const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+        if (now.getDay() === 1 && now.getHours() === 9 && now.getMinutes() === 0 && week !== lastRanWeek) {
+            lastRanWeek = week;
+            generateWeeklyReport().catch(e => console.warn('[Weekly Report]', e.message));
+        }
+    }, 60_000); // revisa cada minuto
+}
+
 async function main() {
   try {
     await prisma.$connect();
@@ -78,6 +139,9 @@ async function main() {
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
+
+    startFcmCleanupCron();   // M6: limpieza diaria de tokens FCM
+    startWeeklyReportCron(); // L1: resumen semanal los lunes a las 9am
   } catch (error) {
     console.error('❌ Database connection failed:', error);
     process.exit(1);

@@ -6,7 +6,8 @@ import { API_URL } from '../config';
 import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History } from 'lucide-react';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
-const REFRESH_INTERVAL = 60000;
+const LOCATION_REFRESH_MS = 30_000;   // M3: ubicaciones cada 30 s
+const FULL_REFRESH_MS = 5 * 60_000;   // M3: check-ins + comunicados cada 5 min
 
 function getMinutesSince(dateStr) {
     if (!dateStr) return null;
@@ -106,6 +107,17 @@ export default function Tracking() {
     const [sending, setSending] = useState(false);
     const [sentOk, setSentOk] = useState(false);
 
+    // M3: Solo ubicaciones — se llama cada 30 s
+    const loadLocations = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/users/locations`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) { setAgents(await res.json()); setLastUpdate(new Date()); setError(null); }
+        } catch {
+            setError('No se pudo obtener la ubicación de los agentes.');
+        }
+    };
+
+    // M3: Carga completa (check-ins + comunicados) — solo en init y cada 5 min
     const loadAgents = async () => {
         try {
             const [agentsRes, checkInsRes, broadcastsRes] = await Promise.all([
@@ -135,7 +147,7 @@ export default function Tracking() {
                 setBTitle('');
                 setBBody('');
                 setTimeout(() => { setSentOk(false); setShowBroadcastModal(false); }, 1500);
-                loadAgents();
+                loadAgents(); // M3: recarga comunicados + check-ins tras enviar
             }
         } finally {
             setSending(false);
@@ -143,9 +155,10 @@ export default function Tracking() {
     };
 
     useEffect(() => {
-        loadAgents();
-        const interval = setInterval(loadAgents, REFRESH_INTERVAL);
-        return () => clearInterval(interval);
+        loadAgents(); // carga completa al montar
+        const locationInterval = setInterval(loadLocations, LOCATION_REFRESH_MS); // M3: ubicaciones c/30 s
+        const fullInterval = setInterval(loadAgents, FULL_REFRESH_MS);            // M3: todo c/5 min
+        return () => { clearInterval(locationInterval); clearInterval(fullInterval); };
     }, [token]);
 
     const agentsWithLocation = agents.filter(a => a.lastLat && a.lastLng);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -24,6 +24,10 @@ export default function Layout() {
     const location = useLocation();
     const toast = useToast();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    // M4: Refs para filtro de distancia GPS
+    const lastSentPosRef = useRef(null);
+    const lastForceSendRef = useRef(0);
 
     // Wake Lock: evita que la pantalla se apague para mantener el GPS activo
     useEffect(() => {
@@ -187,7 +191,33 @@ export default function Layout() {
     useEffect(() => {
         if (!token) return;
 
+        // M4: Haversine para calcular distancia en metros entre dos puntos GPS
+        const haversineMeters = (lat1, lon1, lat2, lon2) => {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        };
+
+        const GPS_MIN_DISTANCE_M = 10;       // M4: no enviar si movimiento < 10 m
+        const GPS_FORCE_INTERVAL_MS = 5 * 60 * 1000; // M4: forzar envío cada 5 min aunque no haya movimiento
+
         const sendCoords = ({ lat, lng }) => {
+            const now = Date.now();
+            const last = lastSentPosRef.current;
+            const forceSend = now - lastForceSendRef.current >= GPS_FORCE_INTERVAL_MS;
+
+            // M4: Omitir si no se movió suficiente y no ha pasado el intervalo de fuerza
+            if (last && !forceSend) {
+                const dist = haversineMeters(last.lat, last.lng, lat, lng);
+                if (dist < GPS_MIN_DISTANCE_M) return;
+            }
+
+            lastSentPosRef.current = { lat, lng };
+            lastForceSendRef.current = now;
+
             fetch(`${API_URL}/api/users/location`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

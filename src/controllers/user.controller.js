@@ -7,8 +7,7 @@ const locationSchema = z.object({
     lng: z.number()
 });
 
-// M1: Rate limit en memoria — máx 1 ping de ubicación cada 10 s por usuario
-const locationLastSeen = new Map();
+// A5: Rate limit en BD — usa lastSeenAt del usuario para persistir entre reinicios
 const LOCATION_MIN_INTERVAL_MS = 10_000;
 
 const createUserSchema = z.object({
@@ -60,15 +59,17 @@ export const createUser = async (req, res) => {
 
 export const updateLocation = async (req, res) => {
     try {
-        const nowMs = Date.now();
-        const lastMs = locationLastSeen.get(req.user.id);
-        if (lastMs && nowMs - lastMs < LOCATION_MIN_INTERVAL_MS) {
-            return res.status(429).json({ error: 'Actualización de ubicación demasiado frecuente' });
-        }
-        locationLastSeen.set(req.user.id, nowMs);
-
         const { lat, lng } = locationSchema.parse(req.body);
         const now = new Date();
+
+        // A5: Rate limit en BD — leer lastSeenAt antes de actualizar
+        const record = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { lastSeenAt: true }
+        });
+        if (record?.lastSeenAt && now - record.lastSeenAt < LOCATION_MIN_INTERVAL_MS) {
+            return res.status(429).json({ error: 'Actualización de ubicación demasiado frecuente' });
+        }
         await prisma.user.update({
             where: { id: req.user.id },
             data: { lastLat: lat, lastLng: lng, lastSeenAt: now }
