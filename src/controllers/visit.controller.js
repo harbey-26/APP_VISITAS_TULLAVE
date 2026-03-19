@@ -392,3 +392,121 @@ export const deleteVisit = async (req, res) => {
         res.status(400).json({ error: error.message });
     }
 };
+
+// A2: Marcar visita como no atendida (MISSED) — el agente o admin la marca manualmente
+export const markMissed = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso para modificar esta visita.' });
+        }
+        if (visit.status !== 'PENDING') {
+            return res.status(400).json({ error: 'Solo se pueden marcar como no atendidas las visitas pendientes.' });
+        }
+        const updated = await prisma.visit.update({ where: { id: visitId }, data: { status: 'MISSED' } });
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// M2: Reasignar visita a otro agente (solo admin)
+const reassignSchema = z.object({ assignedUserId: z.number().int().positive() });
+
+export const reassignVisit = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const { assignedUserId } = reassignSchema.parse(req.body);
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (!['PENDING', 'IN_PROGRESS'].includes(visit.status)) {
+            return res.status(400).json({ error: 'Solo se pueden reasignar visitas pendientes o en curso.' });
+        }
+        const newUser = await prisma.user.findUnique({ where: { id: assignedUserId } });
+        if (!newUser) return res.status(404).json({ error: 'Agente no encontrado' });
+
+        const updated = await prisma.visit.update({
+            where: { id: visitId },
+            data: { userId: assignedUserId },
+            include: { property: true, user: { select: { id: true, name: true } } }
+        });
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// M1: Subir imagen de visita (base64 data URI)
+const imageSchema = z.object({ data: z.string().min(1) });
+
+export const addVisitImage = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const { data } = imageSchema.parse(req.body);
+        if (!data.startsWith('data:image/')) {
+            return res.status(400).json({ error: 'Formato de imagen inválido' });
+        }
+        if (data.length > 2_500_000) {
+            return res.status(400).json({ error: 'Imagen demasiado grande (máximo ~2MB)' });
+        }
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso para subir imágenes en esta visita.' });
+        }
+        const image = await prisma.visitImage.create({ data: { visitId, url: data } });
+        res.status(201).json({ id: image.id });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+export const getVisitImages = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso' });
+        }
+        const images = await prisma.visitImage.findMany({ where: { visitId }, select: { id: true, url: true } });
+        res.json(images);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const deleteVisitImage = async (req, res) => {
+    let imageId;
+    try { imageId = parseId(req.params.imageId); } catch {
+        return res.status(400).json({ error: 'ID de imagen inválido' });
+    }
+    try {
+        const image = await prisma.visitImage.findUnique({
+            where: { id: imageId },
+            include: { visit: true }
+        });
+        if (!image) return res.status(404).json({ error: 'Imagen no encontrada' });
+        if (image.visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso' });
+        }
+        await prisma.visitImage.delete({ where: { id: imageId } });
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};

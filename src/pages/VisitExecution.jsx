@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, Square, CheckCircle, ArrowLeft, User, Phone, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon } from 'lucide-react';
 import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
@@ -55,6 +55,20 @@ function VisitExecutionContent() {
     const [outcome, setOutcome] = useState('');
     const [showFinishModal, setShowFinishModal] = useState(false);
 
+    // M1: Fotos de visita
+    const [images, setImages] = useState([]);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+    const fileInputRef = useRef(null);
+
+    const fetchImages = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/images`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setImages(await res.json());
+        } catch (_) { /* silencioso */ }
+    };
+
     useEffect(() => {
         const fetchVisit = async () => {
             try {
@@ -84,6 +98,7 @@ function VisitExecutionContent() {
             }
         };
         fetchVisit();
+        fetchImages();
     }, [id, token]);
 
     // Timer
@@ -179,6 +194,50 @@ function VisitExecutionContent() {
         } finally {
             setLoading(false);
         }
+    };
+
+    // M1: Manejar selección de foto
+    const handlePhotoSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        setUploadingPhoto(true);
+        setErrorMsg(null);
+        try {
+            const base64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            const res = await fetch(`${API_URL}/api/visits/${id}/images`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ data: base64 })
+            });
+            if (res.ok) {
+                await fetchImages();
+            } else {
+                const err = await res.json();
+                setErrorMsg(err.error || 'Error al subir imagen');
+            }
+        } catch (_) {
+            setErrorMsg('No se pudo subir la imagen. Intenta de nuevo.');
+        } finally {
+            setUploadingPhoto(false);
+        }
+    };
+
+    const handleDeleteImage = async (imageId) => {
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/images/${imageId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setImages(prev => prev.filter(img => img.id !== imageId));
+        } catch (_) { /* silencioso */ }
     };
 
     const safeFormatTime = (dateString) => {
@@ -408,6 +467,65 @@ function VisitExecutionContent() {
                         <div className="bg-white p-3 rounded-xl border border-green-100">
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Comentarios</p>
                             <p className="text-gray-600 italic text-sm">"{visit.notes}"</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* M1: Sección de fotos — disponible en progreso y completada */}
+            {(visit.status === 'IN_PROGRESS' || visit.status === 'COMPLETED') && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4 text-gray-500" />
+                            <span className="text-sm font-semibold text-gray-700">
+                                Fotos ({images.length})
+                            </span>
+                        </div>
+                        {visit.status === 'IN_PROGRESS' && (
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingPhoto}
+                                className="flex items-center gap-1.5 text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition disabled:opacity-60"
+                            >
+                                {uploadingPhoto ? (
+                                    <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <Camera className="w-3.5 h-3.5" />
+                                )}
+                                {uploadingPhoto ? 'Subiendo...' : 'Tomar foto'}
+                            </button>
+                        )}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={handlePhotoSelect}
+                        />
+                    </div>
+                    {images.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-4">No hay fotos aún.</p>
+                    ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                            {images.map(img => (
+                                <div key={img.id} className="relative group aspect-square rounded-xl overflow-hidden border border-gray-100">
+                                    <img
+                                        src={img.url}
+                                        alt="Foto de visita"
+                                        className="w-full h-full object-cover"
+                                    />
+                                    {visit.status === 'IN_PROGRESS' && (
+                                        <button
+                                            onClick={() => handleDeleteImage(img.id)}
+                                            className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>

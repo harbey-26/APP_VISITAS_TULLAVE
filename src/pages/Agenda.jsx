@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight, UserX, UserCheck } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
@@ -26,6 +26,11 @@ export default function Agenda() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
     const [deletePassword, setDeletePassword] = useState('');
+
+    // Reassign State (M2)
+    const [showReassignModal, setShowReassignModal] = useState(false);
+    const [reassignTargetId, setReassignTargetId] = useState(null);
+    const [reassignAgentId, setReassignAgentId] = useState('');
 
     const [properties, setProperties] = useState([]);
     const [agents, setAgents] = useState([]);
@@ -193,6 +198,55 @@ export default function Agenda() {
         }
     };
 
+    // A2: Marcar visita como no atendida
+    const handleMarkMissed = async (e, id) => {
+        e.stopPropagation();
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/missed`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                fetchVisits();
+                toast.success('Visita marcada como no atendida');
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al actualizar');
+            }
+        } catch (error) {
+            toast.error(friendlyError(error));
+        }
+    };
+
+    // M2: Reasignar visita (admin)
+    const initiateReassign = (e, id) => {
+        e.stopPropagation();
+        setReassignTargetId(id);
+        setReassignAgentId('');
+        setShowReassignModal(true);
+    };
+
+    const confirmReassign = async () => {
+        if (!reassignAgentId) return;
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${reassignTargetId}/reassign`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ assignedUserId: parseInt(reassignAgentId) })
+            });
+            if (res.ok) {
+                setShowReassignModal(false);
+                fetchVisits();
+                toast.success('Visita reasignada correctamente');
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al reasignar');
+            }
+        } catch (error) {
+            toast.error(friendlyError(error));
+        }
+    };
+
     const formatDate = (d) =>
         new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 
@@ -311,6 +365,7 @@ export default function Agenda() {
                                         const typeConfig = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
                                         const statusConfig = STATUS_CONFIG[visit.status] || STATUS_CONFIG.PENDING;
                                         const isCompleted = visit.status === 'COMPLETED';
+                                        const isPastPending = visit.status === 'PENDING' && new Date(visit.scheduledStart) < new Date();
 
                                         return (
                                             <div
@@ -339,6 +394,24 @@ export default function Agenda() {
                                                             <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${statusConfig.bg} ${statusConfig.text}`}>
                                                                 {statusConfig.label}
                                                             </span>
+                                                            {isPastPending && (
+                                                                <button
+                                                                    onClick={(e) => handleMarkMissed(e, visit.id)}
+                                                                    className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                                    title="Marcar como no atendida"
+                                                                >
+                                                                    <UserX className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                <button
+                                                                    onClick={(e) => initiateReassign(e, visit.id)}
+                                                                    className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                                    title="Reasignar agente"
+                                                                >
+                                                                    <UserCheck className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 onClick={(e) => initiateDelete(e, visit.id)}
                                                                 className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
@@ -568,6 +641,46 @@ export default function Agenda() {
                                 </button>
                             )}
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Reassign Modal (M2) */}
+            {showReassignModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
+                        <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <UserCheck className="w-6 h-6 text-brand-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Reasignar Visita</h3>
+                        <p className="text-gray-500 mb-4 text-sm text-center">Selecciona el nuevo agente para esta visita.</p>
+                        <select
+                            className="w-full p-3 border rounded-xl mb-4 focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white"
+                            value={reassignAgentId}
+                            onChange={(e) => setReassignAgentId(e.target.value)}
+                        >
+                            <option value="">-- Seleccionar agente --</option>
+                            {agents.map(agent => (
+                                <option key={agent.id} value={agent.id}>
+                                    {agent.name} ({agent.email})
+                                </option>
+                            ))}
+                        </select>
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setShowReassignModal(false)}
+                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmReassign}
+                                disabled={!reassignAgentId}
+                                className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 transition disabled:opacity-50"
+                            >
+                                Reasignar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

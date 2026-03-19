@@ -5,6 +5,7 @@ import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, Chevro
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const TABLE_LIMIT = 50;
 
@@ -30,6 +31,7 @@ export default function Dashboard() {
     const [outcomeFilter, setOutcomeFilter] = useState('');
 
     const { token } = useAuth();
+    const toast = useToast();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -76,16 +78,22 @@ export default function Dashboard() {
 
     const translateType = (type) => VISIT_TYPE_CONFIG[type]?.label ?? type;
 
+    const EXPORT_LIMIT = 5000;
+
     const handleExport = async () => {
         try {
-            const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
+            const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end, page: 1, limit: EXPORT_LIMIT });
             if (outcomeFilter) params.append('outcome', outcomeFilter);
             const res = await fetch(`${API_URL}/api/visits?${params}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!res.ok) return;
-            const allVisits = await res.json();
+            const data = await res.json();
+            const allVisits = Array.isArray(data) ? data : (data.visits ?? []);
             if (!allVisits.length) return;
+            if (allVisits.length >= EXPORT_LIMIT) {
+                toast.info(`Export limitado a ${EXPORT_LIMIT} registros. Ajusta el rango de fechas para ver todo.`);
+            }
 
         const translateStatus = (s) => STATUS_CONFIG[s]?.label ?? s;
         const headers = ['ID,Inmueble,Cliente,Telefono,Agente,Tipo,Estado,Fecha,Hora,Duracion Real (min),Resultado,Notas'];
