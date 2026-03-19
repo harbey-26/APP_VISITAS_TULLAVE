@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../config';
-import { Eye, EyeOff, Loader2, MapPin } from 'lucide-react';
+import { Eye, EyeOff, Loader2, MapPin, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
@@ -29,10 +30,12 @@ export default function Login() {
             if (!res.ok) throw new Error(data.error || 'Fallo en el inicio de sesión');
 
             login(data.user, data.token);
-            navigate('/');
+
+            // Animación de éxito antes de redirigir
+            setIsSuccess(true);
+            setTimeout(() => navigate('/'), 1300);
         } catch (err) {
             setError(err.message);
-        } finally {
             setIsLoading(false);
         }
     };
@@ -50,11 +53,16 @@ export default function Login() {
 
                 {/* Contenido */}
                 <div className="relative z-10 flex flex-col items-center lg:items-start text-center lg:text-left max-w-sm">
-                    <img
-                        src="/logo.png"
-                        alt="TuLlave Inmobiliaria"
-                        className="h-14 lg:h-20 w-auto mb-8 object-contain brightness-0 invert drop-shadow-lg"
-                    />
+
+                    {/* Logo en contenedor blanco — funciona con cualquier formato del logo */}
+                    <div className="bg-white rounded-2xl px-5 py-3 mb-8 shadow-lg inline-block">
+                        <img
+                            src="/logo.png"
+                            alt="TuLlave Inmobiliaria"
+                            className="h-10 lg:h-14 w-auto object-contain"
+                        />
+                    </div>
+
                     <h1 className="text-white text-3xl lg:text-4xl font-extrabold leading-tight tracking-tight">
                         Gestión de visitas<br />inmobiliarias
                     </h1>
@@ -84,7 +92,7 @@ export default function Login() {
                     </div>
 
                     {error && (
-                        <div className="bg-red-50 border-l-4 border-brand-600 text-red-700 p-3 rounded-lg mb-6 text-sm flex items-start gap-2">
+                        <div className="bg-red-50 border-l-4 border-brand-600 text-red-700 p-3 rounded-lg mb-6 text-sm flex items-start gap-2 animate-slide-up">
                             <span className="shrink-0 mt-0.5">⚠</span>
                             <p>{error}</p>
                         </div>
@@ -100,8 +108,9 @@ export default function Login() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="correo@tullave.com"
-                                className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm"
+                                className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm disabled:opacity-50"
                                 required
+                                disabled={isSuccess}
                             />
                         </div>
 
@@ -115,8 +124,9 @@ export default function Login() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
-                                    className="w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm"
+                                    className="w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm disabled:opacity-50"
                                     required
+                                    disabled={isSuccess}
                                 />
                                 <button
                                     type="button"
@@ -129,15 +139,25 @@ export default function Login() {
                             </div>
                         </div>
 
+                        {/* Botón con animación de éxito */}
                         <button
                             type="submit"
-                            disabled={isLoading}
-                            className="w-full bg-brand-600 text-white py-3.5 rounded-xl hover:bg-brand-700 active:scale-[0.98] transition-all font-bold shadow-lg shadow-brand-600/25 mt-2 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                            disabled={isLoading || isSuccess}
+                            className={`w-full py-3.5 rounded-xl font-bold mt-2 flex items-center justify-center gap-2 transition-all duration-500 active:scale-[0.98]
+                                ${isSuccess
+                                    ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30 scale-[1.02]'
+                                    : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/25 disabled:opacity-70 disabled:cursor-not-allowed'
+                                } text-white`}
                         >
-                            {isLoading ? (
+                            {isSuccess ? (
+                                <span className="flex items-center gap-2 animate-slide-up">
+                                    <CheckCircle2 className="w-5 h-5" />
+                                    ¡Bienvenido!
+                                </span>
+                            ) : isLoading ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
-                                    Ingresando...
+                                    Verificando...
                                 </>
                             ) : (
                                 'Ingresar'
