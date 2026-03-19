@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUsers, createUser, deleteUser, updateLocation, getAgentLocations, getTodayCheckIns, saveFcmToken } from '../controllers/user.controller.js';
+import { getUsers, createUser, updateUser, deleteUser, updateLocation, getAgentLocations, getTodayCheckIns, saveFcmToken } from '../controllers/user.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -15,6 +15,7 @@ router.use(requireAdmin);
 
 router.get('/', getUsers);
 router.post('/', createUser);
+router.patch('/:id', updateUser);
 router.delete('/:id', deleteUser);
 router.get('/locations', getAgentLocations);
 router.get('/checkins/today', getTodayCheckIns);

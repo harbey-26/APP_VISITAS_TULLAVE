@@ -2,7 +2,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 10;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-this';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error('JWT_SECRET no está definida. Configura la variable de entorno antes de iniciar el servidor.');
+}
 
 export const hashPassword = async (password) => {
     return bcrypt.hash(password, SALT_ROUNDS);

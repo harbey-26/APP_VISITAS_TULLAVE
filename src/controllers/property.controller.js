@@ -53,7 +53,7 @@ const geocodeAddress = async (address) => {
             }
         }
     } catch (error) {
-        console.error("Geocoding service error:", error);
+        console.error("Geocoding service error:", error.message);
     }
     return null;
 };

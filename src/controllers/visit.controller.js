@@ -39,11 +39,11 @@ const finishVisitSchema = z.object({
 
 export const getVisits = async (req, res) => {
     const { id: userId, role } = req.user;
-
-    const { date, startDate, endDate, id, outcome } = req.query;
+    const { date, startDate, endDate, id, outcome, page, limit: limitParam } = req.query;
 
     try {
-        const where = {};
+        // A2: Excluir visitas con soft delete
+        const where = { deletedAt: null };
 
         if (role !== 'ADMIN') {
             where.userId = userId;
@@ -69,15 +69,64 @@ export const getVisits = async (req, res) => {
             where.outcome = outcome;
         }
 
-        const visits = await prisma.visit.findMany({
-            where,
-            include: {
-                property: true,
-                user: { select: { id: true, name: true } }
-            },
-            orderBy: { scheduledStart: 'asc' }
-        });
+        const include = {
+            property: true,
+            user: { select: { id: true, name: true } }
+        };
+        const orderBy = { scheduledStart: 'asc' };
+
+        // A3: Paginación — solo cuando se pasa el parámetro ?page
+        if (page !== undefined) {
+            const currentPage = Math.max(1, parseInt(page) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(limitParam) || 50));
+            const skip = (currentPage - 1) * limit;
+
+            const [visits, total] = await Promise.all([
+                prisma.visit.findMany({ where, include, orderBy, skip, take: limit }),
+                prisma.visit.count({ where })
+            ]);
+
+            return res.json({ visits, total, page: currentPage, limit, totalPages: Math.ceil(total / limit) });
+        }
+
+        const visits = await prisma.visit.findMany({ where, include, orderBy });
         res.json(visits);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// M3: Estadísticas agregadas en BD — evita descargar miles de visitas al cliente
+export const getVisitStats = async (req, res) => {
+    const { startDate, endDate, outcome } = req.query;
+
+    try {
+        const where = { deletedAt: null };
+
+        if (startDate && endDate) {
+            const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+            where.scheduledStart = { gte: start, lte: end };
+        }
+        if (outcome) where.outcome = outcome;
+
+        const [totalVisits, completedVisits, interestedVisits, byType, completedDurations] = await Promise.all([
+            prisma.visit.count({ where }),
+            prisma.visit.count({ where: { ...where, status: 'COMPLETED' } }),
+            prisma.visit.count({ where: { ...where, outcome: 'Cliente interesado' } }),
+            prisma.visit.groupBy({ by: ['type'], where, _count: { id: true } }),
+            prisma.visit.findMany({
+                where: { ...where, status: 'COMPLETED' },
+                select: { estimatedDuration: true }
+            })
+        ]);
+
+        const totalDuration = completedDurations.reduce((acc, v) => acc + (v.estimatedDuration || 0), 0);
+        const averageDuration = completedVisits ? Math.round(totalDuration / completedVisits) : 0;
+        const conversionRate = totalVisits ? Math.round((interestedVisits / totalVisits) * 100) : 0;
+        const visitsByType = Object.fromEntries(byType.map(b => [b.type, b._count.id]));
+
+        res.json({ totalVisits, completedVisits, averageDuration, conversionRate, visitsByType });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -108,6 +157,7 @@ export const createVisit = async (req, res) => {
             where: {
                 userId: targetUserId,
                 status: { notIn: ['MISSED'] },
+                deletedAt: null,
                 scheduledStart: { gte: dayStart, lte: dayEnd }
             }
         });
@@ -184,7 +234,7 @@ export const startVisit = async (req, res) => {
             include: { property: true }
         });
 
-        if (!visit) {
+        if (!visit || visit.deletedAt) {
             return res.status(404).json({ error: 'Visita no encontrada' });
         }
 
@@ -242,7 +292,7 @@ export const finishVisit = async (req, res) => {
             include: { property: true }
         });
 
-        if (!visit) {
+        if (!visit || visit.deletedAt) {
             return res.status(404).json({ error: 'Visita no encontrada' });
         }
 
@@ -320,7 +370,8 @@ export const deleteVisit = async (req, res) => {
     }
 
     try {
-        await prisma.visit.delete({ where: { id: visitId } });
+        // A2: Soft delete — marcar como eliminada en lugar de borrar el registro
+        await prisma.visit.update({ where: { id: visitId }, data: { deletedAt: new Date() } });
         res.json({ message: 'Visita eliminada correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });

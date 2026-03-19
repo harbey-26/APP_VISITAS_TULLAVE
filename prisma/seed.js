@@ -4,8 +4,15 @@ import { hashPassword } from '../src/utils/auth.js';
 const prisma = new PrismaClient();
 
 async function main() {
-    const adminPassword = await hashPassword('Tullave2024*');
-    const agentPassword = await hashPassword('Tullaveagente*');
+    const rawAdminPassword = process.env.SEED_ADMIN_PASSWORD;
+    const rawAgentPassword = process.env.SEED_AGENT_PASSWORD;
+
+    if (!rawAdminPassword || !rawAgentPassword) {
+        throw new Error('Define SEED_ADMIN_PASSWORD y SEED_AGENT_PASSWORD como variables de entorno antes de ejecutar el seed.');
+    }
+
+    const adminPassword = await hashPassword(rawAdminPassword);
+    const agentPassword = await hashPassword(rawAgentPassword);
 
     const user = await prisma.user.upsert({
         where: { email: 'admin@tullave.com' },

@@ -1,77 +1,69 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Download, TrendingUp, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 
+const TABLE_LIMIT = 50;
+
 export default function Dashboard() {
     const [stats, setStats] = useState({
-        totalVisits: 0,
-        completedVisits: 0,
-        averageDuration: 0,
-        conversionRate: 0,
-        visitsByType: {}
+        totalVisits: 0, completedVisits: 0, averageDuration: 0, conversionRate: 0, visitsByType: {}
     });
-    const [completeList, setCompleteList] = useState([]);
-    const [loading, setLoading] = useState(true); // M1
+    const [visitList, setVisitList] = useState([]);
+    const [tablePage, setTablePage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [loading, setLoading] = useState(true);
 
     const today = new Date().toISOString().split('T')[0];
     const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const [dateRange, setDateRange] = useState({ start: firstOfMonth, end: today });
 
-    const setRangeToday = () => setDateRange({ start: today, end: today });
+    const setRangeToday = () => { setTablePage(1); setDateRange({ start: today, end: today }); };
     const setRangeWeek = () => {
-        const d = new Date();
-        d.setDate(d.getDate() - 6);
-        setDateRange({ start: d.toISOString().split('T')[0], end: today });
+        const d = new Date(); d.setDate(d.getDate() - 6);
+        setTablePage(1); setDateRange({ start: d.toISOString().split('T')[0], end: today });
     };
-    const setRangeMonth = () => setDateRange({ start: firstOfMonth, end: today });
+    const setRangeMonth = () => { setTablePage(1); setDateRange({ start: firstOfMonth, end: today }); };
     const [outcomeFilter, setOutcomeFilter] = useState('');
 
     const { token } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        const fetchStats = async () => {
-            setLoading(true); // M1
+        const baseParams = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
+        if (outcomeFilter) baseParams.append('outcome', outcomeFilter);
+
+        const fetchData = async () => {
+            setLoading(true);
             try {
-                const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
-                if (outcomeFilter) params.append('outcome', outcomeFilter);
+                // M3: Stats calculadas en BD — petición rápida sin descargar todas las visitas
+                const statsParams = new URLSearchParams(baseParams);
+                const tableParams = new URLSearchParams(baseParams);
+                tableParams.append('page', tablePage);
+                tableParams.append('limit', TABLE_LIMIT);
 
-                const res = await fetch(`${API_URL}/api/visits?${params.toString()}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const visits = await res.json();
-                    setCompleteList(visits);
+                const [statsRes, tableRes] = await Promise.all([
+                    fetch(`${API_URL}/api/visits/stats?${statsParams}`, { headers: { Authorization: `Bearer ${token}` } }),
+                    fetch(`${API_URL}/api/visits?${tableParams}`, { headers: { Authorization: `Bearer ${token}` } })
+                ]);
 
-                    const completed = visits.filter(v => v.status === 'COMPLETED');
-                    const totalDuration = completed.reduce((acc, v) => acc + (v.estimatedDuration || 0), 0);
-                    const interested = visits.filter(v => v.outcome === 'Cliente interesado').length;
-
-                    const byType = visits.reduce((acc, v) => {
-                        acc[v.type] = (acc[v.type] || 0) + 1;
-                        return acc;
-                    }, {});
-
-                    setStats({
-                        totalVisits: visits.length,
-                        completedVisits: completed.length,
-                        averageDuration: completed.length ? Math.round(totalDuration / completed.length) : 0,
-                        conversionRate: visits.length ? Math.round((interested / visits.length) * 100) : 0,
-                        visitsByType: byType
-                    });
+                if (statsRes.ok) setStats(await statsRes.json());
+                if (tableRes.ok) {
+                    const data = await tableRes.json();
+                    setVisitList(data.visits);
+                    setTotalPages(data.totalPages || 1);
                 }
             } catch (error) {
-                console.error(friendlyError(error)); // M2
+                console.error(friendlyError(error));
             } finally {
-                setLoading(false); // M1
+                setLoading(false);
             }
         };
-        fetchStats();
-    }, [token, dateRange, outcomeFilter]);
+        fetchData();
+    }, [token, dateRange, outcomeFilter, tablePage]);
 
     const getStatusBadge = (status) => {
         const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
@@ -84,12 +76,20 @@ export default function Dashboard() {
 
     const translateType = (type) => VISIT_TYPE_CONFIG[type]?.label ?? type;
 
-    const handleExport = () => {
-        if (!completeList.length) return;
+    const handleExport = async () => {
+        try {
+            const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
+            if (outcomeFilter) params.append('outcome', outcomeFilter);
+            const res = await fetch(`${API_URL}/api/visits?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) return;
+            const allVisits = await res.json();
+            if (!allVisits.length) return;
 
         const translateStatus = (s) => STATUS_CONFIG[s]?.label ?? s;
         const headers = ['ID,Inmueble,Cliente,Telefono,Agente,Tipo,Estado,Fecha,Hora,Duracion Real (min),Resultado,Notas'];
-        const rows = completeList.map(v => {
+        const rows = allVisits.map(v => {
             const date = new Date(v.scheduledStart).toLocaleDateString('es-CO');
             const time = new Date(v.scheduledStart).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
             const duration = v.actualStart && v.actualEnd
@@ -110,15 +110,18 @@ export default function Dashboard() {
             ].join(',');
         });
 
-        const csvContent = headers.concat(rows).join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `reporte_visitas_${dateRange.start}_al_${dateRange.end}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            const csvContent = headers.concat(rows).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `reporte_visitas_${dateRange.start}_al_${dateRange.end}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error(friendlyError(error));
+        }
     };
 
     const metricCards = [
@@ -285,7 +288,9 @@ export default function Dashboard() {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 lg:col-span-2 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                         <h3 className="font-bold text-base text-gray-800">Registro Detallado</h3>
-                        <span className="text-xs text-gray-400">{completeList.length} visita{completeList.length !== 1 ? 's' : ''}</span>
+                        <span className="text-xs text-gray-400">
+                            {stats.totalVisits} visita{stats.totalVisits !== 1 ? 's' : ''}
+                        </span>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -300,7 +305,7 @@ export default function Dashboard() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {completeList.map(visit => {
+                                {visitList.map(visit => {
                                     const typeCfg = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
                                     return (
                                         <tr
@@ -337,7 +342,7 @@ export default function Dashboard() {
                                         </tr>
                                     );
                                 })}
-                                {completeList.length === 0 && (
+                                {visitList.length === 0 && (
                                     <tr>
                                         <td colSpan="6" className="px-4 py-12 text-center text-gray-400 text-sm">
                                             No hay registros para el período seleccionado
@@ -347,6 +352,28 @@ export default function Dashboard() {
                             </tbody>
                         </table>
                     </div>
+                    {/* A3: Controles de paginación */}
+                    {totalPages > 1 && (
+                        <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+                            <span className="text-xs text-gray-400">Página {tablePage} de {totalPages}</span>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setTablePage(p => Math.max(1, p - 1))}
+                                    disabled={tablePage === 1}
+                                    className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                >
+                                    <ChevronLeft className="w-4 h-4 text-gray-600" />
+                                </button>
+                                <button
+                                    onClick={() => setTablePage(p => Math.min(totalPages, p + 1))}
+                                    disabled={tablePage === totalPages}
+                                    className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                >
+                                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

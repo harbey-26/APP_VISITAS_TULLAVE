@@ -83,7 +83,8 @@ model Visit {
   outcome          String?   // Resultado: "Cliente interesado", etc.
   clientName       String?
   clientPhone      String?
-  
+  deletedAt        DateTime?  // A2: Soft delete — null = activa, fecha = eliminada
+
   user     User     @relation(fields: [userId], references: [id])
   property Property @relation(fields: [propertyId], references: [id])
   images   VisitImage[]

@@ -40,7 +40,25 @@ export async function apiFetch(path, { method = 'GET', body, token } = {}) {
     const options = { method, headers };
     if (body !== undefined) options.body = JSON.stringify(body);
 
-    const res = await fetch(`${API_URL}${path}`, options);
+    // M7: Cancelar peticiones que tarden más de 30 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    options.signal = controller.signal;
+
+    let res;
+    try {
+        res = await fetch(`${API_URL}${path}`, options);
+    } catch (err) {
+        if (err.name === 'AbortError') throw new Error('La petición tardó demasiado. Verifica tu conexión.');
+        throw err;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+
+    // A7: Notificar globalmente cuando el token es rechazado para forzar logout
+    if (res.status === 401) {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
 
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));

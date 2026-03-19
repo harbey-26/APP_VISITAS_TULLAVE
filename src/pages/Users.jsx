@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2, X, User as UserIcon, Shield, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, User as UserIcon, Shield, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
 import { friendlyError } from '../utils/api';
 
 export default function Users() {
     const [users, setUsers] = useState([]);
-    const [loading, setLoading] = useState(true); // M1
+    const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        password: '',
-        role: 'AGENT'
-    });
+    const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'AGENT' });
+
+    // M2: Estado para edición
+    const [editingUser, setEditingUser] = useState(null);
+    const [editFormData, setEditFormData] = useState({ name: '', email: '', role: 'AGENT', password: '' });
+
     const { token, user: currentUser } = useAuth();
     const toast = useToast();
 
@@ -63,6 +63,35 @@ export default function Users() {
             }
         } catch (error) {
             toast.error(friendlyError(error)); // M2
+        }
+    };
+
+    const openEdit = (u) => {
+        setEditingUser(u);
+        setEditFormData({ name: u.name, email: u.email, role: u.role, password: '' });
+    };
+
+    const handleEditSubmit = async (e) => {
+        e.preventDefault();
+        const body = { name: editFormData.name, email: editFormData.email, role: editFormData.role };
+        if (editFormData.password) body.password = editFormData.password;
+
+        try {
+            const res = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(body)
+            });
+            if (res.ok) {
+                setEditingUser(null);
+                fetchUsers();
+                toast.success('Usuario actualizado correctamente');
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al actualizar usuario');
+            }
+        } catch (error) {
+            toast.error(friendlyError(error));
         }
     };
 
@@ -134,15 +163,24 @@ export default function Users() {
                             </div>
                         </div>
 
-                        {u.id !== currentUser.id && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                             <button
-                                onClick={() => initiateDelete(u.id)}
-                                className="text-gray-300 hover:text-red-500 transition p-2 opacity-0 group-hover:opacity-100"
-                                title="Eliminar usuario"
+                                onClick={() => openEdit(u)}
+                                className="text-gray-300 hover:text-brand-600 transition p-2"
+                                title="Editar usuario"
                             >
-                                <Trash2 className="w-5 h-5" />
+                                <Pencil className="w-4 h-4" />
                             </button>
-                        )}
+                            {u.id !== currentUser.id && (
+                                <button
+                                    onClick={() => initiateDelete(u.id)}
+                                    className="text-gray-300 hover:text-red-500 transition p-2"
+                                    title="Eliminar usuario"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ))}
 
@@ -216,6 +254,72 @@ export default function Users() {
                                 className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4 shadow-md transition"
                             >
                                 Crear Usuario
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit User Modal */}
+            {editingUser && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold">Editar Usuario</h3>
+                            <button onClick={() => setEditingUser(null)} className="text-gray-500 hover:text-gray-700">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleEditSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editFormData.name}
+                                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+                                <input
+                                    type="email"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editFormData.email}
+                                    onChange={e => setEditFormData({ ...editFormData, email: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                                <select
+                                    className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editFormData.role}
+                                    onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}
+                                >
+                                    <option value="AGENT">Agente Inmobiliario</option>
+                                    <option value="ADMIN">Administrador</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Nueva Contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editFormData.password}
+                                    onChange={e => setEditFormData({ ...editFormData, password: e.target.value })}
+                                    minLength={6}
+                                    placeholder="Mínimo 6 caracteres"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4 shadow-md transition"
+                            >
+                                Guardar Cambios
                             </button>
                         </form>
                     </div>

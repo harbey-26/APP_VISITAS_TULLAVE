@@ -7,6 +7,10 @@ const locationSchema = z.object({
     lng: z.number()
 });
 
+// M1: Rate limit en memoria — máx 1 ping de ubicación cada 10 s por usuario
+const locationLastSeen = new Map();
+const LOCATION_MIN_INTERVAL_MS = 10_000;
+
 const createUserSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
@@ -56,6 +60,13 @@ export const createUser = async (req, res) => {
 
 export const updateLocation = async (req, res) => {
     try {
+        const nowMs = Date.now();
+        const lastMs = locationLastSeen.get(req.user.id);
+        if (lastMs && nowMs - lastMs < LOCATION_MIN_INTERVAL_MS) {
+            return res.status(429).json({ error: 'Actualización de ubicación demasiado frecuente' });
+        }
+        locationLastSeen.set(req.user.id, nowMs);
+
         const { lat, lng } = locationSchema.parse(req.body);
         const now = new Date();
         await prisma.user.update({
@@ -124,6 +135,39 @@ export const saveFcmToken = async (req, res) => {
             data: { fcmToken: token }
         });
         res.json({ ok: true });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+const updateUserSchema = z.object({
+    name: z.string().min(2).optional(),
+    email: z.string().email().optional(),
+    role: z.enum(['AGENT', 'ADMIN']).optional(),
+    password: z.string().min(6).optional()
+});
+
+export const updateUser = async (req, res) => {
+    let userId;
+    try { userId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de usuario inválido' });
+    }
+
+    try {
+        const data = updateUserSchema.parse(req.body);
+        const updateData = { ...data };
+        if (data.password) {
+            updateData.password = await hashPassword(data.password);
+        } else {
+            delete updateData.password;
+        }
+
+        const user = await prisma.user.update({
+            where: { id: userId },
+            data: updateData,
+            select: { id: true, email: true, name: true, role: true }
+        });
+        res.json(user);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

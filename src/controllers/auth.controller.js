@@ -32,8 +32,7 @@ function clearAttempts(ip) {
 const registerSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
-    name: z.string().min(2),
-    role: z.enum(['AGENT', 'ADMIN']).optional()
+    name: z.string().min(2)
 });
 
 const loginSchema = z.object({
@@ -47,13 +46,14 @@ export const register = async (req, res) => {
 
         const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
         if (existingUser) {
-            return res.status(400).json({ error: 'User already exists' });
+            return res.status(400).json({ error: 'No se pudo completar el registro' });
         }
 
         const hashedPassword = await hashPassword(data.password);
         const user = await prisma.user.create({
             data: {
                 ...data,
+                role: 'AGENT',
                 password: hashedPassword
             }
         });
@@ -62,6 +62,18 @@ export const register = async (req, res) => {
         res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
     } catch (error) {
         res.status(400).json({ error: error.message });
+    }
+};
+
+export const refresh = async (req, res) => {
+    try {
+        // req.user ya fue validado por el middleware authenticate
+        const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (!user) return res.status(401).json({ error: 'No se pudo renovar la sesión' });
+        const token = generateToken(user);
+        res.json({ token });
+    } catch (error) {
+        res.status(401).json({ error: 'No se pudo renovar la sesión' });
     }
 };
 
