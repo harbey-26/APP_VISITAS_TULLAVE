@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, MapPin, X, Building } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
+import { MAP_STYLE } from '../utils/mapStyles';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
@@ -269,6 +270,7 @@ export default function Properties() {
                                         {isLoaded ? (
                                             <GoogleMap
                                                 mapContainerStyle={{ height: '100%', width: '100%' }}
+                                                options={{ styles: MAP_STYLE, disableDefaultUI: true, zoomControl: true }}
                                                 center={
                                                     formData.lat && formData.lng
                                                         ? { lat: parseFloat(formData.lat), lng: parseFloat(formData.lng) }

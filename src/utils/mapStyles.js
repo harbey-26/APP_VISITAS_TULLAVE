@@ -1,0 +1,27 @@
+// Estilo minimalista en escala de grises para Google Maps
+// Elimina colores turísticos y puntos de interés que distraen
+export const MAP_STYLE = [
+    { elementType: 'geometry',            stylers: [{ color: '#f0f0f0' }] },
+    { elementType: 'labels.text.fill',    stylers: [{ color: '#616161' }] },
+    { elementType: 'labels.text.stroke',  stylers: [{ color: '#f5f5f5' }] },
+    { featureType: 'road',
+      elementType: 'geometry',            stylers: [{ color: '#ffffff' }] },
+    { featureType: 'road',
+      elementType: 'geometry.stroke',     stylers: [{ color: '#e0e0e0' }] },
+    { featureType: 'road.arterial',
+      elementType: 'labels.text.fill',    stylers: [{ color: '#888888' }] },
+    { featureType: 'road.highway',
+      elementType: 'geometry',            stylers: [{ color: '#dadada' }] },
+    { featureType: 'road.highway',
+      elementType: 'labels.text.fill',    stylers: [{ color: '#616161' }] },
+    { featureType: 'water',
+      elementType: 'geometry',            stylers: [{ color: '#c8d8e8' }] },
+    { featureType: 'water',
+      elementType: 'labels.text.fill',    stylers: [{ color: '#9e9e9e' }] },
+    { featureType: 'poi',                 stylers: [{ visibility: 'off' }] },
+    { featureType: 'transit',             stylers: [{ visibility: 'off' }] },
+    { featureType: 'administrative',
+      elementType: 'geometry.stroke',     stylers: [{ color: '#c9c9c9' }] },
+    { featureType: 'landscape',
+      elementType: 'geometry',            stylers: [{ color: '#f5f5f5' }] },
+];

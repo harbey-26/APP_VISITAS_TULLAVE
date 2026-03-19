@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
+import { MAP_STYLE } from '../utils/mapStyles';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
@@ -517,6 +518,7 @@ export default function Tracking() {
                             zoom={selectedAgent ? 15 : 12}
                             onLoad={map => { mapRef.current = map; }}
                             onUnmount={() => { mapRef.current = null; }}
+                            options={{ styles: MAP_STYLE, disableDefaultUI: false, zoomControl: true }}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2" style={{ minHeight: '480px' }}>

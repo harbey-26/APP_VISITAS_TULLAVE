@@ -5,6 +5,7 @@ import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, 
 import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
+import { MAP_STYLE } from '../utils/mapStyles';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -395,6 +396,7 @@ function VisitExecutionContent() {
                                 mapContainerStyle={{ height: '100%', width: '100%' }}
                                 center={currentPos}
                                 zoom={15}
+                                options={{ styles: MAP_STYLE, disableDefaultUI: true, zoomControl: true }}
                             >
                                 {/* Marker: propiedad geocodificada */}
                                 {visit.property?.lat && visit.property?.lng && (
