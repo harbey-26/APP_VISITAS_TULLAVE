@@ -397,7 +397,10 @@ export default function Agenda() {
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.bg} ${statusConfig.text}`}>
+                                                            <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.bg} ${statusConfig.text}`}>
+                                                                {statusConfig.pulse && (
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                                                                )}
                                                                 {statusConfig.label}
                                                             </span>
                                                             {isPastPending && (
@@ -417,12 +420,20 @@ export default function Agenda() {
                                                         </div>
                                                     </div>
 
-                                                    {/* Row 2: Dirección — protagonista visual */}
+                                                    {/* Row 2: Dirección + thumbnail */}
                                                     <div className="flex items-start gap-2 mb-2.5">
                                                         <Home className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
-                                                        <p className="font-bold text-gray-900 text-base leading-snug">
+                                                        <p className="font-bold text-gray-900 text-base leading-snug flex-1">
                                                             {visit.property?.address || 'Dirección desconocida'}
                                                         </p>
+                                                        {visit.images?.[0]?.url && (
+                                                            <img
+                                                                src={visit.images[0].url}
+                                                                alt="Foto de visita"
+                                                                className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-100 shadow-sm"
+                                                                onClick={e => e.stopPropagation()}
+                                                            />
+                                                        )}
                                                     </div>
 
                                                     {/* Row 3: Cliente + Agente + Duración */}

@@ -50,8 +50,8 @@ export const VISIT_TYPE_CONFIG = {
 };
 
 export const STATUS_CONFIG = {
-    PENDING:     { label: 'Pendiente',    bg: 'bg-yellow-100', text: 'text-yellow-800' },
-    IN_PROGRESS: { label: 'En Curso',     bg: 'bg-blue-100',   text: 'text-blue-800' },
-    COMPLETED:   { label: 'Completada',   bg: 'bg-green-100',  text: 'text-green-800' },
-    MISSED:      { label: 'No Realizada', bg: 'bg-red-100',    text: 'text-red-800' },
+    PENDING:     { label: 'Pendiente',    bg: 'bg-yellow-100', text: 'text-yellow-800', pulse: false },
+    IN_PROGRESS: { label: 'En Curso',     bg: 'bg-blue-100',   text: 'text-blue-800',   pulse: true  },
+    COMPLETED:   { label: 'Completada',   bg: 'bg-green-100',  text: 'text-green-800',  pulse: false },
+    MISSED:      { label: 'No Realizada', bg: 'bg-red-100',    text: 'text-red-800',    pulse: false },
 };

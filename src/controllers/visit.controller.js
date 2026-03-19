@@ -80,7 +80,8 @@ export const getVisits = async (req, res) => {
 
         const include = {
             property: true,
-            user: { select: { id: true, name: true } }
+            user: { select: { id: true, name: true } },
+            images: { take: 1, orderBy: { id: 'asc' }, select: { url: true } }
         };
         const orderBy = { scheduledStart: 'asc' };
 

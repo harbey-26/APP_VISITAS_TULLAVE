@@ -70,7 +70,8 @@ export default function Dashboard() {
     const getStatusBadge = (status) => {
         const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
         return (
-            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
+                {cfg.pulse && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />}
                 {cfg.label}
             </span>
         );
