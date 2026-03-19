@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
@@ -129,6 +129,120 @@ export default function Dashboard() {
             document.body.removeChild(link);
         } catch (error) {
             console.error(friendlyError(error));
+        }
+    };
+
+    const handleExportPDF = async () => {
+        try {
+            const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end, page: 1, limit: EXPORT_LIMIT });
+            if (outcomeFilter) params.append('outcome', outcomeFilter);
+            const res = await fetch(`${API_URL}/api/visits?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const allVisits = Array.isArray(data) ? data : (data.visits ?? []);
+            if (!allVisits.length) { toast.info('No hay visitas en el período seleccionado.'); return; }
+            if (allVisits.length >= EXPORT_LIMIT) {
+                toast.info(`Export limitado a ${EXPORT_LIMIT} registros. Ajusta el rango de fechas para ver todo.`);
+            }
+
+            const { jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
+
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+            // ── Cabecera ──────────────────────────────────────────────
+            doc.setFillColor(37, 99, 235); // brand-600
+            doc.rect(0, 0, 297, 22, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('TuLlave Inmobiliaria — Reporte de Visitas', 14, 10);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const rangeLabel = dateRange.start === dateRange.end
+                ? dateRange.start
+                : `${dateRange.start} al ${dateRange.end}`;
+            doc.text(`Período: ${rangeLabel}   ·   Generado: ${new Date().toLocaleDateString('es-CO')}`, 14, 17);
+
+            // ── Tarjetas de métricas ───────────────────────────────────
+            doc.setTextColor(30, 30, 30);
+            const cards = [
+                { label: 'Total Visitas',    value: String(stats.totalVisits) },
+                { label: 'Completadas',      value: String(stats.completedVisits) },
+                { label: 'Duración Prom.',   value: `${stats.averageDuration} min` },
+                { label: 'Conversión',       value: `${stats.conversionRate}%` },
+            ];
+            const cardW = 60, cardH = 16, cardY = 26, gap = 4;
+            cards.forEach((c, i) => {
+                const x = 14 + i * (cardW + gap);
+                doc.setFillColor(241, 245, 249);
+                doc.roundedRect(x, cardY, cardW, cardH, 2, 2, 'F');
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(c.label.toUpperCase(), x + 3, cardY + 5);
+                doc.setFontSize(13);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 30, 30);
+                doc.text(c.value, x + 3, cardY + 13);
+            });
+
+            // ── Tabla de visitas ───────────────────────────────────────
+            const translateStatus = (s) => STATUS_CONFIG[s]?.label ?? s;
+            const rows = allVisits.map(v => [
+                v.id,
+                v.property?.address || '',
+                v.clientName || '',
+                v.user?.name || '',
+                translateType(v.type),
+                translateStatus(v.status),
+                new Date(v.scheduledStart).toLocaleDateString('es-CO'),
+                new Date(v.scheduledStart).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+                v.actualStart && v.actualEnd
+                    ? Math.round((new Date(v.actualEnd) - new Date(v.actualStart)) / 60000)
+                    : '',
+                v.outcome || '',
+            ]);
+
+            autoTable(doc, {
+                startY: cardY + cardH + 6,
+                head: [['#', 'Inmueble', 'Cliente', 'Agente', 'Tipo', 'Estado', 'Fecha', 'Hora', 'Dur. (min)', 'Resultado']],
+                body: rows,
+                styles: { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
+                headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { cellWidth: 10 },
+                    1: { cellWidth: 52 },
+                    2: { cellWidth: 30 },
+                    3: { cellWidth: 28 },
+                    4: { cellWidth: 28 },
+                    5: { cellWidth: 22 },
+                    6: { cellWidth: 20 },
+                    7: { cellWidth: 14 },
+                    8: { cellWidth: 18 },
+                    9: { cellWidth: 40 },
+                },
+                didDrawPage: (hookData) => {
+                    // Pie de página
+                    const pageCount = doc.internal.getNumberOfPages();
+                    doc.setFontSize(7);
+                    doc.setTextColor(150);
+                    doc.text(
+                        `Página ${hookData.pageNumber} de ${pageCount}`,
+                        doc.internal.pageSize.width - 14,
+                        doc.internal.pageSize.height - 6,
+                        { align: 'right' }
+                    );
+                }
+            });
+
+            doc.save(`reporte_visitas_${dateRange.start}_al_${dateRange.end}.pdf`);
+        } catch (error) {
+            toast.error('No se pudo generar el PDF. Intenta de nuevo.');
+            console.error(error);
         }
     };
 
@@ -260,14 +374,24 @@ export default function Dashboard() {
                             <option value="Cancelada">Cancelada</option>
                         </select>
                     </div>
-                    <button
-                        onClick={handleExport}
-                        title="Exportar CSV"
-                        className="flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-800 px-3 py-1.5 hover:bg-brand-50 rounded-lg transition font-medium self-end md:self-auto"
-                    >
-                        <Download className="w-4 h-4" />
-                        <span className="hidden md:inline">Exportar</span>
-                    </button>
+                    <div className="flex items-center gap-2 self-end md:self-auto">
+                        <button
+                            onClick={handleExport}
+                            title="Exportar CSV"
+                            className="flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-800 px-3 py-1.5 hover:bg-brand-50 rounded-lg transition font-medium border border-brand-200 hover:border-brand-400"
+                        >
+                            <Download className="w-4 h-4" />
+                            <span className="hidden md:inline">CSV</span>
+                        </button>
+                        <button
+                            onClick={handleExportPDF}
+                            title="Exportar PDF"
+                            className="flex items-center gap-1.5 text-sm text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg transition font-medium shadow-sm"
+                        >
+                            <FileText className="w-4 h-4" />
+                            <span className="hidden md:inline">PDF</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
