@@ -25,6 +25,19 @@ export default function Layout() {
     const toast = useToast();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // Detección de conectividad
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    useEffect(() => {
+        const goOnline = () => setIsOnline(true);
+        const goOffline = () => setIsOnline(false);
+        window.addEventListener('online', goOnline);
+        window.addEventListener('offline', goOffline);
+        return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+    }, []);
+
+    // Indicador GPS
+    const [gpsLastSent, setGpsLastSent] = useState(null);
+
     // M4: Refs para filtro de distancia GPS
     const lastSentPosRef = useRef(null);
     const lastForceSendRef = useRef(0);
@@ -201,8 +214,8 @@ export default function Layout() {
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         };
 
-        const GPS_MIN_DISTANCE_M = 10;       // M4: no enviar si movimiento < 10 m
-        const GPS_FORCE_INTERVAL_MS = 5 * 60 * 1000; // M4: forzar envío cada 5 min aunque no haya movimiento
+        const GPS_MIN_DISTANCE_M = 10;       // no enviar si movimiento < 10 m
+        const GPS_FORCE_INTERVAL_MS = 2 * 60 * 1000; // forzar envío cada 2 min aunque no haya movimiento
 
         const sendCoords = ({ lat, lng }) => {
             const now = Date.now();
@@ -223,7 +236,7 @@ export default function Layout() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ lat, lng })
             })
-            .then(res => { if (res.status === 401) logout(); })
+            .then(res => { if (res.status === 401) logout(); else setGpsLastSent(new Date()); })
             .catch(() => {});
         };
 
@@ -232,7 +245,12 @@ export default function Layout() {
         if (Capacitor.isNativePlatform()) {
             // APK: Foreground Service nativo — continúa con pantalla apagada
             startBackgroundTracking(sendCoords).then(id => { watchId = id; });
-            return () => { if (watchId) stopBackgroundTracking(watchId); };
+            // Heartbeat cada 2 min para agentes quietos (distanceFilter no dispara si no se mueven)
+            const heartbeat = setInterval(
+                () => getCurrentPosition().then(sendCoords).catch(() => {}),
+                2 * 60 * 1000
+            );
+            return () => { if (watchId) stopBackgroundTracking(watchId); clearInterval(heartbeat); };
         }
 
         // Web: setInterval cada 30 s + ping al volver al foco
@@ -305,7 +323,7 @@ export default function Layout() {
                     </button>
                     <img src="/logo.png" alt="Logo" className="h-7 w-auto" />
                 </div>
-                <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ${isAdmin ? 'bg-purple-600' : 'bg-brand-600'}`}>
                     {user?.name?.charAt(0) || 'U'}
                 </div>
             </div>
@@ -366,12 +384,18 @@ export default function Layout() {
                 {/* Perfil + Logout */}
                 <div className="flex-shrink-0 p-4">
                     <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-base flex-shrink-0 shadow">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-base flex-shrink-0 shadow ${isAdmin ? 'bg-purple-600' : 'bg-brand-600'}`}>
                             {user?.name?.charAt(0) || 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
                             <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${gpsLastSent && (Date.now() - gpsLastSent.getTime()) < 120000 ? 'bg-green-400 animate-pulse' : 'bg-slate-600'}`} />
+                                <span className="text-[10px] text-slate-500">
+                                    {gpsLastSent && (Date.now() - gpsLastSent.getTime()) < 120000 ? 'GPS activo' : 'GPS inactivo'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <button
@@ -391,6 +415,13 @@ export default function Layout() {
                     className="lg:hidden flex-shrink-0"
                     style={{ height: 'calc(max(env(safe-area-inset-top), 1.75rem) + 3.5rem)' }}
                 />
+                {/* Banner de sin conexión */}
+                {!isOnline && (
+                    <div className="flex-shrink-0 bg-amber-500 text-white text-xs font-semibold text-center py-2 px-4 flex items-center justify-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-white/80 inline-block" />
+                        Sin conexión — los cambios no se guardarán hasta recuperar internet
+                    </div>
+                )}
                 <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-40 lg:pb-8">
                     <div className="max-w-5xl mx-auto w-full">
                         <Outlet />

@@ -23,13 +23,20 @@ class ErrorBoundary extends React.Component {
     render() {
         if (this.state.hasError) {
             return (
-                <div className="p-8 bg-red-50 text-red-800 rounded-xl">
-                    <h2 className="text-xl font-bold mb-4">Algo salió mal.</h2>
-                    <pre className="text-xs bg-white p-4 rounded border overflow-auto">
-                        {this.state.error && this.state.error.toString()}
-                        <br />
-                        {this.state.error && this.state.error.stack}
-                    </pre>
+                <div className="flex flex-col items-center justify-center h-64 gap-4 p-8 text-center">
+                    <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">⚠️</span>
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-800 mb-1">Ocurrió un error inesperado</h2>
+                        <p className="text-sm text-gray-500">Regresa a la agenda e intenta de nuevo. Si el problema persiste, contacta al administrador.</p>
+                    </div>
+                    <button
+                        onClick={() => window.location.href = '/agenda'}
+                        className="text-sm text-brand-600 font-medium hover:underline flex items-center gap-1"
+                    >
+                        ← Volver a Agenda
+                    </button>
                 </div>
             );
         }
@@ -81,6 +88,10 @@ function VisitExecutionContent() {
                     if (v) {
                         setVisit(v);
                         if (v.notes) setNotes(v.notes);
+                        // Inicializar elapsed desde el servidor para que sea correcto al cargar o volver de otra pestaña
+                        if (v.status === 'IN_PROGRESS' && v.actualStart) {
+                            setElapsed(Math.floor((Date.now() - new Date(v.actualStart).getTime()) / 1000));
+                        }
                         if (v.property?.lat && v.property?.lng) {
                             setCurrentPos({ lat: v.property.lat, lng: v.property.lng });
                         } else {
@@ -101,14 +112,17 @@ function VisitExecutionContent() {
         fetchImages();
     }, [id, token]);
 
-    // Timer
+    // Timer — calcula siempre desde actualStart del servidor
     useEffect(() => {
         let interval;
         if (visit?.status === 'IN_PROGRESS' && visit.actualStart) {
             const startTime = new Date(visit.actualStart).getTime();
-            interval = setInterval(() => {
-                setElapsed(Math.floor((Date.now() - startTime) / 1000));
-            }, 1000);
+            const tick = () => setElapsed(Math.floor((Date.now() - startTime) / 1000));
+            interval = setInterval(tick, 1000);
+            // Recalcular inmediatamente al volver de otra pestaña (los intervalos se pausan en background)
+            const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+            document.addEventListener('visibilitychange', onVisible);
+            return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
         }
         return () => clearInterval(interval);
     }, [visit]);

@@ -153,7 +153,7 @@ export default function Dashboard() {
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
             // ── Cabecera ──────────────────────────────────────────────
-            doc.setFillColor(37, 99, 235); // brand-600
+            doc.setFillColor(227, 28, 37); // brand-600 #e31c25
             doc.rect(0, 0, 297, 22, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(14);
@@ -211,7 +211,7 @@ export default function Dashboard() {
                 head: [['#', 'Inmueble', 'Cliente', 'Agente', 'Tipo', 'Estado', 'Fecha', 'Hora', 'Dur. (min)', 'Resultado']],
                 body: rows,
                 styles: { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' },
-                headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+                headStyles: { fillColor: [227, 28, 37], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
                 alternateRowStyles: { fillColor: [248, 250, 252] },
                 columnStyles: {
                     0: { cellWidth: 10 },

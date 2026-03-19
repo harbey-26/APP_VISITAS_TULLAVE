@@ -124,7 +124,7 @@ export default function Users() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-800">Gestión de Usuarios</h2>
+                    <h2 className="text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
                     <p className="text-sm text-gray-500">{users.length} usuario{users.length !== 1 ? 's' : ''} registrado{users.length !== 1 ? 's' : ''}</p>
                 </div>
                 <button
@@ -234,6 +234,7 @@ export default function Users() {
                                     onChange={e => setFormData({ ...formData, password: e.target.value })}
                                     required
                                     minLength={6}
+                                    placeholder="Mínimo 6 caracteres"
                                 />
                             </div>
 

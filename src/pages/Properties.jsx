@@ -4,12 +4,16 @@ import { API_URL } from '../config';
 import { Plus, Pencil, Trash2, MapPin, X, Building } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { friendlyError } from '../utils/api';
+import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
+
+const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
 export default function Properties() {
     const [properties, setProperties] = useState([]);
     const [loading, setLoading] = useState(true); // M1
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+    const [showMap, setShowMap] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -26,6 +30,11 @@ export default function Properties() {
 
     const { token } = useAuth();
     const toast = useToast();
+
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    });
 
     const fetchProperties = async () => {
         setLoading(true); // M1
@@ -50,6 +59,7 @@ export default function Properties() {
     const handleOpenCreate = () => {
         setFormData({ id: null, address: '', client: '', lat: '', lng: '' });
         setIsEditing(false);
+        setShowMap(false);
         setShowModal(true);
     };
 
@@ -62,6 +72,7 @@ export default function Properties() {
             lng: prop.lng || ''
         });
         setIsEditing(true);
+        setShowMap(false);
         setShowModal(true);
     };
 
@@ -178,7 +189,7 @@ export default function Properties() {
                                                 <span>{prop.lat.toFixed(5)}, {prop.lng.toFixed(5)}</span>
                                             </div>
                                         ) : (
-                                            <span className="text-red-400">Pendiente</span>
+                                            <span className="text-gray-400">Sin ubicación</span>
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
@@ -240,6 +251,67 @@ export default function Properties() {
                                     El sistema intentará geolocalizarla automáticamente.
                                 </p>
                             </div>
+
+                            {/* Selector de ubicación en mapa */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-sm font-medium text-gray-700">Ubicación en mapa</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMap(v => !v)}
+                                        className="text-xs text-brand-600 font-medium hover:underline"
+                                    >
+                                        {showMap ? 'Ocultar mapa' : 'Seleccionar en mapa'}
+                                    </button>
+                                </div>
+                                {showMap && (
+                                    <div className="rounded-xl overflow-hidden border border-gray-200 mb-1.5" style={{ height: '200px' }}>
+                                        {isLoaded ? (
+                                            <GoogleMap
+                                                mapContainerStyle={{ height: '100%', width: '100%' }}
+                                                center={
+                                                    formData.lat && formData.lng
+                                                        ? { lat: parseFloat(formData.lat), lng: parseFloat(formData.lng) }
+                                                        : BOGOTA
+                                                }
+                                                zoom={formData.lat && formData.lng ? 15 : 12}
+                                                onClick={e => setFormData(prev => ({
+                                                    ...prev,
+                                                    lat: e.latLng.lat().toFixed(6),
+                                                    lng: e.latLng.lng().toFixed(6)
+                                                }))}
+                                            >
+                                                {formData.lat && formData.lng && (
+                                                    <Marker
+                                                        position={{ lat: parseFloat(formData.lat), lng: parseFloat(formData.lng) }}
+                                                        draggable
+                                                        onDragEnd={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            lat: e.latLng.lat().toFixed(6),
+                                                            lng: e.latLng.lng().toFixed(6)
+                                                        }))}
+                                                    />
+                                                )}
+                                            </GoogleMap>
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-gray-400 text-sm gap-2">
+                                                <div className="w-4 h-4 border-2 border-gray-300 border-t-brand-600 rounded-full animate-spin" />
+                                                Cargando mapa...
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {formData.lat && formData.lng ? (
+                                    <p className="text-xs text-green-600 flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" />
+                                        {parseFloat(formData.lat).toFixed(5)}, {parseFloat(formData.lng).toFixed(5)}
+                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, lat: '', lng: '' }))} className="ml-1 text-gray-400 hover:text-red-500 transition">✕</button>
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-gray-400">Sin coordenadas — el servidor intentará geocodificar la dirección.</p>
+                                )}
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente / Propietario</label>
                                 <input

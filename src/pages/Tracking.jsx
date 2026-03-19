@@ -27,7 +27,7 @@ function formatDuration(dateStr) {
 
 function isActive(lastSeenAt) {
     if (!lastSeenAt) return false;
-    return getMinutesSince(lastSeenAt) <= 2;
+    return getMinutesSince(lastSeenAt) <= 3;
 }
 
 // Verifica si estamos en horario laboral (8am–5pm)
@@ -221,7 +221,7 @@ export default function Tracking() {
                         <Radio className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-gray-900">Rastreo de Agentes</h1>
+                        <h1 className="text-2xl font-bold text-gray-900">Rastreo de Agentes</h1>
                         <p className="text-xs text-gray-400">
                             {lastUpdate
                                 ? `Última actualización: ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
@@ -384,7 +384,7 @@ export default function Tracking() {
                                 <tr>
                                     <th className="text-left font-semibold text-gray-500 py-1.5 pr-3 whitespace-nowrap min-w-[120px]">Agente</th>
                                     {BUSINESS_HOURS.map(h => (
-                                        <th key={h} className={`text-center font-medium py-1.5 px-1 whitespace-nowrap ${new Date().getHours() === h ? 'text-brand-600' : 'text-gray-400'}`}>
+                                        <th key={h} className={`text-center font-medium py-1.5 px-1 whitespace-nowrap rounded-t ${new Date().getHours() === h ? 'text-brand-600 bg-brand-50' : 'text-gray-400'}`}>
                                             {formatHour(h)}
                                         </th>
                                     ))}
@@ -409,13 +409,13 @@ export default function Tracking() {
                                                 const isPast = h < currentHour && inBusinessHours || h < currentHour;
                                                 const isCurrent = h === currentHour;
                                                 return (
-                                                    <td key={h} className="text-center py-2 px-1">
+                                                    <td key={h} className={`text-center py-2 px-1 ${isCurrent ? 'bg-brand-50' : ''}`}>
                                                         {checked ? (
                                                             <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
                                                         ) : isPast ? (
                                                             <XCircle className="w-4 h-4 text-red-400 mx-auto" />
                                                         ) : (
-                                                            <span className={`w-4 h-4 rounded-full inline-block border ${isCurrent ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-gray-50'}`} />
+                                                            <span className={`w-4 h-4 rounded-full inline-block border ${isCurrent ? 'border-brand-400 bg-brand-100' : 'border-gray-200 bg-gray-50'}`} />
                                                         )}
                                                     </td>
                                                 );

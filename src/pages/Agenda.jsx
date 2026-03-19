@@ -259,7 +259,7 @@ export default function Agenda() {
             <div className="space-y-3">
                 <div className="flex justify-between items-start">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Visitas Programadas</h2>
+                        <h2 className="text-2xl font-bold text-gray-900">Visitas Programadas</h2>
                         <span className="text-sm text-gray-500 capitalize">
                             {dateRange.start === dateRange.end
                                 ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('es-CO', {
@@ -397,7 +397,7 @@ export default function Agenda() {
                                                             {isPastPending && (
                                                                 <button
                                                                     onClick={(e) => handleMarkMissed(e, visit.id)}
-                                                                    className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                                    className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
                                                                     title="Marcar como no atendida"
                                                                 >
                                                                     <UserX className="w-3.5 h-3.5" />
@@ -406,7 +406,7 @@ export default function Agenda() {
                                                             {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
                                                                 <button
                                                                     onClick={(e) => initiateReassign(e, visit.id)}
-                                                                    className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                                    className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
                                                                     title="Reasignar agente"
                                                                 >
                                                                     <UserCheck className="w-3.5 h-3.5" />
@@ -414,7 +414,7 @@ export default function Agenda() {
                                                             )}
                                                             <button
                                                                 onClick={(e) => initiateDelete(e, visit.id)}
-                                                                className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                                className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100"
                                                             >
                                                                 <Trash2 className="w-3.5 h-3.5" />
                                                             </button>
@@ -620,6 +620,9 @@ export default function Agenda() {
                                                 type="number"
                                                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                                 value={formData.duration}
+                                                min={1}
+                                                max={480}
+                                                required
                                                 onChange={e => setFormData({ ...formData, duration: e.target.value })}
                                             />
                                         </div>

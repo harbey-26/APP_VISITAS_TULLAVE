@@ -10,10 +10,19 @@ import Properties from './pages/Properties';
 import Tracking from './pages/Tracking';
 import Layout from './components/layout/Layout';
 
+const LoadingScreen = () => (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
+            <p className="text-sm text-gray-400">Cargando...</p>
+        </div>
+    </div>
+);
+
 const ProtectedRoute = ({ children }) => {
     const { token, loading } = useAuth();
 
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <LoadingScreen />;
     if (!token) return <Navigate to="/login" />;
 
     return children;
@@ -21,7 +30,7 @@ const ProtectedRoute = ({ children }) => {
 
 const AdminRoute = ({ children }) => {
     const { user, loading } = useAuth();
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <LoadingScreen />;
     return user && user.role === 'ADMIN' ? children : <Navigate to="/" replace />;
 };
 
@@ -62,6 +71,7 @@ function App() {
                             </AdminRoute>
                         } />
                     </Route>
+                    <Route path="*" element={<Navigate to="/agenda" replace />} />
                 </Routes>
             </Router>
             </ToastProvider>
