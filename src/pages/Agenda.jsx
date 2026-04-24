@@ -12,10 +12,11 @@ import { MAP_STYLE } from '../utils/mapStyles';
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 const MAPS_LIBRARIES = [];
 
-// Mapa de agenda — crea marcadores imperativamente (igual que Tracking.jsx)
+// Mapa de agenda con card overlay (evita el iframe de InfoWindow)
 function AgendaMapView({ visits, onVisitClick }) {
     const mapRef = useRef(null);
     const markersRef = useRef([]);
+    const [selectedVisit, setSelectedVisit] = useState(null);
 
     const { isLoaded } = useJsApiLoader({
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
@@ -27,50 +28,35 @@ function AgendaMapView({ visits, onVisitClick }) {
         ? { lat: visitsWithCoords[0].property.lat, lng: visitsWithCoords[0].property.lng }
         : BOGOTA;
 
-    const handleMapLoad = (map) => {
-        mapRef.current = map;
-        createMarkers(map);
-    };
-
     const createMarkers = (map) => {
-        markersRef.current.forEach(m => { m.marker.setMap(null); m.info.close(); });
+        markersRef.current.forEach(m => m.setMap(null));
         markersRef.current = [];
-
         if (!window.google?.maps) return;
 
         visitsWithCoords.forEach(visit => {
             const typeCfg = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
-            const statusCfg = STATUS_CONFIG[visit.status] || STATUS_CONFIG.PENDING;
             const marker = new window.google.maps.Marker({
                 map,
                 position: { lat: visit.property.lat, lng: visit.property.lng },
                 title: visit.property.address,
                 icon: {
                     path: window.google.maps.SymbolPath.CIRCLE,
-                    scale: 10,
+                    scale: 11,
                     fillColor: typeCfg.barColor || '#e31c25',
                     fillOpacity: 1,
                     strokeColor: '#fff',
-                    strokeWeight: 2,
+                    strokeWeight: 2.5,
                 },
             });
-            const info = new window.google.maps.InfoWindow({
-                content: `<div style="font-size:13px;max-width:220px;line-height:1.6">
-                    <b>${new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b>
-                    &nbsp;<span style="background:${typeCfg.barColor || '#e31c25'};color:#fff;padding:1px 8px;border-radius:20px;font-size:11px">${typeCfg.label}</span>
-                    <div style="margin-top:5px;font-weight:600;color:#111">${visit.property.address}</div>
-                    ${visit.clientName ? `<div style="color:#555;font-size:12px">${visit.clientName}</div>` : ''}
-                    <div style="margin-top:4px"><span style="background:#f1f5f9;padding:1px 8px;border-radius:20px;font-size:11px;color:#334155">${statusCfg.label}</span></div>
-                    <div id="agenda-marker-${visit.id}" style="margin-top:6px;color:#e31c25;font-size:11px;font-weight:600;cursor:pointer">Abrir visita →</div>
-                </div>`
-            });
-            marker.addListener('click', () => info.open({ anchor: marker, map }));
-            info.addListener('domready', () => {
-                const el = document.getElementById(`agenda-marker-${visit.id}`);
-                if (el) el.onclick = () => onVisitClick(visit.id);
-            });
-            markersRef.current.push({ marker, info });
+            marker.addListener('click', () => setSelectedVisit(visit));
+            markersRef.current.push(marker);
         });
+    };
+
+    const handleMapLoad = (map) => {
+        mapRef.current = map;
+        createMarkers(map);
+        map.addListener('click', () => setSelectedVisit(null));
     };
 
     useEffect(() => {
@@ -90,14 +76,52 @@ function AgendaMapView({ visits, onVisitClick }) {
         </div>
     );
 
+    const selTypeCfg = selectedVisit ? (VISIT_TYPE_CONFIG[selectedVisit.type] || VISIT_TYPE_CONFIG.OTHER) : null;
+    const selStatusCfg = selectedVisit ? (STATUS_CONFIG[selectedVisit.status] || STATUS_CONFIG.PENDING) : null;
+
     return (
-        <GoogleMap
-            mapContainerStyle={{ width: '100%', height: '100%' }}
-            center={center}
-            zoom={13}
-            options={{ styles: MAP_STYLE, disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
-            onLoad={handleMapLoad}
-        />
+        <div className="relative w-full h-full">
+            <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={center}
+                zoom={13}
+                options={{ styles: MAP_STYLE, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
+                onLoad={handleMapLoad}
+            />
+            {/* Card overlay — fuera del iframe de Maps, navegación React normal */}
+            {selectedVisit && (
+                <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-10 animate-slide-up">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1.5">
+                                <span className="font-extrabold tabular-nums text-gray-900">
+                                    {new Date(selectedVisit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selTypeCfg.bg} ${selTypeCfg.text}`}>
+                                    {selTypeCfg.label}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selStatusCfg.bg} ${selStatusCfg.text}`}>
+                                    {selStatusCfg.label}
+                                </span>
+                            </div>
+                            <p className="font-bold text-gray-900 leading-snug truncate">{selectedVisit.property.address}</p>
+                            {selectedVisit.clientName && (
+                                <p className="text-sm text-gray-500 mt-0.5">{selectedVisit.clientName}</p>
+                            )}
+                        </div>
+                        <button onClick={() => setSelectedVisit(null)} className="text-gray-400 hover:text-gray-600 shrink-0 p-1">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <button
+                        onClick={() => onVisitClick(selectedVisit.id)}
+                        className="mt-3 w-full bg-brand-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-brand-700 active:scale-95 transition-all"
+                    >
+                        Abrir visita →
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -365,20 +389,20 @@ export default function Agenda() {
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                        <div className="flex bg-gray-200 rounded-xl p-1 gap-1">
                             <button
                                 onClick={() => setViewMode('list')}
-                                className={`p-1.5 rounded-lg transition ${viewMode === 'list' ? 'bg-white shadow text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
-                                title="Vista lista"
+                                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'list' ? 'bg-white shadow text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 <List className="w-4 h-4" />
+                                <span className="hidden sm:inline">Lista</span>
                             </button>
                             <button
                                 onClick={() => setViewMode('map')}
-                                className={`p-1.5 rounded-lg transition ${viewMode === 'map' ? 'bg-white shadow text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
-                                title="Vista mapa"
+                                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'map' ? 'bg-white shadow text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 <MapIcon className="w-4 h-4" />
+                                <span className="hidden sm:inline">Mapa</span>
                             </button>
                         </div>
                         <button
