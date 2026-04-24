@@ -33,11 +33,14 @@ function AgendaMapView({ visits, onVisitClick }) {
         markersRef.current = [];
         if (!window.google?.maps) return;
 
+        const bounds = new window.google.maps.LatLngBounds();
+
         visitsWithCoords.forEach(visit => {
             const typeCfg = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
+            const pos = { lat: visit.property.lat, lng: visit.property.lng };
             const marker = new window.google.maps.Marker({
                 map,
-                position: { lat: visit.property.lat, lng: visit.property.lng },
+                position: pos,
                 title: visit.property.address,
                 icon: {
                     path: window.google.maps.SymbolPath.CIRCLE,
@@ -50,7 +53,16 @@ function AgendaMapView({ visits, onVisitClick }) {
             });
             marker.addListener('click', () => setSelectedVisit(visit));
             markersRef.current.push(marker);
+            bounds.extend(pos);
         });
+
+        if (visitsWithCoords.length === 1) {
+            // Un solo punto: centrar y usar zoom 16 (igual que VisitExecution)
+            map.setCenter(bounds.getCenter());
+            map.setZoom(16);
+        } else if (visitsWithCoords.length > 1) {
+            map.fitBounds(bounds, 60); // padding 60px
+        }
     };
 
     const handleMapLoad = (map) => {
@@ -84,7 +96,7 @@ function AgendaMapView({ visits, onVisitClick }) {
             <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={center}
-                zoom={13}
+                zoom={16}
                 options={{ styles: MAP_STYLE, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
                 onLoad={handleMapLoad}
             />
