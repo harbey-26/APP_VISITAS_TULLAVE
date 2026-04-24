@@ -124,7 +124,8 @@ function startWeeklyReportCron() {
     setInterval(() => {
         const now = new Date();
         const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
-        if (now.getDay() === 1 && now.getHours() === 9 && now.getMinutes() === 0 && week !== lastRanWeek) {
+        // 9am Bogotá = 14:00 UTC (UTC-5, Colombia no tiene horario de verano)
+        if (now.getDay() === 1 && now.getUTCHours() === 14 && now.getMinutes() === 0 && week !== lastRanWeek) {
             lastRanWeek = week;
             generateWeeklyReport().catch(e => console.warn('[Weekly Report]', e.message));
         }

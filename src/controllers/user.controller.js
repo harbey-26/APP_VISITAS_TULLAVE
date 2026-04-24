@@ -89,23 +89,33 @@ export const updateLocation = async (req, res) => {
     }
 };
 
+// Colombia es siempre UTC-5 (sin horario de verano)
+const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+function hourInBogota(date) {
+    return Math.floor(((new Date(date).getTime() - BOGOTA_OFFSET_MS) / (60 * 60 * 1000)) % 24 + 24) % 24;
+}
+
+function todayBoundsBogota() {
+    const nowBogotaMs = Date.now() - BOGOTA_OFFSET_MS;
+    const midnightBogotaMs = nowBogotaMs - (nowBogotaMs % (24 * 60 * 60 * 1000));
+    const start = new Date(midnightBogotaMs + BOGOTA_OFFSET_MS); // convierte de vuelta a UTC
+    return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
 export const getTodayCheckIns = async (req, res) => {
     try {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(todayStart);
-        todayEnd.setDate(todayEnd.getDate() + 1);
+        const { start, end } = todayBoundsBogota();
 
         const logs = await prisma.locationLog.findMany({
-            where: { createdAt: { gte: todayStart, lt: todayEnd } },
+            where: { createdAt: { gte: start, lt: end } },
             select: { userId: true, createdAt: true }
         });
 
-        // Agrupar por usuario: { userId → Set de horas con check-in }
         const byUser = {};
         logs.forEach(({ userId, createdAt }) => {
             if (!byUser[userId]) byUser[userId] = [];
-            const h = new Date(createdAt).getHours();
+            const h = hourInBogota(createdAt);
             if (!byUser[userId].includes(h)) byUser[userId].push(h);
         });
 
