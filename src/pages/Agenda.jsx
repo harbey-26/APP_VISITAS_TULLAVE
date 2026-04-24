@@ -19,8 +19,8 @@ function AgendaMapView({ visits, onVisitClick }) {
     const [selectedVisit, setSelectedVisit] = useState(null);
 
     const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-        libraries: MAPS_LIBRARIES,
     });
 
     const visitsWithCoords = visits.filter(v => v.property?.lat && v.property?.lng);
