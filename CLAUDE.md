@@ -110,8 +110,15 @@ VisitImage — id, visitId, url
 | GET | `/api/users/locations` | JWT+Admin | Listar ubicaciones de agentes |
 | GET/POST | `/api/properties` | JWT | Inmuebles |
 | GET/POST | `/api/visits` | JWT | Visitas |
+| GET | `/api/visits/stats` | JWT+Admin | Estadísticas globales del período |
+| GET | `/api/visits/stats/agents` | JWT+Admin | Estadísticas por agente |
 | PATCH | `/api/visits/:id/start` | JWT | Iniciar visita |
-| PATCH | `/api/visits/:id/end` | JWT | Finalizar visita |
+| PATCH | `/api/visits/:id/finish` | JWT | Finalizar visita |
+| PATCH | `/api/visits/:id/missed` | JWT | Marcar como no atendida |
+| PATCH | `/api/visits/:id/reassign` | JWT+Admin | Reasignar a otro agente |
+| GET/POST | `/api/visits/:id/images` | JWT | Fotos de visita |
+| DELETE | `/api/visits/:id/images/:imgId` | JWT | Eliminar foto |
+| GET/POST | `/api/broadcasts` | JWT | Comunicados admin→agente |
 
 ---
 
@@ -166,6 +173,26 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 
 ---
 
+## Funcionalidades implementadas
+
+### Agenda (`Agenda.jsx`)
+- Vista lista agrupada por bloques horarios (Mañana/Tarde/Noche)
+- **Vista mapa** con toggle Lista/Mapa — marcadores de color por tipo de visita; al tocar un marcador aparece una card overlay (fuera del iframe de Maps) con botón "Abrir visita"
+- Filtro por rango de fechas
+- Crear visita con validación de conflictos horarios
+- Reasignar agente (admin), marcar no atendida, eliminar con contraseña
+
+### Dashboard (`Dashboard.jsx`)
+- **Pestaña General:** 4 métricas (total, completadas, duración prom., conversión %), barras por tipo, tabla paginada, exportar CSV y PDF
+- **Pestaña Por Agente:** ranking de agentes con total, completadas (barra %), no atendidas, conversión (semáforo) y duración promedio; medallas 🥇🥈🥉
+
+### Otras páginas
+- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro
+- `Tracking.jsx` — mapa en tiempo real de agentes con clustering y comunicados
+- `Users.jsx` / `Properties.jsx` — CRUD completo
+
+---
+
 ## Notas importantes
 
 - `android/` e `ios/` están en `.gitignore` — se generan en CI, nunca se commitean
@@ -175,3 +202,4 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - Los paquetes `@capacitor/geolocation` y `@capacitor-community/background-geolocation`
   están marcados como `external` en `vite.config.js` — el runtime nativo los resuelve
 - La label del step en el workflow dice "Setup Java 17" pero usa Java 21 (Capacitor v8 lo requiere)
+- **Google Maps:** todos los `useJsApiLoader` deben usar `id: 'google-map-script'` — si falta ese id en algún componente, al navegar entre páginas con mapa se lanza una excepción que el ErrorBoundary captura como "error inesperado"
