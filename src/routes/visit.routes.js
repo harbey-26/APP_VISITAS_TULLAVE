@@ -1,12 +1,13 @@
 import { Router } from 'express';
-import { getVisits, getVisitStats, createVisit, startVisit, finishVisit, deleteVisit, markMissed, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
+import { getVisits, getVisitStats, getAgentStats, createVisit, startVisit, finishVisit, deleteVisit, markMissed, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 router.use(authenticate);
 
-router.get('/stats', requireAdmin, getVisitStats); // M3: antes del /:id para no colisionar
+router.get('/stats', requireAdmin, getVisitStats);
+router.get('/stats/agents', requireAdmin, getAgentStats);
 router.get('/', getVisits);
 router.post('/', createVisit);
 router.patch('/:id/start', startVisit);

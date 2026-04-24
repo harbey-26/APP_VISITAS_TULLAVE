@@ -350,6 +350,59 @@ export const finishVisit = async (req, res) => {
     }
 };
 
+export const getAgentStats = async (req, res) => {
+    const { startDate, endDate } = req.query;
+    try {
+        const where = { deletedAt: null };
+        if (startDate && endDate) {
+            const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+            where.scheduledStart = { gte: start, lte: end };
+        }
+
+        const visits = await prisma.visit.findMany({
+            where,
+            select: {
+                userId: true,
+                status: true,
+                outcome: true,
+                estimatedDuration: true,
+                user: { select: { id: true, name: true } }
+            }
+        });
+
+        const agentMap = new Map();
+        visits.forEach(v => {
+            if (!agentMap.has(v.userId)) {
+                agentMap.set(v.userId, {
+                    userId: v.userId,
+                    name: v.user?.name || 'Desconocido',
+                    total: 0, completed: 0, missed: 0, interested: 0, totalDuration: 0
+                });
+            }
+            const a = agentMap.get(v.userId);
+            a.total++;
+            if (v.status === 'COMPLETED') { a.completed++; a.totalDuration += v.estimatedDuration || 0; }
+            if (v.status === 'MISSED') a.missed++;
+            if (v.outcome === 'Cliente interesado') a.interested++;
+        });
+
+        const result = Array.from(agentMap.values()).map(a => ({
+            userId: a.userId,
+            name: a.name,
+            totalVisits: a.total,
+            completedVisits: a.completed,
+            missedVisits: a.missed,
+            conversionRate: a.total ? Math.round((a.interested / a.total) * 100) : 0,
+            averageDuration: a.completed ? Math.round(a.totalDuration / a.completed) : 0,
+        })).sort((a, b) => b.completedVisits - a.completedVisits);
+
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 export const deleteVisit = async (req, res) => {
     const { id } = req.params;
     const { password } = req.body;

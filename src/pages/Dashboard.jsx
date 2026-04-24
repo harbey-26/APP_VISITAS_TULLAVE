@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, FileText, Users, Trophy, BarChart2 } from 'lucide-react';
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
@@ -10,6 +10,7 @@ import { useToast } from '../context/ToastContext';
 const TABLE_LIMIT = 50;
 
 export default function Dashboard() {
+    const [activeTab, setActiveTab] = useState('general'); // 'general' | 'agents'
     const [stats, setStats] = useState({
         totalVisits: 0, completedVisits: 0, averageDuration: 0, conversionRate: 0, visitsByType: {}
     });
@@ -17,6 +18,8 @@ export default function Dashboard() {
     const [tablePage, setTablePage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
+    const [agentStats, setAgentStats] = useState([]);
+    const [loadingAgents, setLoadingAgents] = useState(false);
 
     const today = new Date().toISOString().split('T')[0];
     const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -66,6 +69,25 @@ export default function Dashboard() {
         };
         fetchData();
     }, [token, dateRange, outcomeFilter, tablePage]);
+
+    useEffect(() => {
+        if (activeTab !== 'agents') return;
+        const fetchAgents = async () => {
+            setLoadingAgents(true);
+            try {
+                const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
+                const res = await fetch(`${API_URL}/api/visits/stats/agents?${params}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) setAgentStats(await res.json());
+            } catch (error) {
+                console.error(friendlyError(error));
+            } finally {
+                setLoadingAgents(false);
+            }
+        };
+        fetchAgents();
+    }, [token, dateRange, activeTab]);
 
     const getStatusBadge = (status) => {
         const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
@@ -334,6 +356,20 @@ export default function Dashboard() {
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800">Panel Administrativo</h2>
                     <p className="text-gray-500 text-sm">Resumen de operaciones</p>
+                    <div className="flex items-center gap-1 mt-3 bg-gray-100 p-1 rounded-xl w-fit">
+                        <button
+                            onClick={() => setActiveTab('general')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition ${activeTab === 'general' ? 'bg-white shadow text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <BarChart2 className="w-4 h-4" /> General
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('agents')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition ${activeTab === 'agents' ? 'bg-white shadow text-brand-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <Users className="w-4 h-4" /> Por Agente
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 bg-white p-3 rounded-xl shadow-sm border border-gray-200 w-full md:w-auto">
@@ -396,6 +432,100 @@ export default function Dashboard() {
                 </div>
             </div>
 
+            {/* Vista Por Agente */}
+            {activeTab === 'agents' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 className="font-bold text-base text-gray-800 flex items-center gap-2">
+                            <Trophy className="w-4 h-4 text-amber-500" /> Rendimiento por Agente
+                        </h3>
+                        <span className="text-xs text-gray-400">{agentStats.length} agente{agentStats.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {loadingAgents ? (
+                        <div className="divide-y divide-gray-50 animate-pulse">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="px-6 py-4 flex items-center gap-4">
+                                    <div className="w-8 h-8 bg-gray-200 rounded-full shrink-0" />
+                                    <div className="flex-1 space-y-2">
+                                        <div className="h-3 bg-gray-200 rounded w-32" />
+                                        <div className="h-2 bg-gray-200 rounded w-48" />
+                                    </div>
+                                    <div className="h-4 bg-gray-200 rounded w-16" />
+                                </div>
+                            ))}
+                        </div>
+                    ) : agentStats.length === 0 ? (
+                        <div className="px-6 py-12 text-center text-gray-400 text-sm">
+                            Sin datos de agentes en el período seleccionado
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-100">
+                                    <tr>
+                                        <th className="px-6 py-3">#</th>
+                                        <th className="px-4 py-3">Agente</th>
+                                        <th className="px-4 py-3 text-center">Total</th>
+                                        <th className="px-4 py-3 text-center">Completadas</th>
+                                        <th className="px-4 py-3 text-center">No atendidas</th>
+                                        <th className="px-4 py-3 text-center">Conversión</th>
+                                        <th className="px-4 py-3 text-center">Dur. Prom.</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {agentStats.map((agent, idx) => {
+                                        const completionRate = agent.totalVisits ? Math.round((agent.completedVisits / agent.totalVisits) * 100) : 0;
+                                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+                                        return (
+                                            <tr key={agent.userId} className="hover:bg-gray-50 transition">
+                                                <td className="px-6 py-3 text-center">
+                                                    {medal
+                                                        ? <span className="text-base">{medal}</span>
+                                                        : <span className="text-xs text-gray-400 font-semibold">{idx + 1}</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                                                            <span className="text-brand-700 font-bold text-sm">{agent.name.charAt(0).toUpperCase()}</span>
+                                                        </div>
+                                                        <span className="font-semibold text-gray-800">{agent.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-center font-semibold text-gray-700">{agent.totalVisits}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <span className="font-semibold text-emerald-700">{agent.completedVisits}</span>
+                                                        <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                                            <div className="h-1.5 bg-emerald-500 rounded-full" style={{ width: `${completionRate}%` }} />
+                                                        </div>
+                                                        <span className="text-xs text-gray-400">{completionRate}%</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className={`font-semibold ${agent.missedVisits > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                                        {agent.missedVisits}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${agent.conversionRate >= 50 ? 'bg-emerald-100 text-emerald-700' : agent.conversionRate >= 25 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                        {agent.conversionRate}%
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-gray-600">
+                                                    {agent.averageDuration > 0 ? `${agent.averageDuration} min` : <span className="text-gray-300">—</span>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Vista General */}
+            {activeTab === 'general' && <>
             {/* 4 Metric Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {metricCards.map((card) => (
@@ -550,6 +680,7 @@ export default function Dashboard() {
                     )}
                 </div>
             </div>
+            </>}
         </div>
     );
 }

@@ -1,11 +1,105 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Phone, Home, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Home, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
+import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
+import { MAP_STYLE } from '../utils/mapStyles';
+
+const BOGOTA = { lat: 4.6097, lng: -74.0817 };
+const MAPS_LIBRARIES = [];
+
+// Mapa de agenda — crea marcadores imperativamente (igual que Tracking.jsx)
+function AgendaMapView({ visits, onVisitClick }) {
+    const mapRef = useRef(null);
+    const markersRef = useRef([]);
+
+    const { isLoaded } = useJsApiLoader({
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+        libraries: MAPS_LIBRARIES,
+    });
+
+    const visitsWithCoords = visits.filter(v => v.property?.lat && v.property?.lng);
+    const center = visitsWithCoords[0]
+        ? { lat: visitsWithCoords[0].property.lat, lng: visitsWithCoords[0].property.lng }
+        : BOGOTA;
+
+    const handleMapLoad = (map) => {
+        mapRef.current = map;
+        createMarkers(map);
+    };
+
+    const createMarkers = (map) => {
+        markersRef.current.forEach(m => { m.marker.setMap(null); m.info.close(); });
+        markersRef.current = [];
+
+        if (!window.google?.maps) return;
+
+        visitsWithCoords.forEach(visit => {
+            const typeCfg = VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER;
+            const statusCfg = STATUS_CONFIG[visit.status] || STATUS_CONFIG.PENDING;
+            const marker = new window.google.maps.Marker({
+                map,
+                position: { lat: visit.property.lat, lng: visit.property.lng },
+                title: visit.property.address,
+                icon: {
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: typeCfg.barColor || '#e31c25',
+                    fillOpacity: 1,
+                    strokeColor: '#fff',
+                    strokeWeight: 2,
+                },
+            });
+            const info = new window.google.maps.InfoWindow({
+                content: `<div style="font-size:13px;max-width:220px;line-height:1.6">
+                    <b>${new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b>
+                    &nbsp;<span style="background:${typeCfg.barColor || '#e31c25'};color:#fff;padding:1px 8px;border-radius:20px;font-size:11px">${typeCfg.label}</span>
+                    <div style="margin-top:5px;font-weight:600;color:#111">${visit.property.address}</div>
+                    ${visit.clientName ? `<div style="color:#555;font-size:12px">${visit.clientName}</div>` : ''}
+                    <div style="margin-top:4px"><span style="background:#f1f5f9;padding:1px 8px;border-radius:20px;font-size:11px;color:#334155">${statusCfg.label}</span></div>
+                    <div id="agenda-marker-${visit.id}" style="margin-top:6px;color:#e31c25;font-size:11px;font-weight:600;cursor:pointer">Abrir visita →</div>
+                </div>`
+            });
+            marker.addListener('click', () => info.open({ anchor: marker, map }));
+            info.addListener('domready', () => {
+                const el = document.getElementById(`agenda-marker-${visit.id}`);
+                if (el) el.onclick = () => onVisitClick(visit.id);
+            });
+            markersRef.current.push({ marker, info });
+        });
+    };
+
+    useEffect(() => {
+        if (mapRef.current) createMarkers(mapRef.current);
+    }, [visits]);
+
+    if (!isLoaded) return (
+        <div className="flex items-center justify-center h-full bg-gray-50">
+            <p className="text-gray-400 text-sm">Cargando mapa...</p>
+        </div>
+    );
+
+    if (visitsWithCoords.length === 0) return (
+        <div className="flex flex-col items-center justify-center h-full bg-gray-50 gap-3">
+            <MapIcon className="w-10 h-10 text-gray-300" />
+            <p className="text-gray-400 text-sm">Sin visitas con ubicación para mostrar</p>
+        </div>
+    );
+
+    return (
+        <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={center}
+            zoom={13}
+            options={{ styles: MAP_STYLE, disableDefaultUI: false, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
+            onLoad={handleMapLoad}
+        />
+    );
+}
 
 // Agrupa visitas en bloques horarios
 function groupByTimeSlot(visits) {
@@ -52,6 +146,8 @@ export default function Agenda() {
         clientName: '',
         clientPhone: ''
     });
+
+    const [viewMode, setViewMode] = useState('list'); // 'list' | 'map'
 
     const { token, user } = useAuth();
     const navigate = useNavigate();
@@ -268,13 +364,31 @@ export default function Agenda() {
                                 : `${formatDate(dateRange.start)} – ${formatDate(dateRange.end)}`}
                         </span>
                     </div>
-                    <button
-                        onClick={() => setShowModal(true)}
-                        className="bg-brand-600 text-white px-4 py-2.5 rounded-xl shadow hover:bg-brand-700 transition flex items-center gap-2 font-semibold text-sm whitespace-nowrap"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Nueva Visita
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-1.5 rounded-lg transition ${viewMode === 'list' ? 'bg-white shadow text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+                                title="Vista lista"
+                            >
+                                <List className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('map')}
+                                className={`p-1.5 rounded-lg transition ${viewMode === 'map' ? 'bg-white shadow text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+                                title="Vista mapa"
+                            >
+                                <MapIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="bg-brand-600 text-white px-4 py-2.5 rounded-xl shadow hover:bg-brand-700 transition flex items-center gap-2 font-semibold text-sm whitespace-nowrap"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Nueva Visita
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -327,8 +441,18 @@ export default function Agenda() {
                 </div>
             )}
 
+            {/* Vista de mapa */}
+            {!loadingVisits && viewMode === 'map' && (
+                <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: '65vh' }}>
+                    <AgendaMapView
+                        visits={visits}
+                        onVisitClick={(id) => navigate(`/visit/${id}`)}
+                    />
+                </div>
+            )}
+
             {/* Visit List grouped by time slot */}
-            {!loadingVisits && !hasVisits ? (
+            {!loadingVisits && viewMode === 'list' && !hasVisits && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="relative mb-5">
                         <div className="w-20 h-20 bg-brand-50 rounded-3xl flex items-center justify-center">
@@ -351,7 +475,8 @@ export default function Agenda() {
                         <Plus className="w-4 h-4" /> Agendar visita
                     </button>
                 </div>
-            ) : !loadingVisits && (
+            )}
+            {!loadingVisits && viewMode === 'list' && hasVisits && (
                 <div className="space-y-6">
                     {Object.entries(groupedVisits).map(([slot, slotVisits]) => {
                         if (slotVisits.length === 0) return null;
