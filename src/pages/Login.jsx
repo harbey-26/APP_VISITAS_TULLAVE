@@ -61,10 +61,10 @@ export default function Login() {
                         Gestión de visitas<br />inmobiliarias
                     </h1>
                     <p className="text-gray-500 text-xs mt-2 leading-relaxed">
-                        Rastreo en tiempo real de agentes, programación de visitas y reportes para TuLlave Inmobiliaria.
+                        Programación de visitas, agenda digital y reportes para TuLlave Inmobiliaria.
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-3 justify-center">
-                        {['GPS en tiempo real', 'Agenda digital', 'Reportes PDF'].map(f => (
+                        {['Agenda digital', 'Visitas', 'Reportes PDF'].map(f => (
                             <span key={f} className="inline-flex items-center gap-1 bg-brand-600/10 text-brand-600 text-xs font-medium px-2.5 py-1 rounded-full">
                                 <MapPin className="w-3 h-3" />
                                 {f}
