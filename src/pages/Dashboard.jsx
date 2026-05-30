@@ -274,31 +274,27 @@ export default function Dashboard() {
         {
             label: 'Total Visitas',
             value: stats.totalVisits,
-            icon: <Calendar className="w-6 h-6" />,
-            iconBg: 'bg-brand-100 text-brand-600',
-            stripe: 'bg-brand-600',
+            icon: <Calendar className="w-5 h-5 text-white" />,
+            gradient: 'from-rose-500 to-brand-600',
         },
         {
             label: 'Completadas',
             value: stats.completedVisits,
-            icon: <CheckCircle className="w-6 h-6" />,
-            iconBg: 'bg-emerald-100 text-emerald-700',
-            stripe: 'bg-emerald-500',
+            icon: <CheckCircle className="w-5 h-5 text-white" />,
+            gradient: 'from-emerald-400 to-emerald-600',
         },
         {
             label: 'Duración Prom.',
             value: `${stats.averageDuration} min`,
-            icon: <Clock className="w-6 h-6" />,
-            iconBg: 'bg-slate-100 text-slate-600',
-            stripe: 'bg-slate-400',
+            icon: <Clock className="w-5 h-5 text-white" />,
+            gradient: 'from-slate-400 to-slate-600',
         },
         {
             label: 'Tasa de Conversión',
             value: `${stats.conversionRate}%`,
-            icon: <TrendingUp className="w-6 h-6" />,
-            iconBg: 'bg-amber-100 text-amber-700',
+            icon: <TrendingUp className="w-5 h-5 text-white" />,
             subtitle: 'Clientes interesados',
-            stripe: 'bg-amber-500',
+            gradient: 'from-amber-400 to-orange-500',
         },
     ];
 
@@ -308,15 +304,10 @@ export default function Dashboard() {
             <div className="h-7 bg-gray-200 rounded-lg w-56" />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[...Array(4)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                        <div className="h-1.5 bg-gray-200 w-full" />
-                        <div className="p-4 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gray-200 rounded-xl shrink-0" />
-                            <div className="space-y-2 flex-1">
-                                <div className="h-3 bg-gray-200 rounded w-20" />
-                                <div className="h-7 bg-gray-200 rounded w-14" />
-                            </div>
-                        </div>
+                    <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-card p-5">
+                        <div className="skeleton w-11 h-11 rounded-2xl" />
+                        <div className="skeleton h-8 w-16 mt-4 rounded-lg" />
+                        <div className="skeleton h-3 w-24 mt-2 rounded" />
                     </div>
                 ))}
             </div>
@@ -530,20 +521,15 @@ export default function Dashboard() {
             {/* 4 Metric Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {metricCards.map((card) => (
-                    <div key={card.label} className="bg-white rounded-2xl shadow-card hover:shadow-card-hover transition-shadow border border-gray-100 overflow-hidden">
-                        <div className={`h-1.5 w-full ${card.stripe}`} />
-                        <div className="p-4 flex items-center gap-4">
-                            <div className={`p-3 rounded-xl shrink-0 ${card.iconBg}`}>
-                                {card.icon}
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-xs text-gray-500 truncate">{card.label}</p>
-                                <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-                                {card.subtitle && (
-                                    <p className="text-xs text-gray-400 truncate">{card.subtitle}</p>
-                                )}
-                            </div>
+                    <div key={card.label} className="group bg-white rounded-2xl shadow-card hover:shadow-card-hover transition-all duration-200 border border-gray-100 p-5">
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${card.gradient} shadow-md group-hover:scale-105 group-hover:-rotate-3 transition-transform duration-200`}>
+                            {card.icon}
                         </div>
+                        <p className="mt-4 text-3xl font-bold text-gray-900 tabular-nums leading-none">{card.value}</p>
+                        <p className="mt-1.5 text-sm font-medium text-gray-500">{card.label}</p>
+                        {card.subtitle && (
+                            <p className="text-xs text-gray-400 mt-0.5">{card.subtitle}</p>
+                        )}
                     </div>
                 ))}
             </div>
