@@ -6,6 +6,7 @@ import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { Button, Modal, Select } from '../components/ui';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -291,7 +292,7 @@ function VisitExecutionContent() {
     return (
         <div className="flex flex-col gap-4 max-w-lg mx-auto">
             {/* Header card */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="bg-white p-5 rounded-2xl shadow-card border border-gray-100">
                 <button
                     onClick={() => navigate('/agenda')}
                     className="flex items-center text-gray-400 hover:text-brand-600 mb-4 transition-colors text-sm font-medium"
@@ -388,7 +389,7 @@ function VisitExecutionContent() {
             </div>
 
             {/* Mapa */}
-            <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-card">
                 <div className="h-52 relative z-0">
                     {currentPos ? (
                         isLoaded ? (
@@ -437,23 +438,19 @@ function VisitExecutionContent() {
 
             {/* Resultado y comentarios — solo en progreso */}
             {visit.status === 'IN_PROGRESS' && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4 space-y-4">
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
                             Resultado de la Visita <span className="text-red-400">*</span>
                         </label>
-                        <select
-                            className="w-full p-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                            value={outcome}
-                            onChange={(e) => setOutcome(e.target.value)}
-                        >
+                        <Select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
                             <option value="">Seleccionar resultado...</option>
                             <option value="Cliente interesado">Cliente interesado</option>
                             <option value="Cliente no interesado">Cliente no interesado</option>
                             <option value="Requiere seguimiento">Requiere seguimiento</option>
                             <option value="Cliente no asistió">Cliente no asistió</option>
                             <option value="Cancelada">Cancelada</option>
-                        </select>
+                        </Select>
                     </div>
 
                     <div>
@@ -490,7 +487,7 @@ function VisitExecutionContent() {
 
             {/* M1: Sección de fotos — disponible en progreso y completada */}
             {(visit.status === 'IN_PROGRESS' || visit.status === 'COMPLETED') && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                             <ImageIcon className="w-4 h-4 text-gray-500" />
@@ -499,18 +496,14 @@ function VisitExecutionContent() {
                             </span>
                         </div>
                         {visit.status === 'IN_PROGRESS' && (
-                            <button
+                            <Button
+                                size="sm"
+                                icon={Camera}
+                                loading={uploadingPhoto}
                                 onClick={() => fileInputRef.current?.click()}
-                                disabled={uploadingPhoto}
-                                className="flex items-center gap-1.5 text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition disabled:opacity-60"
                             >
-                                {uploadingPhoto ? (
-                                    <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                    <Camera className="w-3.5 h-3.5" />
-                                )}
                                 {uploadingPhoto ? 'Subiendo...' : 'Tomar foto'}
-                            </button>
+                            </Button>
                         )}
                         <input
                             ref={fileInputRef}
@@ -587,38 +580,27 @@ function VisitExecutionContent() {
                     {loading ? 'Guardando...' : 'Finalizar Visita'}
                 </button>
             )}
-            {showFinishModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
-                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <CheckCircle className="w-6 h-6 text-green-600" />
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Finalizar Visita</h3>
-                        <p className="text-gray-500 mb-5 text-sm text-center">¿Confirmas que deseas finalizar la visita? Esta acción no se puede deshacer.</p>
-                        {outcome && (
-                            <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-                                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
-                                <p className="text-gray-800 font-medium">{outcome}</p>
-                            </div>
-                        )}
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={() => setShowFinishModal(false)}
-                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => { setShowFinishModal(false); handleFinish(); }}
-                                disabled={loading}
-                                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition disabled:opacity-70"
-                            >
-                                Confirmar
-                            </button>
-                        </div>
-                    </div>
+            <Modal open={showFinishModal} onClose={() => setShowFinishModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-            )}
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Finalizar Visita</h3>
+                <p className="text-gray-500 mb-5 text-sm text-center">¿Confirmas que deseas finalizar la visita? Esta acción no se puede deshacer.</p>
+                {outcome && (
+                    <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
+                        <p className="text-gray-800 font-medium">{outcome}</p>
+                    </div>
+                )}
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowFinishModal(false)}>
+                        Cancelar
+                    </Button>
+                    <Button variant="success" className="flex-1" loading={loading} onClick={() => { setShowFinishModal(false); handleFinish(); }}>
+                        Confirmar
+                    </Button>
+                </div>
+            </Modal>
         </div>
     );
 }

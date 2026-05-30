@@ -8,6 +8,7 @@ import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { Button, Modal, Select, Input } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 const MAPS_LIBRARIES = [];
@@ -125,12 +126,9 @@ function AgendaMapView({ visits, onVisitClick }) {
                             <X className="w-4 h-4" />
                         </button>
                     </div>
-                    <button
-                        onClick={() => onVisitClick(selectedVisit.id)}
-                        className="mt-3 w-full bg-brand-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-brand-700 active:scale-95 transition-all"
-                    >
+                    <Button onClick={() => onVisitClick(selectedVisit.id)} className="mt-3 w-full">
                         Abrir visita →
-                    </button>
+                    </Button>
                 </div>
             )}
         </div>
@@ -417,13 +415,9 @@ export default function Agenda() {
                                 <span className="hidden sm:inline">Mapa</span>
                             </button>
                         </div>
-                        <button
-                            onClick={() => setShowModal(true)}
-                            className="bg-brand-600 text-white px-4 py-2.5 rounded-xl shadow hover:bg-brand-700 transition flex items-center gap-2 font-semibold text-sm whitespace-nowrap"
-                        >
-                            <Plus className="w-4 h-4" />
+                        <Button icon={Plus} onClick={() => setShowModal(true)} className="whitespace-nowrap">
                             Nueva Visita
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
@@ -457,20 +451,20 @@ export default function Agenda() {
 
             {/* U2: Skeleton mientras carga */}
             {loadingVisits && (
-                <div className="space-y-3 animate-pulse">
+                <div className="space-y-3">
                     {[...Array(3)].map((_, i) => (
-                        <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                            <div className="h-1.5 bg-gray-200 w-full" />
+                        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-card overflow-hidden">
+                            <div className="skeleton h-1.5 w-full rounded-none" />
                             <div className="p-4 space-y-3">
                                 <div className="flex justify-between items-center">
                                     <div className="flex gap-3">
-                                        <div className="h-4 bg-gray-200 rounded w-14" />
-                                        <div className="h-4 bg-gray-200 rounded w-20" />
+                                        <div className="skeleton h-4 w-14" />
+                                        <div className="skeleton h-4 w-20" />
                                     </div>
-                                    <div className="h-5 bg-gray-200 rounded-full w-20" />
+                                    <div className="skeleton h-5 w-20 rounded-full" />
                                 </div>
-                                <div className="h-4 bg-gray-200 rounded w-3/4" />
-                                <div className="h-3 bg-gray-200 rounded w-1/2" />
+                                <div className="skeleton h-4 w-3/4" />
+                                <div className="skeleton h-3 w-1/2" />
                             </div>
                         </div>
                     ))}
@@ -504,12 +498,9 @@ export default function Agenda() {
                     <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
                         Agenda la primera visita del {dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.
                     </p>
-                    <button
-                        onClick={() => setShowModal(true)}
-                        className="mt-6 bg-brand-600 text-white px-6 py-2.5 rounded-xl font-semibold hover:bg-brand-700 active:scale-95 transition-all shadow-lg shadow-brand-600/25 flex items-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" /> Agendar visita
-                    </button>
+                    <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
+                        Agendar visita
+                    </Button>
                 </div>
             )}
             {!loadingVisits && viewMode === 'list' && hasVisits && (
@@ -794,20 +785,14 @@ export default function Agenda() {
                                         </div>
                                     </div>
 
-                                    <button
-                                        type="submit"
-                                        className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4 shadow-md"
-                                    >
+                                    <Button type="submit" size="lg" className="w-full mt-4">
                                         Agendar Visita
-                                    </button>
+                                    </Button>
                                 </>
                             ) : (
-                                <button
-                                    type="submit"
-                                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 mt-4 shadow-md"
-                                >
+                                <Button type="submit" variant="success" size="lg" className="w-full mt-4">
                                     Guardar Inmueble
-                                </button>
+                                </Button>
                             )}
                         </form>
                     </div>
@@ -815,80 +800,43 @@ export default function Agenda() {
             )}
 
             {/* Reassign Modal (M2) */}
-            {showReassignModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
-                        <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <UserCheck className="w-6 h-6 text-brand-600" />
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Reasignar Visita</h3>
-                        <p className="text-gray-500 mb-4 text-sm text-center">Selecciona el nuevo agente para esta visita.</p>
-                        <select
-                            className="w-full p-3 border rounded-xl mb-4 focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white"
-                            value={reassignAgentId}
-                            onChange={(e) => setReassignAgentId(e.target.value)}
-                        >
-                            <option value="">-- Seleccionar agente --</option>
-                            {agents.map(agent => (
-                                <option key={agent.id} value={agent.id}>
-                                    {agent.name} ({agent.email})
-                                </option>
-                            ))}
-                        </select>
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={() => setShowReassignModal(false)}
-                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmReassign}
-                                disabled={!reassignAgentId}
-                                className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 transition disabled:opacity-50"
-                            >
-                                Reasignar
-                            </button>
-                        </div>
-                    </div>
+            <Modal open={showReassignModal} onClose={() => setShowReassignModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <UserCheck className="w-6 h-6 text-brand-600" />
                 </div>
-            )}
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Reasignar Visita</h3>
+                <p className="text-gray-500 mb-4 text-sm text-center">Selecciona el nuevo agente para esta visita.</p>
+                <Select className="mb-4" value={reassignAgentId} onChange={(e) => setReassignAgentId(e.target.value)}>
+                    <option value="">-- Seleccionar agente --</option>
+                    {agents.map(agent => (
+                        <option key={agent.id} value={agent.id}>{agent.name} ({agent.email})</option>
+                    ))}
+                </Select>
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowReassignModal(false)}>Cancelar</Button>
+                    <Button className="flex-1" disabled={!reassignAgentId} onClick={confirmReassign}>Reasignar</Button>
+                </div>
+            </Modal>
 
             {/* Delete Modal */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
-                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <Trash2 className="w-6 h-6 text-red-600" />
-                        </div>
-                        <h3 className="text-xl font-bold text-red-600 mb-1 text-center">Eliminar Visita</h3>
-                        <p className="text-gray-500 mb-4 text-sm text-center">Esta acción no se puede deshacer. Ingresa tu contraseña para confirmar.</p>
-
-                        <input
-                            type="password"
-                            placeholder="Contraseña de autorización"
-                            className="w-full p-3 border rounded-xl mb-4 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                            value={deletePassword}
-                            onChange={(e) => setDeletePassword(e.target.value)}
-                        />
-
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmDelete}
-                                className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
-                            >
-                                Eliminar
-                            </button>
-                        </div>
-                    </div>
+            <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Trash2 className="w-6 h-6 text-red-600" />
                 </div>
-            )}
+                <h3 className="text-xl font-bold text-red-600 mb-1 text-center">Eliminar Visita</h3>
+                <p className="text-gray-500 mb-4 text-sm text-center">Esta acción no se puede deshacer. Ingresa tu contraseña para confirmar.</p>
+                <Input
+                    type="password"
+                    placeholder="Contraseña de autorización"
+                    className="mb-4"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                />
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowDeleteModal(false)}>Cancelar</Button>
+                    <Button variant="danger" className="flex-1" disabled={!deletePassword} onClick={confirmDelete}>Eliminar</Button>
+                </div>
+            </Modal>
         </div>
     );
 }

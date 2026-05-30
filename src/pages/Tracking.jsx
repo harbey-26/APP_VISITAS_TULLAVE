@@ -5,6 +5,7 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
 import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History } from 'lucide-react';
+import { Button, Modal, Input, inputClass } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 const LOCATION_REFRESH_MS = 30_000;   // M3: ubicaciones cada 30 s
@@ -231,133 +232,116 @@ export default function Tracking() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => { setShowHistory(true); setShowBroadcastModal(false); }}
-                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition"
-                    >
-                        <History className="w-3.5 h-3.5" /> Historial
-                    </button>
-                    <button
-                        onClick={() => { setShowBroadcastModal(true); setShowHistory(false); }}
-                        className="flex items-center gap-1.5 text-xs text-white font-medium bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg transition"
-                    >
-                        <Megaphone className="w-3.5 h-3.5" /> Enviar comunicado
-                    </button>
-                    <button
-                        onClick={loadAgents}
-                        className="text-xs text-brand-600 hover:text-brand-700 font-medium border border-brand-200 hover:border-brand-400 px-3 py-1.5 rounded-lg transition"
-                    >
+                    <Button variant="secondary" size="sm" icon={History} onClick={() => { setShowHistory(true); setShowBroadcastModal(false); }}>
+                        Historial
+                    </Button>
+                    <Button size="sm" icon={Megaphone} onClick={() => { setShowBroadcastModal(true); setShowHistory(false); }}>
+                        Enviar comunicado
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={loadAgents}>
                         Actualizar
-                    </button>
+                    </Button>
                 </div>
             </div>
 
             {/* Modal: Enviar comunicado */}
-            {showBroadcastModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
-                                    <Megaphone className="w-4 h-4 text-white" />
-                                </div>
-                                <h2 className="text-base font-bold text-gray-900">Enviar comunicado</h2>
-                            </div>
-                            <button onClick={() => setShowBroadcastModal(false)} className="text-gray-400 hover:text-gray-600 transition">
-                                <X className="w-5 h-5" />
-                            </button>
+            <Modal open={showBroadcastModal} onClose={() => setShowBroadcastModal(false)}>
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
+                            <Megaphone className="w-4 h-4 text-white" />
                         </div>
-                        <p className="text-xs text-gray-500 mb-4">
-                            El mensaje llegará como notificación a <strong>todos los agentes</strong> en los próximos 60 segundos.
-                        </p>
-                        {sentOk ? (
-                            <div className="flex flex-col items-center gap-2 py-6">
-                                <CheckCircle2 className="w-10 h-10 text-green-500" />
-                                <p className="text-sm font-semibold text-green-700">¡Comunicado enviado!</p>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="space-y-3 mb-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">Título</label>
-                                        <input
-                                            type="text"
-                                            maxLength={100}
-                                            placeholder="Ej: Reunión urgente a las 3pm"
-                                            value={bTitle}
-                                            onChange={e => setBTitle(e.target.value)}
-                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">Mensaje</label>
-                                        <textarea
-                                            rows={3}
-                                            maxLength={500}
-                                            placeholder="Ej: Por favor confirmen asistencia respondiendo este mensaje..."
-                                            value={bBody}
-                                            onChange={e => setBBody(e.target.value)}
-                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 resize-none"
-                                        />
-                                        <p className="text-right text-xs text-gray-400 mt-0.5">{bBody.length}/500</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2 justify-end">
-                                    <button onClick={() => setShowBroadcastModal(false)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border border-gray-200 transition">
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        onClick={handleSendBroadcast}
-                                        disabled={sending || !bTitle.trim() || !bBody.trim()}
-                                        className="flex items-center gap-2 text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 px-4 py-2 rounded-lg transition font-medium"
-                                    >
-                                        <Send className="w-4 h-4" />
-                                        {sending ? 'Enviando...' : `Enviar a ${agents.length} agente${agents.length !== 1 ? 's' : ''}`}
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                        <h2 className="text-base font-bold text-gray-900">Enviar comunicado</h2>
                     </div>
+                    <button onClick={() => setShowBroadcastModal(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition" aria-label="Cerrar">
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
-            )}
+                <p className="text-xs text-gray-500 mb-4">
+                    El mensaje llegará como notificación a <strong>todos los agentes</strong> en los próximos 60 segundos.
+                </p>
+                {sentOk ? (
+                    <div className="flex flex-col items-center gap-2 py-6">
+                        <CheckCircle2 className="w-10 h-10 text-green-500" />
+                        <p className="text-sm font-semibold text-green-700">¡Comunicado enviado!</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="space-y-3 mb-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Título</label>
+                                <Input
+                                    type="text"
+                                    maxLength={100}
+                                    placeholder="Ej: Reunión urgente a las 3pm"
+                                    value={bTitle}
+                                    onChange={e => setBTitle(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Mensaje</label>
+                                <textarea
+                                    rows={3}
+                                    maxLength={500}
+                                    placeholder="Ej: Por favor confirmen asistencia respondiendo este mensaje..."
+                                    value={bBody}
+                                    onChange={e => setBBody(e.target.value)}
+                                    className={`${inputClass} resize-none`}
+                                />
+                                <p className="text-right text-xs text-gray-400 mt-0.5">{bBody.length}/500</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="secondary" size="sm" onClick={() => setShowBroadcastModal(false)}>
+                                Cancelar
+                            </Button>
+                            <Button
+                                size="sm"
+                                icon={Send}
+                                loading={sending}
+                                disabled={!bTitle.trim() || !bBody.trim()}
+                                onClick={handleSendBroadcast}
+                            >
+                                {sending ? 'Enviando...' : `Enviar a ${agents.length} agente${agents.length !== 1 ? 's' : ''}`}
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Modal>
 
             {/* Modal: Historial de comunicados */}
-            {showHistory && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[80vh] flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                                    <History className="w-4 h-4 text-gray-600" />
-                                </div>
-                                <h2 className="text-base font-bold text-gray-900">Historial de comunicados</h2>
-                            </div>
-                            <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-600 transition">
-                                <X className="w-5 h-5" />
-                            </button>
+            <Modal open={showHistory} onClose={() => setShowHistory(false)} maxWidth="max-w-lg">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                            <History className="w-4 h-4 text-gray-600" />
                         </div>
-                        <div className="overflow-y-auto flex-1 space-y-3">
-                            {broadcasts.length === 0 ? (
-                                <p className="text-sm text-gray-400 text-center py-8">No hay comunicados enviados.</p>
-                            ) : broadcasts.map(b => (
-                                <div key={b.id} className="border border-gray-100 rounded-xl p-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <p className="text-sm font-semibold text-gray-900">{b.title}</p>
-                                        <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
-                                            {new Date(b.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-1">{b.body}</p>
-                                    <p className="text-xs text-green-600 mt-1.5 font-medium">
-                                        <CheckCircle2 className="w-3 h-3 inline mr-0.5" />
-                                        {b._count?.reads ?? 0} agente{(b._count?.reads ?? 0) !== 1 ? 's' : ''} lo vieron
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
+                        <h2 className="text-base font-bold text-gray-900">Historial de comunicados</h2>
                     </div>
+                    <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition" aria-label="Cerrar">
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
-            )}
+                <div className="overflow-y-auto scrollbar-thin space-y-3 max-h-[60vh]">
+                    {broadcasts.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-8">No hay comunicados enviados.</p>
+                    ) : broadcasts.map(b => (
+                        <div key={b.id} className="border border-gray-100 rounded-xl p-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-gray-900">{b.title}</p>
+                                <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
+                                    {new Date(b.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">{b.body}</p>
+                            <p className="text-xs text-green-600 mt-1.5 font-medium">
+                                <CheckCircle2 className="w-3 h-3 inline mr-0.5" />
+                                {b._count?.reads ?? 0} agente{(b._count?.reads ?? 0) !== 1 ? 's' : ''} lo vieron
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            </Modal>
 
             {error && (
                 <div className="bg-red-50 text-red-600 p-3 rounded-xl border border-red-200 flex items-center gap-2 text-sm">
@@ -368,7 +352,7 @@ export default function Tracking() {
 
             {/* Grid de check-in horario */}
             {agents.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
                     <div className="flex items-center justify-between mb-3">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             Check-in horario — hoy
@@ -448,7 +432,7 @@ export default function Tracking() {
                         Agentes ({agents.length})
                     </p>
                     {agents.length === 0 && (
-                        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center text-gray-400 text-sm">
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4 text-center text-gray-400 text-sm">
                             No hay agentes registrados.
                         </div>
                     )}
@@ -459,7 +443,7 @@ export default function Tracking() {
                             <button
                                 key={agent.id}
                                 onClick={() => setSelectedAgent(isSelected ? null : agent)}
-                                className={`w-full text-left bg-white rounded-xl border p-3 transition shadow-sm hover:shadow-md ${
+                                className={`w-full text-left bg-white rounded-2xl border p-3 transition shadow-card hover:shadow-card-hover ${
                                     isSelected ? 'border-brand-400 ring-1 ring-brand-300' : 'border-gray-100'
                                 }`}
                             >
@@ -510,7 +494,7 @@ export default function Tracking() {
                 </div>
 
                 {/* Mapa */}
-                <div className="flex-1 bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ minHeight: '480px' }}>
+                <div className="flex-1 bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-card" style={{ minHeight: '480px' }}>
                     {isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={{ height: '100%', width: '100%', minHeight: '480px' }}

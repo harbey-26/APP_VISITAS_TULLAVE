@@ -47,6 +47,7 @@ const BUTTON_VARIANTS = {
     secondary: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200',
     ghost: 'text-gray-600 hover:bg-gray-100',
     danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/25',
+    success: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/25',
     'danger-soft': 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200',
     outline: 'border border-brand-200 text-brand-600 hover:bg-brand-50 hover:border-brand-400',
 };
