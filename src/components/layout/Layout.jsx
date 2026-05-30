@@ -368,7 +368,7 @@ export default function Layout() {
                 </div>
 
                 {/* Navegación */}
-                <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
+                <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto scrollbar-thin">
                     <p className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         Principal
                     </p>
@@ -428,7 +428,7 @@ export default function Layout() {
                         Sin conexión — los cambios no se guardarán hasta recuperar internet
                     </div>
                 )}
-                <div className="flex-1 p-4 lg:p-8 overflow-y-auto pb-40 lg:pb-8">
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto scrollbar-thin pb-40 lg:pb-8">
                     <div key={location.pathname} className="max-w-5xl mx-auto w-full animate-fade-in">
                         <Outlet />
                     </div>
