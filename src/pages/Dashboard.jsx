@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, FileText, Users, Trophy, BarChart2 } from 'lucide-react';
+import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, ChevronRight, FileText, Users, Trophy, BarChart2, LayoutDashboard } from 'lucide-react';
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
-import { DonutChart } from '../components/ui';
+import { DonutChart, TrendChart } from '../components/ui';
 
 const TABLE_LIMIT = 50;
 
 export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('general'); // 'general' | 'agents'
     const [stats, setStats] = useState({
-        totalVisits: 0, completedVisits: 0, averageDuration: 0, conversionRate: 0, visitsByType: {}
+        totalVisits: 0, completedVisits: 0, averageDuration: 0, conversionRate: 0, visitsByType: {}, visitsByDay: {}
     });
     const [visitList, setVisitList] = useState([]);
     const [tablePage, setTablePage] = useState(1);
@@ -298,6 +298,26 @@ export default function Dashboard() {
         },
     ];
 
+    // Serie diaria para la gráfica de tendencia (rellena días sin visitas con 0)
+    const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const trendData = (() => {
+        const start = new Date(dateRange.start + 'T00:00:00');
+        const end = new Date(dateRange.end + 'T00:00:00');
+        const days = Math.round((end - start) / 86400000);
+        if (isNaN(days) || days < 0 || days > 92) {
+            return Object.entries(stats.visitsByDay || {})
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => ({ label: `${parseInt(k.split('-')[2])} ${MESES[parseInt(k.split('-')[1]) - 1]}`, value: v }));
+        }
+        const out = [];
+        for (let i = 0; i <= days; i++) {
+            const d = new Date(start.getTime() + i * 86400000);
+            const key = d.toISOString().split('T')[0];
+            out.push({ label: `${d.getDate()} ${MESES[d.getMonth()]}`, value: (stats.visitsByDay || {})[key] || 0 });
+        }
+        return out;
+    })();
+
     // U2: Skeleton en lugar de spinner
     if (loading) return (
         <div className="space-y-8 animate-pulse">
@@ -346,8 +366,15 @@ export default function Dashboard() {
             {/* Header + Filters */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Panel Administrativo</h2>
-                    <p className="text-gray-500 text-sm">Resumen de operaciones</p>
+                    <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500 to-brand-600 flex items-center justify-center shadow-md shrink-0">
+                            <LayoutDashboard className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800 leading-tight">Panel Administrativo</h2>
+                            <p className="text-gray-500 text-sm">Resumen de operaciones</p>
+                        </div>
+                    </div>
                     <div className="flex items-center gap-1 mt-3 bg-gray-100 p-1 rounded-xl w-fit">
                         <button
                             onClick={() => setActiveTab('general')}
@@ -534,6 +561,16 @@ export default function Dashboard() {
                 ))}
             </div>
 
+            {/* Tendencia de visitas por día */}
+            <div className="bg-white p-6 rounded-2xl shadow-card border border-gray-100">
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-bold text-base text-gray-800">Tendencia de visitas</h3>
+                    <span className="text-xs text-gray-400">{stats.totalVisits} en el período</span>
+                </div>
+                <p className="text-xs text-gray-400 mb-4">Visitas programadas por día</p>
+                <TrendChart data={trendData} color="#e31c25" />
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Visitas por Tipo — gráfica de dona */}
                 <div className="bg-white p-6 rounded-2xl shadow-card border border-gray-100">
@@ -598,7 +635,16 @@ export default function Dashboard() {
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                                                {visit.user?.name ?? <span className="text-gray-300 italic">—</span>}
+                                                {visit.user?.name ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                                                            <span className="text-brand-700 font-bold text-[10px]">{visit.user.name.charAt(0).toUpperCase()}</span>
+                                                        </div>
+                                                        <span className="text-gray-700">{visit.user.name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-300 italic">—</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3">
                                                 {getStatusBadge(visit.status)}

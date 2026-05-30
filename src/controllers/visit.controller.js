@@ -120,7 +120,7 @@ export const getVisitStats = async (req, res) => {
         }
         if (outcome) where.outcome = outcome;
 
-        const [totalVisits, completedVisits, interestedVisits, byType, completedDurations] = await Promise.all([
+        const [totalVisits, completedVisits, interestedVisits, byType, completedDurations, scheduledDates] = await Promise.all([
             prisma.visit.count({ where }),
             prisma.visit.count({ where: { ...where, status: 'COMPLETED' } }),
             prisma.visit.count({ where: { ...where, outcome: 'Cliente interesado' } }),
@@ -128,7 +128,8 @@ export const getVisitStats = async (req, res) => {
             prisma.visit.findMany({
                 where: { ...where, status: 'COMPLETED' },
                 select: { estimatedDuration: true }
-            })
+            }),
+            prisma.visit.findMany({ where, select: { scheduledStart: true } })
         ]);
 
         const totalDuration = completedDurations.reduce((acc, v) => acc + (v.estimatedDuration || 0), 0);
@@ -136,7 +137,15 @@ export const getVisitStats = async (req, res) => {
         const conversionRate = totalVisits ? Math.round((interestedVisits / totalVisits) * 100) : 0;
         const visitsByType = Object.fromEntries(byType.map(b => [b.type, b._count.id]));
 
-        res.json({ totalVisits, completedVisits, averageDuration, conversionRate, visitsByType });
+        // Serie diaria: { 'YYYY-MM-DD': count } en hora local de Bogotá (UTC-5)
+        const visitsByDay = {};
+        for (const v of scheduledDates) {
+            const d = new Date(new Date(v.scheduledStart).getTime() - 5 * 60 * 60 * 1000);
+            const key = d.toISOString().split('T')[0];
+            visitsByDay[key] = (visitsByDay[key] || 0) + 1;
+        }
+
+        res.json({ totalVisits, completedVisits, averageDuration, conversionRate, visitsByType, visitsByDay });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

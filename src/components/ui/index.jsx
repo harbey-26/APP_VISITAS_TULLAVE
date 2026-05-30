@@ -221,6 +221,58 @@ export function Spinner({ className = '' }) {
     return <Loader2 className={cn('animate-spin text-brand-600', className)} />;
 }
 
+// ── TrendChart ──────────────────────────────────────────────────────
+// Gráfica de área en SVG puro. data: [{ label, value }] (orden cronológico)
+export function TrendChart({ data = [], height = 150, color = '#e31c25' }) {
+    const W = 320, H = 110, pad = 6;
+    const n = data.length;
+    const max = Math.max(1, ...data.map(d => d.value));
+    const stepX = n > 1 ? (W - pad * 2) / (n - 1) : 0;
+    const gradId = `trend-${color.replace('#', '')}`;
+
+    const pts = data.map((d, i) => {
+        const x = pad + i * stepX;
+        const y = H - pad - (d.value / max) * (H - pad * 2 - 4);
+        return [x, y];
+    });
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+    const areaPath = n > 0
+        ? `${linePath} L${(pad + (n - 1) * stepX).toFixed(1)} ${H - pad} L${pad} ${H - pad} Z`
+        : '';
+
+    // Etiquetas X: primera, ~media y última
+    const labelIdx = n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
+
+    if (n === 0) {
+        return <p className="text-sm text-gray-400 text-center py-12">Sin datos para el período</p>;
+    }
+
+    return (
+        <div className="w-full">
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={height} preserveAspectRatio="none" className="overflow-visible">
+                <defs>
+                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+                        <stop offset="100%" stopColor={color} stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+                {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
+                <path d={linePath} fill="none" stroke={color} strokeWidth="2.5"
+                    strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                {(n <= 14 ? pts : [pts[pts.length - 1]]).map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r="3" fill="#fff" stroke={color} strokeWidth="2"
+                        vectorEffect="non-scaling-stroke" />
+                ))}
+            </svg>
+            <div className="flex justify-between mt-2 px-1">
+                {labelIdx.map((idx) => (
+                    <span key={idx} className="text-[11px] text-gray-400">{data[idx]?.label}</span>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 // ── DonutChart ──────────────────────────────────────────────────────
 // Gráfica de dona en SVG puro (sin dependencias). data: [{label, value, color}]
 export function DonutChart({ data = [], size = 168, thickness = 22, centerLabel, centerValue }) {
