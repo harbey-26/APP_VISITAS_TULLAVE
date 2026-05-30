@@ -230,8 +230,8 @@ export function DonutChart({ data = [], size = 168, thickness = 22, centerLabel,
     let offset = 0;
 
     return (
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="relative shrink-0" style={{ width: size, height: size }}>
+        <div className="flex flex-col items-center gap-5 w-full min-w-0">
+            <div className="relative shrink-0 max-w-full" style={{ width: size, height: size }}>
                 <svg width={size} height={size} className="-rotate-90">
                     <circle
                         cx={size / 2} cy={size / 2} r={radius}
@@ -260,18 +260,18 @@ export function DonutChart({ data = [], size = 168, thickness = 22, centerLabel,
                     {centerLabel && <span className="text-xs text-gray-400 mt-1">{centerLabel}</span>}
                 </div>
             </div>
-            <div className="flex-1 w-full space-y-2.5">
+            <div className="w-full min-w-0 space-y-2.5">
                 {data.map((d, i) => {
                     const pct = total ? Math.round((d.value / total) * 100) : 0;
                     return (
-                        <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                        <div key={i} className="flex items-center justify-between gap-2 text-sm min-w-0">
                             <div className="flex items-center gap-2 min-w-0">
                                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
                                 <span className="font-medium text-gray-700 truncate">{d.label}</span>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                                 <span className="font-semibold text-gray-800 tabular-nums">{d.value}</span>
-                                <span className="text-xs text-gray-400 tabular-nums w-9 text-right">{pct}%</span>
+                                <span className="text-xs text-gray-400 tabular-nums w-10 text-right">{pct}%</span>
                             </div>
                         </div>
                     );
