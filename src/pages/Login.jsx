@@ -155,8 +155,8 @@ export default function Login() {
                     </button>
                 </form>
 
-                <p className="text-center text-sm text-brand-600 font-medium mt-6 cursor-pointer hover:underline">
-                    ¿No tienes cuenta? Regístrate
+                <p className="text-center text-xs text-gray-400 mt-6">
+                    ¿No tienes acceso? Solicítalo a tu administrador.
                 </p>
             </div>
         </div>

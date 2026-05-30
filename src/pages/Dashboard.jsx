@@ -6,6 +6,7 @@ import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { DonutChart } from '../components/ui';
 
 const TABLE_LIMIT = 50;
 
@@ -434,7 +435,7 @@ export default function Dashboard() {
 
             {/* Vista Por Agente */}
             {activeTab === 'agents' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-card border border-gray-100 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                         <h3 className="font-bold text-base text-gray-800 flex items-center gap-2">
                             <Trophy className="w-4 h-4 text-amber-500" /> Rendimiento por Agente
@@ -529,7 +530,7 @@ export default function Dashboard() {
             {/* 4 Metric Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {metricCards.map((card) => (
-                    <div key={card.label} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div key={card.label} className="bg-white rounded-2xl shadow-card hover:shadow-card-hover transition-shadow border border-gray-100 overflow-hidden">
                         <div className={`h-1.5 w-full ${card.stripe}`} />
                         <div className="p-4 flex items-center gap-4">
                             <div className={`p-3 rounded-xl shrink-0 ${card.iconBg}`}>
@@ -548,48 +549,26 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Visitas por Tipo — barras con colores */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                {/* Visitas por Tipo — gráfica de dona */}
+                <div className="bg-white p-6 rounded-2xl shadow-card border border-gray-100">
                     <h3 className="font-bold text-base text-gray-800 mb-5">Visitas por Tipo</h3>
                     {Object.keys(stats.visitsByType).length === 0 ? (
-                        <p className="text-sm text-gray-400 text-center py-6">Sin datos para el período</p>
+                        <p className="text-sm text-gray-400 text-center py-12">Sin datos para el período</p>
                     ) : (
-                        <div className="space-y-4">
-                            {Object.entries(stats.visitsByType)
+                        <DonutChart
+                            centerLabel="visitas"
+                            data={Object.entries(stats.visitsByType)
                                 .sort(([, a], [, b]) => b - a)
                                 .map(([type, count]) => {
                                     const cfg = VISIT_TYPE_CONFIG[type] || VISIT_TYPE_CONFIG.OTHER;
-                                    const pct = stats.totalVisits ? Math.round((count / stats.totalVisits) * 100) : 0;
-                                    return (
-                                        <div key={type}>
-                                            <div className="flex justify-between items-center text-sm mb-1.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot} shrink-0`} />
-                                                    <span className="font-medium text-gray-700">{cfg.label}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-gray-500">
-                                                    <span className="font-semibold text-gray-800">{count}</span>
-                                                    <span className="text-xs text-gray-400">({pct}%)</span>
-                                                </div>
-                                            </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                                                <div
-                                                    className="h-2 rounded-full transition-all duration-500"
-                                                    style={{
-                                                        width: `${pct}%`,
-                                                        backgroundColor: cfg.barColor,
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
+                                    return { label: cfg.label, value: count, color: cfg.barColor };
                                 })}
-                        </div>
+                        />
                     )}
                 </div>
 
                 {/* Tabla detallada */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 lg:col-span-2 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-card border border-gray-100 lg:col-span-2 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                         <h3 className="font-bold text-base text-gray-800">Registro Detallado</h3>
                         <span className="text-xs text-gray-400">
