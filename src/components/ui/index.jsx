@@ -3,7 +3,7 @@
 // Centraliza tarjetas, botones, badges, encabezados y estados de carga
 // para mantener radios, sombras y colores consistentes en toda la app.
 // ───────────────────────────────────────────────────────────────────
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 
 /** Une clases condicionalmente (sin dependencias). */
 export function cn(...classes) {
@@ -130,6 +130,64 @@ export function PageHeader({ title, subtitle, children, className = '' }) {
                 {subtitle && <p className="text-gray-500 text-sm">{subtitle}</p>}
             </div>
             {children && <div className="flex items-center gap-2 w-full md:w-auto">{children}</div>}
+        </div>
+    );
+}
+
+// ── Formularios: Input / Select / Field ─────────────────────────────
+export const inputClass =
+    'w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-sm ' +
+    'focus:bg-white focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:outline-none transition-all ' +
+    'disabled:opacity-50 disabled:cursor-not-allowed';
+
+export function Field({ label, hint, children }) {
+    return (
+        <div>
+            {label && <label className="block text-sm font-semibold text-gray-700 mb-1.5">{label}</label>}
+            {children}
+            {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+        </div>
+    );
+}
+
+export function Input({ className = '', ...props }) {
+    return <input className={cn(inputClass, className)} {...props} />;
+}
+
+export function Select({ className = '', children, ...props }) {
+    return (
+        <select className={cn(inputClass, 'bg-white pr-8', className)} {...props}>
+            {children}
+        </select>
+    );
+}
+
+// ── Modal ───────────────────────────────────────────────────────────
+export function Modal({ open, onClose, title, maxWidth = 'max-w-md', children }) {
+    if (!open) return null;
+    return (
+        <div
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in"
+            onClick={onClose}
+        >
+            <div
+                className={cn('bg-white w-full rounded-2xl p-6 shadow-2xl animate-slide-up', maxWidth)}
+                onClick={(e) => e.stopPropagation()}
+            >
+                {title && (
+                    <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                        <button
+                            onClick={onClose}
+                            className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition"
+                            aria-label="Cerrar"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                )}
+                {children}
+            </div>
         </div>
     );
 }

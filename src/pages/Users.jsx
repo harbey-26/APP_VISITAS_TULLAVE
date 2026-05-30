@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2, Pencil, X, User as UserIcon, Shield, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Pencil, User as UserIcon, Shield, AlertTriangle, Users as UsersIcon } from 'lucide-react';
 import { API_URL } from '../config';
 import { friendlyError } from '../utils/api';
+import { Card, Button, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select } from '../components/ui';
 
 export default function Users() {
     const [users, setUsers] = useState([]);
@@ -122,241 +123,147 @@ export default function Users() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
-                    <p className="text-sm text-gray-500">{users.length} usuario{users.length !== 1 ? 's' : ''} registrado{users.length !== 1 ? 's' : ''}</p>
-                </div>
-                <button
-                    onClick={() => setShowModal(true)}
-                    className="bg-brand-600 text-white shadow-lg hover:bg-brand-700 transition flex items-center gap-2 px-4 py-2 rounded-lg"
-                >
-                    <Plus className="w-5 h-5" />
-                    <span className="hidden sm:inline font-medium">Nuevo Usuario</span>
-                </button>
-            </div>
+            <PageHeader
+                title="Gestión de Usuarios"
+                subtitle={`${users.length} usuario${users.length !== 1 ? 's' : ''} registrado${users.length !== 1 ? 's' : ''}`}
+            >
+                <Button icon={Plus} onClick={() => setShowModal(true)} className="ml-auto md:ml-0">
+                    Nuevo Usuario
+                </Button>
+            </PageHeader>
 
-            {/* M1: Loading state */}
-            {loading && (
-                <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
-                    <div className="w-6 h-6 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
-                    <span className="text-sm">Cargando usuarios...</span>
+            {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[...Array(4)].map((_, i) => (
+                        <Card key={i} className="p-4 flex items-center gap-3">
+                            <Skeleton className="w-12 h-12 rounded-full shrink-0" />
+                            <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-3 w-40" />
+                                <Skeleton className="h-4 w-20 rounded-full" />
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            ) : users.length === 0 ? (
+                <Card>
+                    <EmptyState
+                        icon={UsersIcon}
+                        title="No hay usuarios registrados"
+                        description="Crea el primer usuario para dar acceso al equipo."
+                        action={<Button icon={Plus} size="sm" onClick={() => setShowModal(true)}>Nuevo Usuario</Button>}
+                    />
+                </Card>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {users.map(u => (
+                        <Card key={u.id} hover className="p-4 flex items-center justify-between group">
+                            <div className="flex items-center space-x-3 min-w-0">
+                                <div className={`p-3 rounded-full shrink-0 ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-brand-100 text-brand-600'}`}>
+                                    {u.role === 'ADMIN' ? <Shield className="w-6 h-6" /> : <UserIcon className="w-6 h-6" />}
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-gray-800 truncate">{u.name}</h3>
+                                    <p className="text-sm text-gray-500 truncate">{u.email}</p>
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${
+                                        u.role === 'ADMIN'
+                                            ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-brand-100 text-brand-700'
+                                    }`}>
+                                        {u.role === 'ADMIN' ? 'Administrador' : 'Agente'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition shrink-0">
+                                <button
+                                    onClick={() => openEdit(u)}
+                                    className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition p-2"
+                                    title="Editar usuario"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                                {u.id !== currentUser.id && (
+                                    <button
+                                        onClick={() => initiateDelete(u.id)}
+                                        className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition p-2"
+                                        title="Eliminar usuario"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                    </button>
+                                )}
+                            </div>
+                        </Card>
+                    ))}
                 </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {!loading && users.map(u => (
-                    <div key={u.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between group">
-                        <div className="flex items-center space-x-3">
-                            <div className={`p-3 rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                                {u.role === 'ADMIN' ? <Shield className="w-6 h-6" /> : <UserIcon className="w-6 h-6" />}
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-gray-800">{u.name}</h3>
-                                <p className="text-sm text-gray-500">{u.email}</p>
-                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-0.5 inline-block ${
-                                    u.role === 'ADMIN'
-                                        ? 'bg-purple-100 text-purple-700'
-                                        : 'bg-blue-100 text-blue-700'
-                                }`}>
-                                    {u.role === 'ADMIN' ? 'Administrador' : 'Agente'}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                            <button
-                                onClick={() => openEdit(u)}
-                                className="text-gray-300 hover:text-brand-600 transition p-2"
-                                title="Editar usuario"
-                            >
-                                <Pencil className="w-4 h-4" />
-                            </button>
-                            {u.id !== currentUser.id && (
-                                <button
-                                    onClick={() => initiateDelete(u.id)}
-                                    className="text-gray-300 hover:text-red-500 transition p-2"
-                                    title="Eliminar usuario"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-
-                {!loading && users.length === 0 && (
-                    <div className="col-span-2 text-center py-12 text-gray-400">
-                        No hay usuarios registrados.
-                    </div>
-                )}
-            </div>
 
             {/* Create User Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold">Crear Nuevo Usuario</h3>
-                            <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                                <input
-                                    type="email"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={formData.email}
-                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                                <input
-                                    type="password"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={formData.password}
-                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    required
-                                    minLength={6}
-                                    placeholder="Mínimo 6 caracteres"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
-                                <select
-                                    className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={formData.role}
-                                    onChange={e => setFormData({ ...formData, role: e.target.value })}
-                                >
-                                    <option value="AGENT">Agente Inmobiliario</option>
-                                    <option value="ADMIN">Administrador</option>
-                                </select>
-                            </div>
-
-                            <button
-                                type="submit"
-                                className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4 shadow-md transition"
-                            >
-                                Crear Usuario
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <Modal open={showModal} onClose={() => setShowModal(false)} title="Crear Nuevo Usuario">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <Field label="Nombre Completo">
+                        <Input type="text" required value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                    </Field>
+                    <Field label="Correo Electrónico">
+                        <Input type="email" required value={formData.email}
+                            onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                    </Field>
+                    <Field label="Contraseña">
+                        <Input type="password" required minLength={6} placeholder="Mínimo 6 caracteres"
+                            value={formData.password}
+                            onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                    </Field>
+                    <Field label="Rol">
+                        <Select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
+                            <option value="AGENT">Agente Inmobiliario</option>
+                            <option value="ADMIN">Administrador</option>
+                        </Select>
+                    </Field>
+                    <Button type="submit" size="lg" className="w-full mt-2">Crear Usuario</Button>
+                </form>
+            </Modal>
 
             {/* Edit User Modal */}
-            {editingUser && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold">Editar Usuario</h3>
-                            <button onClick={() => setEditingUser(null)} className="text-gray-500 hover:text-gray-700">
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleEditSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={editFormData.name}
-                                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                                <input
-                                    type="email"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={editFormData.email}
-                                    onChange={e => setEditFormData({ ...editFormData, email: e.target.value })}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
-                                <select
-                                    className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={editFormData.role}
-                                    onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}
-                                >
-                                    <option value="AGENT">Agente Inmobiliario</option>
-                                    <option value="ADMIN">Administrador</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Nueva Contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span>
-                                </label>
-                                <input
-                                    type="password"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    value={editFormData.password}
-                                    onChange={e => setEditFormData({ ...editFormData, password: e.target.value })}
-                                    minLength={6}
-                                    placeholder="Mínimo 6 caracteres"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                className="w-full bg-brand-600 text-white py-3 rounded-xl font-bold hover:bg-brand-700 mt-4 shadow-md transition"
-                            >
-                                Guardar Cambios
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <Modal open={!!editingUser} onClose={() => setEditingUser(null)} title="Editar Usuario">
+                <form onSubmit={handleEditSubmit} className="space-y-4">
+                    <Field label="Nombre Completo">
+                        <Input type="text" required value={editFormData.name}
+                            onChange={e => setEditFormData({ ...editFormData, name: e.target.value })} />
+                    </Field>
+                    <Field label="Correo Electrónico">
+                        <Input type="email" required value={editFormData.email}
+                            onChange={e => setEditFormData({ ...editFormData, email: e.target.value })} />
+                    </Field>
+                    <Field label="Rol">
+                        <Select value={editFormData.role} onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}>
+                            <option value="AGENT">Agente Inmobiliario</option>
+                            <option value="ADMIN">Administrador</option>
+                        </Select>
+                    </Field>
+                    <Field label={<>Nueva Contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span></>}>
+                        <Input type="password" minLength={6} placeholder="Mínimo 6 caracteres"
+                            value={editFormData.password}
+                            onChange={e => setEditFormData({ ...editFormData, password: e.target.value })} />
+                    </Field>
+                    <Button type="submit" size="lg" className="w-full mt-2">Guardar Cambios</Button>
+                </form>
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl">
-                        <div className="text-center mb-5">
-                            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <AlertTriangle className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-900">¿Eliminar usuario?</h3>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Esta acción no se puede deshacer.
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmDelete}
-                                className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition"
-                            >
-                                Eliminar
-                            </button>
-                        </div>
+            <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} maxWidth="max-w-sm">
+                <div className="text-center mb-5">
+                    <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <AlertTriangle className="w-6 h-6" />
                     </div>
+                    <h3 className="text-lg font-bold text-gray-900">¿Eliminar usuario?</h3>
+                    <p className="text-sm text-gray-500 mt-1">Esta acción no se puede deshacer.</p>
                 </div>
-            )}
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowDeleteModal(false)}>Cancelar</Button>
+                    <Button variant="danger" className="flex-1" onClick={confirmDelete}>Eliminar</Button>
+                </div>
+            </Modal>
         </div>
     );
 }
