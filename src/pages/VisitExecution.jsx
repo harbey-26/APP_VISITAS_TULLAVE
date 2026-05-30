@@ -295,9 +295,9 @@ function VisitExecutionContent() {
             <div className="bg-white p-5 rounded-2xl shadow-card border border-gray-100">
                 <button
                     onClick={() => navigate('/agenda')}
-                    className="flex items-center text-gray-400 hover:text-brand-600 mb-4 transition-colors text-sm font-medium"
+                    className="inline-flex items-center gap-1.5 mb-4 px-3 py-2 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900 active:scale-95 transition-all text-sm font-semibold"
                 >
-                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    <ArrowLeft className="w-4 h-4" />
                     Regresar a Agenda
                 </button>
 
