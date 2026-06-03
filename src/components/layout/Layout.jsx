@@ -100,97 +100,20 @@ export default function Layout() {
         };
     }, [token]);
 
-    // Notificaciones 8am–5pm con mensaje según la hora (solo APK)
-    // Usa `at` con fechas exactas (7 días) en lugar de `on` (repeating inexacto en Android 6+)
-    // M4: Renueva automáticamente si han pasado ≥ 6 días desde la última programación
+    // Los recordatorios de ubicación ya NO se programan como notificaciones locales fijas.
+    // Ahora son "por silencio", dirigidos desde el servidor vía FCM (src/utils/locationReminders.js):
+    // solo se avisa al agente cuando lleva un rato sin reportar — menos fatiga y sin duplicados.
+    // El tap del push se maneja en el efecto FCM de abajo (registra ubicación al instante).
+
+    // Migración (una vez al abrir): limpiar las notificaciones fijas del esquema anterior
+    // (IDs 1001–1070) que los APK ya instalados tienen encoladas en el SO, para que no se
+    // solapen con los nuevos recordatorios por silencio durante ~7 días.
     useEffect(() => {
-        if (!token || !Capacitor.isNativePlatform()) return;
-        const NOTIF_MESSAGES = {
-            8:  'Buenos días — confirma tu ubicación para iniciar la jornada.',
-            9:  'Son las 9am — abre la app para registrar tu posición.',
-            10: 'Son las 10am — abre la app para registrar tu posición.',
-            11: 'Son las 11am — abre la app para registrar tu posición.',
-            12: 'Mediodía — registra tu ubicación antes de almorzar.',
-            13: 'Son las 1pm — abre la app para registrar tu posición.',
-            14: 'Son las 2pm — abre la app para registrar tu posición.',
-            15: 'Son las 3pm — abre la app para registrar tu posición.',
-            16: 'Son las 4pm — abre la app para registrar tu posición.',
-            17: 'Fin de jornada — registra tu última ubicación del día.',
-        };
-        const WORK_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-        const NOTIF_KEY = 'visittrack_notif_scheduled_at';
-        const RENEW_AFTER_MS = 6 * 24 * 60 * 60 * 1000; // 6 días
-
-        const scheduleReminders = async () => {
-            try {
-                // M4: Verificar si ya se programaron recientemente — evitar re-programar innecesariamente
-                const lastScheduled = parseInt(localStorage.getItem(NOTIF_KEY) || '0', 10);
-                if (Date.now() - lastScheduled < RENEW_AFTER_MS) return;
-
-                const perm = await LocalNotifications.requestPermissions();
-                if (perm.display !== 'granted') return;
-                await LocalNotifications.createChannel({
-                    id: 'visittrack',
-                    name: 'VisitTrack Recordatorios',
-                    importance: 4,
-                    vibration: true,
-                });
-                // Cancelar recordatorios anteriores (IDs 1001–1070: 7 días × 10 horas)
-                await LocalNotifications.cancel({
-                    notifications: Array.from({ length: 70 }, (_, i) => ({ id: 1001 + i }))
-                });
-                // Programar cada hora de los próximos 7 días con fecha exacta
-                const now = new Date();
-                const notifications = [];
-                let id = 1001;
-                for (let day = 0; day < 7; day++) {
-                    for (const hour of WORK_HOURS) {
-                        const fireAt = new Date(now);
-                        fireAt.setDate(now.getDate() + day);
-                        fireAt.setHours(hour, 0, 0, 0);
-                        if (fireAt > now) {
-                            notifications.push({
-                                id: id++,
-                                title: 'VisitTrack — Confirma tu ubicación',
-                                body: NOTIF_MESSAGES[hour],
-                                schedule: { at: fireAt, allowWhileIdle: true },
-                                channelId: 'visittrack',
-                            });
-                        }
-                    }
-                }
-                if (notifications.length > 0) {
-                    await LocalNotifications.schedule({ notifications });
-                    localStorage.setItem(NOTIF_KEY, Date.now().toString()); // M4: Guardar timestamp
-                }
-            } catch { /* silencioso — no interrumpir la UI */ }
-        };
-        scheduleReminders();
-        return () => {
-            LocalNotifications.cancel({
-                notifications: Array.from({ length: 70 }, (_, i) => ({ id: 1001 + i }))
-            }).catch(() => {});
-        };
-    }, [token]);
-
-    // Al tocar la notificación local → ir a /agenda y registrar ubicación inmediatamente (solo APK)
-    useEffect(() => {
-        if (!Capacitor.isNativePlatform() || !token) return;
-        const sub = LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-            navigate('/agenda');
-            // Si es notificación horaria (IDs 1001-1070) → registrar ubicación al instante
-            if (action.notification?.id >= 1001) {
-                getCurrentPosition()
-                    .then(pos => fetch(`${API_URL}/api/users/location`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
-                    }))
-                    .catch(() => {});
-            }
-        });
-        return () => { sub.then(l => l.remove()).catch(() => {}); };
-    }, [navigate, token]);
+        if (!Capacitor.isNativePlatform()) return;
+        LocalNotifications.cancel({
+            notifications: Array.from({ length: 70 }, (_, i) => ({ id: 1001 + i }))
+        }).catch(() => {});
+    }, []);
 
     // FCM: registrar token del dispositivo en el servidor (solo APK)
     useEffect(() => {
@@ -210,11 +133,26 @@ export default function Layout() {
 
         // FCM en primer plano: refrescar la bandeja de notificaciones (que deduplica y
         // dispara el toast una sola vez). El polling/toast vive en NotificationsContext.
-        const sub = FirebaseMessaging.addListener('notificationReceived', () => {
+        const recvSub = FirebaseMessaging.addListener('notificationReceived', () => {
             refreshNotifications();
         });
-        return () => { sub.then(l => l.remove()).catch(() => {}); };
-    }, [token, refreshNotifications]);
+        // Al tocar el push (recordatorio de ubicación o comunicado) → ir a la agenda y
+        // registrar la ubicación al instante (cubre arranque en frío, donde no hay resume-ping).
+        const tapSub = FirebaseMessaging.addListener('notificationActionPerformed', () => {
+            navigate('/agenda');
+            getCurrentPosition()
+                .then(pos => fetch(`${API_URL}/api/users/location`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+                }))
+                .catch(() => {});
+        });
+        return () => {
+            recvSub.then(l => l.remove()).catch(() => {});
+            tapSub.then(l => l.remove()).catch(() => {});
+        };
+    }, [token, refreshNotifications, navigate]);
 
     // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {

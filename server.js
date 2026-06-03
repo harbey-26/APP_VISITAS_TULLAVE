@@ -3,6 +3,7 @@ import cors from 'cors';
 import prisma from './src/utils/prisma.js';
 import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
+import { startLocationReminderCron } from './src/utils/locationReminders.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -141,8 +142,9 @@ async function main() {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
 
-    startFcmCleanupCron();   // M6: limpieza diaria de tokens FCM
-    startWeeklyReportCron(); // L1: resumen semanal los lunes a las 9am
+    startFcmCleanupCron();        // M6: limpieza diaria de tokens FCM
+    startWeeklyReportCron();      // L1: resumen semanal los lunes a las 9am
+    startLocationReminderCron();  // Recordatorio por silencio (reemplaza las notif. locales fijas)
   } catch (error) {
     console.error('❌ Database connection failed:', error);
     process.exit(1);
