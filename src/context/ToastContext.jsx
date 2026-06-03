@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
@@ -28,11 +28,12 @@ export function ToastProvider({ children }) {
         setTimeout(() => dismiss(id), 4000);
     }, [dismiss]);
 
-    const toast = {
+    // Memoizado: identidad estable para no reiniciar efectos que dependen de `toast`
+    const toast = useMemo(() => ({
         success: (msg) => addToast(msg, 'success'),
         error:   (msg) => addToast(msg, 'error'),
         info:    (msg) => addToast(msg, 'info'),
-    };
+    }), [addToast]);
 
     return (
         <ToastContext.Provider value={toast}>

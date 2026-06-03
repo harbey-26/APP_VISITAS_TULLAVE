@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { NotificationsProvider } from './context/NotificationsContext';
 import Login from './pages/Login';
 import Agenda from './pages/Agenda';
 import VisitExecution from './pages/VisitExecution';
@@ -8,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Properties from './pages/Properties';
 import Tracking from './pages/Tracking';
+import Notifications from './pages/Notifications';
 import Layout from './components/layout/Layout';
 
 const LoadingScreen = () => (
@@ -38,6 +40,7 @@ function App() {
     return (
         <AuthProvider>
             <ToastProvider>
+            <NotificationsProvider>
             <Router>
                 <Routes>
                     <Route path="/login" element={<Login />} />
@@ -49,6 +52,7 @@ function App() {
                     }>
                         <Route index element={<Navigate to="/agenda" replace />} />
                         <Route path="agenda" element={<Agenda />} />
+                        <Route path="notifications" element={<Notifications />} />
                         <Route path="visit/:id" element={<VisitExecution />} />
                         <Route path="dashboard" element={
                             <AdminRoute>
@@ -74,6 +78,7 @@ function App() {
                     <Route path="*" element={<Navigate to="/agenda" replace />} />
                 </Routes>
             </Router>
+            </NotificationsProvider>
             </ToastProvider>
         </AuthProvider>
     );

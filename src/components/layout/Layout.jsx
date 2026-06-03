@@ -17,14 +17,17 @@ import {
     Users,
     Menu,
     X,
+    Bell,
     LayoutDashboard
 } from 'lucide-react';
+import { useNotifications } from '../../context/NotificationsContext';
 
 export default function Layout() {
     const { logout, user, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const toast = useToast();
+    const { unreadCount, refresh: refreshNotifications } = useNotifications();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Onboarding de permisos: solo en el APK y solo la primera vez
@@ -205,39 +208,13 @@ export default function Layout() {
         };
         registerFcm();
 
-        // Notificación FCM recibida con la app en primer plano → mostrar toast
-        const sub = FirebaseMessaging.addListener('notificationReceived', ({ notification }) => {
-            toast.info(`📢 ${notification.title}: ${notification.body}`);
+        // FCM en primer plano: refrescar la bandeja de notificaciones (que deduplica y
+        // dispara el toast una sola vez). El polling/toast vive en NotificationsContext.
+        const sub = FirebaseMessaging.addListener('notificationReceived', () => {
+            refreshNotifications();
         });
         return () => { sub.then(l => l.remove()).catch(() => {}); };
-    }, [token]);
-
-    // Polling de comunicados: verifica cada 60s si hay mensajes nuevos del admin
-    useEffect(() => {
-        if (!token) return;
-        const checkBroadcasts = async () => {
-            try {
-                const res = await fetch(`${API_URL}/api/broadcasts/pending`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (!res.ok) return;
-                const pending = await res.json();
-                for (const broadcast of pending) {
-                    // Marcar como visto antes de mostrar (evita duplicados)
-                    await fetch(`${API_URL}/api/broadcasts/${broadcast.id}/read`, {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    // Toast inmediato: visible en web Y en APK cuando la app está en primer plano
-                    // (FCM maneja la notificación push en background — no se usa LocalNotifications aquí)
-                    toast.info(`📢 ${broadcast.title}: ${broadcast.body}`);
-                }
-            } catch { /* silencioso */ }
-        };
-        checkBroadcasts();
-        const interval = setInterval(checkBroadcasts, 60000);
-        return () => clearInterval(interval);
-    }, [token, toast]);
+    }, [token, refreshNotifications]);
 
     // GPS: APK usa Foreground Service nativo (background); web usa setInterval 30 s
     useEffect(() => {
@@ -330,7 +307,7 @@ export default function Layout() {
     const isMobileActive = (path) =>
         location.pathname.startsWith(path);
 
-    const NavItem = ({ to, icon: Icon, label }) => {
+    const NavItem = ({ to, icon: Icon, label, badge = 0 }) => {
         const active = location.pathname.startsWith(to);
         return (
             <Link
@@ -344,6 +321,11 @@ export default function Layout() {
             >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 <span>{label}</span>
+                {badge > 0 && (
+                    <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center ${active ? 'bg-white text-brand-600' : 'bg-brand-600 text-white'}`}>
+                        {badge > 99 ? '99+' : badge}
+                    </span>
+                )}
             </Link>
         );
     };
@@ -390,6 +372,19 @@ export default function Layout() {
                         <span className={`w-1.5 h-1.5 rounded-full ${gpsActive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
                         GPS
                     </span>
+                    {/* Campana de notificaciones con contador */}
+                    <button
+                        onClick={() => navigate('/notifications')}
+                        aria-label="Notificaciones"
+                        className="relative w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition"
+                    >
+                        <Bell className="w-5 h-5" />
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-600 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
+                    </button>
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ${isAdmin ? 'bg-purple-600' : 'bg-brand-600'}`}>
                         {user?.name?.charAt(0) || 'U'}
                     </div>
@@ -441,6 +436,7 @@ export default function Layout() {
                         Principal
                     </p>
                     <NavItem to="/agenda" icon={Calendar} label="Agenda" />
+                    <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
 
                     {isAdmin && (
                         <>

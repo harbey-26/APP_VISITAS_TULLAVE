@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Home, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
@@ -109,6 +109,10 @@ function AgendaMapView({ visits, onVisitClick }) {
                             <div className="flex items-center gap-2 mb-1.5">
                                 <span className="font-extrabold tabular-nums text-gray-900">
                                     {new Date(selectedVisit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full capitalize">
+                                    <Calendar className="w-3 h-3" />
+                                    {new Date(selectedVisit.scheduledStart).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
                                 </span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selTypeCfg.bg} ${selTypeCfg.text}`}>
                                     {selTypeCfg.label}
@@ -537,13 +541,17 @@ export default function Agenda() {
                                                 <div className="p-4">
                                                     {/* Row 1: Hora + Tipo */}
                                                     <div className="flex items-center justify-between mb-3">
-                                                        <div className="flex items-center gap-2.5">
+                                                        <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1.5">
                                                             <div className="flex items-center gap-1.5">
                                                                 <Clock className="w-3.5 h-3.5 text-gray-400" />
                                                                 <span className="font-extrabold text-base text-gray-900 tabular-nums">
                                                                     {new Date(visit.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                             </div>
+                                                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full capitalize">
+                                                                <Calendar className="w-3 h-3" />
+                                                                {new Date(visit.scheduledStart).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                            </span>
                                                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${typeConfig.bg} ${typeConfig.text}`}>
                                                                 {typeConfig.label}
                                                             </span>

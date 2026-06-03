@@ -67,6 +67,50 @@ export const getBroadcasts = async (req, res) => {
     }
 };
 
+// Agente/Admin: bandeja de notificaciones — historial (30 días) con estado leído/no leído
+export const getInbox = async (req, res) => {
+    try {
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const broadcasts = await prisma.broadcast.findMany({
+            where: { createdAt: { gte: since } },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+            select: {
+                id: true, title: true, body: true, createdAt: true,
+                reads: { where: { userId: req.user.id }, select: { id: true } },
+            },
+        });
+        const items = broadcasts.map(b => ({
+            id: b.id, title: b.title, body: b.body, createdAt: b.createdAt,
+            read: b.reads.length > 0,
+        }));
+        res.json(items);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Agente/Admin: marcar todas las notificaciones como leídas
+export const markAllBroadcastsRead = async (req, res) => {
+    try {
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const unread = await prisma.broadcast.findMany({
+            where: { createdAt: { gte: since }, reads: { none: { userId: req.user.id } } },
+            select: { id: true },
+        });
+        for (const b of unread) {
+            await prisma.broadcastRead.upsert({
+                where: { broadcastId_userId: { broadcastId: b.id, userId: req.user.id } },
+                update: {},
+                create: { broadcastId: b.id, userId: req.user.id },
+            });
+        }
+        res.json({ ok: true, marked: unread.length });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 // Agente: obtener comunicados de las últimas 48h que aún no ha visto
 export const getPendingBroadcasts = async (req, res) => {
     try {
