@@ -44,27 +44,32 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
-      - name: Generate custom app icon from logo
+      - name: Generate app icon (adaptive + legacy)
         run: |
           sudo apt-get install -y -q imagemagick
-          LOGO="public/logo.png"
-          BG="#e31c25"
-          # formato "densidad:tamaño" — sin declare -A para compatibilidad con sh
-          for entry in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
-            DENSITY="${entry%%:*}"
-            SIZE="${entry##*:}"
-            LOGO_SIZE=$((SIZE * 70 / 100))
-            DEST="android/app/src/main/res/mipmap-${DENSITY}"
+          RES="android/app/src/main/res"
+          # densidad : tamaño_legacy : tamaño_adaptativo(108dp)
+          for entry in "mdpi:48:108" "hdpi:72:162" "xhdpi:96:216" "xxhdpi:144:324" "xxxhdpi:192:432"; do
+            D="${entry%%:*}"; rest="${entry#*:}"; LEG="${rest%%:*}"; ADP="${rest##*:}"
+            DEST="$RES/mipmap-${D}"
             mkdir -p "$DEST"
-            # Fondo rojo sólido + logo con transparencia conservada, centrado
-            convert -size ${SIZE}x${SIZE} xc:"$BG" \
-              \( "$LOGO" -resize ${LOGO_SIZE}x${LOGO_SIZE} -background none \) \
-              -gravity center -composite -flatten \
-              "$DEST/ic_launcher.png"
+            # Capas del ícono adaptativo (Android 8+): foreground (llave) + background (rojo)
+            convert assets/ic_foreground.png -resize ${ADP}x${ADP} "$DEST/ic_launcher_foreground.png"
+            convert assets/ic_background.png -resize ${ADP}x${ADP} "$DEST/ic_launcher_background.png"
+            # Ícono heredado plano (Android < 8)
+            convert assets/ic_legacy.png     -resize ${LEG}x${LEG} "$DEST/ic_launcher.png"
             cp "$DEST/ic_launcher.png" "$DEST/ic_launcher_round.png"
           done
-          echo "Íconos generados:"
-          ls android/app/src/main/res/mipmap-hdpi/
+          # XML del ícono adaptativo — referencia nuestras propias capas (reemplaza el de Capacitor)
+          mkdir -p "$RES/mipmap-anydpi-v26"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' \
+            '    <background android:drawable="@mipmap/ic_launcher_background"/>' \
+            '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>' \
+            '</adaptive-icon>' > "$RES/mipmap-anydpi-v26/ic_launcher.xml"
+          cp "$RES/mipmap-anydpi-v26/ic_launcher.xml" "$RES/mipmap-anydpi-v26/ic_launcher_round.xml"
+          echo "Íconos generados:"; ls "$RES/mipmap-anydpi-v26" "$RES/mipmap-hdpi"
 
       - name: Sync Capacitor
         run: npx cap sync android

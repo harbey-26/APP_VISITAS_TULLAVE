@@ -4,9 +4,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { API_URL } from '../../config';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
+import PermissionsOnboarding, { ONBOARDING_KEY } from '../PermissionsOnboarding';
 import {
     Calendar,
     LogOut,
@@ -25,6 +27,11 @@ export default function Layout() {
     const toast = useToast();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // Onboarding de permisos: solo en el APK y solo la primera vez
+    const [showOnboarding, setShowOnboarding] = useState(
+        () => Capacitor.isNativePlatform() && !localStorage.getItem(ONBOARDING_KEY)
+    );
+
     // Detección de conectividad
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     useEffect(() => {
@@ -41,6 +48,38 @@ export default function Layout() {
     // M4: Refs para filtro de distancia GPS
     const lastSentPosRef = useRef(null);
     const lastForceSendRef = useRef(0);
+
+    // Refs estables para el manejador del botón Atrás (evita re-suscribir el listener)
+    const menuOpenRef = useRef(isMobileMenuOpen);
+    menuOpenRef.current = isMobileMenuOpen;
+    const pathnameRef = useRef(location.pathname);
+    pathnameRef.current = location.pathname;
+
+    // Botón físico "Atrás" de Android (solo APK): cerrar menú → retroceder → doble toque para salir
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+        let lastBack = 0;
+        const sub = CapacitorApp.addListener('backButton', () => {
+            if (menuOpenRef.current) {
+                setIsMobileMenuOpen(false);
+                return;
+            }
+            const path = pathnameRef.current;
+            if (path !== '/agenda' && path !== '/') {
+                navigate(-1);
+                return;
+            }
+            // En la pantalla raíz: confirmar salida con doble toque
+            const now = Date.now();
+            if (now - lastBack < 2000) {
+                CapacitorApp.exitApp();
+            } else {
+                lastBack = now;
+                toast.info('Presiona atrás de nuevo para salir');
+            }
+        });
+        return () => { sub.then(l => l.remove()).catch(() => {}); };
+    }, [navigate, toast]);
 
     // Wake Lock: evita que la pantalla se apague para mantener el GPS activo
     useEffect(() => {
@@ -217,10 +256,10 @@ export default function Layout() {
         const GPS_MIN_DISTANCE_M = 10;       // no enviar si movimiento < 10 m
         const GPS_FORCE_INTERVAL_MS = 2 * 60 * 1000; // forzar envío cada 2 min aunque no haya movimiento
 
-        const sendCoords = ({ lat, lng }) => {
+        const sendCoords = ({ lat, lng }, force = false) => {
             const now = Date.now();
             const last = lastSentPosRef.current;
-            const forceSend = now - lastForceSendRef.current >= GPS_FORCE_INTERVAL_MS;
+            const forceSend = force || now - lastForceSendRef.current >= GPS_FORCE_INTERVAL_MS;
 
             // M4: Omitir si no se movió suficiente y no ha pasado el intervalo de fuerza
             if (last && !forceSend) {
@@ -245,12 +284,26 @@ export default function Layout() {
         if (Capacitor.isNativePlatform()) {
             // APK: Foreground Service nativo — continúa con pantalla apagada
             startBackgroundTracking(sendCoords).then(id => { watchId = id; });
-            // Heartbeat cada 2 min para agentes quietos (distanceFilter no dispara si no se mueven)
+            // Heartbeat cada 2 min para agentes quietos (distanceFilter no dispara si no se mueven).
+            // Nota: Android congela los timers JS al minimizar — este heartbeat solo corre con la
+            // app en primer plano. El watcher nativo cubre el background mientras el agente se mueve.
             const heartbeat = setInterval(
                 () => getCurrentPosition().then(sendCoords).catch(() => {}),
                 2 * 60 * 1000
             );
-            return () => { if (watchId) stopBackgroundTracking(watchId); clearInterval(heartbeat); };
+            // M5: Al reabrir la app (resume), forzar un ping inmediato para que un agente quieto
+            // no aparezca "desconectado" tras tener el teléfono guardado.
+            const onResume = () => {
+                if (document.visibilityState === 'visible') {
+                    getCurrentPosition().then(pos => sendCoords(pos, true)).catch(() => {});
+                }
+            };
+            document.addEventListener('visibilitychange', onResume);
+            return () => {
+                if (watchId) stopBackgroundTracking(watchId);
+                clearInterval(heartbeat);
+                document.removeEventListener('visibilitychange', onResume);
+            };
         }
 
         // Web: setInterval cada 30 s + ping al volver al foco
@@ -270,6 +323,9 @@ export default function Layout() {
         logout();
         navigate('/login');
     };
+
+    // GPS activo si hubo un ping exitoso en los últimos 2 min
+    const gpsActive = gpsLastSent && (Date.now() - gpsLastSent.getTime()) < 120000;
 
     const isMobileActive = (path) =>
         location.pathname.startsWith(path);
@@ -307,6 +363,11 @@ export default function Layout() {
     return (
         <div className="min-h-screen bg-gray-50 flex">
 
+            {/* ── Onboarding de permisos (primer arranque del APK) ───────── */}
+            {token && showOnboarding && (
+                <PermissionsOnboarding onDone={() => setShowOnboarding(false)} />
+            )}
+
             {/* ── Header móvil fijo ─────────────────────────────────────── */}
             {/* max() garantiza ≥28px aunque env() devuelva 0 (Android sin notch) */}
             <div
@@ -323,8 +384,15 @@ export default function Layout() {
                     </button>
                     <img src="/logo.png" alt="Logo" className="h-7 w-auto" />
                 </div>
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ${isAdmin ? 'bg-purple-600' : 'bg-brand-600'}`}>
-                    {user?.name?.charAt(0) || 'U'}
+                <div className="flex items-center gap-2.5">
+                    {/* Indicador GPS visible — confianza para el agente */}
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${gpsActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${gpsActive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                        GPS
+                    </span>
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ${isAdmin ? 'bg-purple-600' : 'bg-brand-600'}`}>
+                        {user?.name?.charAt(0) || 'U'}
+                    </div>
                 </div>
             </div>
 
@@ -397,9 +465,9 @@ export default function Layout() {
                             <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
                             <p className="text-xs text-slate-400 truncate">{user?.email}</p>
                             <div className="flex items-center gap-1 mt-0.5">
-                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${gpsLastSent && (Date.now() - gpsLastSent.getTime()) < 120000 ? 'bg-green-400 animate-pulse' : 'bg-slate-600'}`} />
+                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${gpsActive ? 'bg-green-400 animate-pulse' : 'bg-slate-600'}`} />
                                 <span className="text-[10px] text-slate-500">
-                                    {gpsLastSent && (Date.now() - gpsLastSent.getTime()) < 120000 ? 'GPS activo' : 'GPS inactivo'}
+                                    {gpsActive ? 'GPS activo' : 'GPS inactivo'}
                                 </span>
                             </div>
                         </div>
@@ -411,6 +479,9 @@ export default function Layout() {
                         <LogOut className="w-4 h-4" />
                         <span>Cerrar Sesión</span>
                     </button>
+                    <p className="text-center text-[10px] text-slate-600 mt-3">
+                        VisitTrack v{__APP_VERSION__}
+                    </p>
                 </div>
             </aside>
 

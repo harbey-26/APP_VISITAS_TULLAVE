@@ -64,6 +64,11 @@ function VisitExecutionContent() {
     const [outcome, setOutcome] = useState('');
     const [showFinishModal, setShowFinishModal] = useState(false);
 
+    // #4: No perder datos — borrador local de resultado+comentarios y reintento al recuperar señal
+    const DRAFT_KEY = `visit_draft_${id}`;
+    const [pendingRetry, setPendingRetry] = useState(false);
+    const draftLoadedRef = useRef(false);
+
     // M1: Fotos de visita
     const [images, setImages] = useState([]);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -89,7 +94,8 @@ function VisitExecutionContent() {
                     const v = visits.find(v => v.id === parseInt(id));
                     if (v) {
                         setVisit(v);
-                        if (v.notes) setNotes(v.notes);
+                        // El borrador local (ediciones recientes sin guardar) tiene prioridad sobre el servidor
+                        if (v.notes && !draftLoadedRef.current) setNotes(v.notes);
                         // Inicializar elapsed desde el servidor para que sea correcto al cargar o volver de otra pestaña
                         if (v.status === 'IN_PROGRESS' && v.actualStart) {
                             setElapsed(Math.floor((Date.now() - new Date(v.actualStart).getTime()) / 1000));
@@ -113,6 +119,27 @@ function VisitExecutionContent() {
         fetchVisit();
         fetchImages();
     }, [id, token]);
+
+    // #4: Cargar borrador local al montar (sobrevive recargas/cierres de la app)
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (raw) {
+                const draft = JSON.parse(raw);
+                draftLoadedRef.current = true;
+                if (draft.notes) setNotes(draft.notes);
+                if (draft.outcome) setOutcome(draft.outcome);
+            }
+        } catch { /* json corrupto — ignorar */ }
+    }, [DRAFT_KEY]);
+
+    // #4: Guardar borrador en cada cambio mientras la visita está en curso
+    useEffect(() => {
+        if (visit?.status !== 'IN_PROGRESS') return;
+        try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ notes, outcome }));
+        } catch { /* almacenamiento lleno — ignorar */ }
+    }, [notes, outcome, visit?.status, DRAFT_KEY]);
 
     // Timer — calcula siempre desde actualStart del servidor
     useEffect(() => {
@@ -191,26 +218,54 @@ function VisitExecutionContent() {
         }
         setLoading(true);
         setErrorMsg(null);
+
+        // El GPS puede fallar aparte de la red — distinguir para no reintentar en vano
+        let coords;
         try {
-            const { lat, lng } = await getCurrentLocation();
-            const res = await fetch(`${API_URL}/api/visits/${id}/finish`, {
+            coords = await getCurrentLocation();
+        } catch {
+            setErrorMsg('No se pudo obtener tu ubicación. Verifica el GPS e intenta de nuevo.');
+            setLoading(false);
+            return;
+        }
+
+        let res;
+        try {
+            res = await fetch(`${API_URL}/api/visits/${id}/finish`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ lat, lng, notes, outcome })
+                body: JSON.stringify({ lat: coords.lat, lng: coords.lng, notes, outcome })
             });
-            if (res.ok) {
-                setVisit(await res.json());
-                navigate('/agenda');
-            } else {
-                const errData = await res.json();
-                throw new Error(errData.error || 'Error desconocido al finalizar visita');
-            }
-        } catch (error) {
-            setErrorMsg(error.message);
-        } finally {
+        } catch {
+            // #4: Fallo de red — el borrador ya está guardado; reintentar al recuperar conexión
+            setPendingRetry(true);
+            setErrorMsg(null);
+            setLoading(false);
+            return;
+        }
+
+        if (res.ok) {
+            try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+            setPendingRetry(false);
+            setVisit(await res.json());
+            navigate('/agenda');
+        } else {
+            let msg = 'Error desconocido al finalizar visita';
+            try { msg = (await res.json()).error || msg; } catch { /* sin cuerpo */ }
+            setErrorMsg(msg);
             setLoading(false);
         }
     };
+
+    // #4: Reintentar el envío automáticamente cuando vuelva la conexión
+    const handleFinishRef = useRef();
+    handleFinishRef.current = handleFinish;
+    useEffect(() => {
+        if (!pendingRetry) return;
+        const onOnline = () => handleFinishRef.current?.();
+        window.addEventListener('online', onOnline);
+        return () => window.removeEventListener('online', onOnline);
+    }, [pendingRetry]);
 
     // M1: Manejar selección de foto
     const handlePhotoSelect = async (e) => {
@@ -540,6 +595,14 @@ function VisitExecutionContent() {
                 </div>
             )}
 
+            {/* #4: Reintento pendiente por falta de conexión — el reporte no se perdió */}
+            {pendingRetry && (
+                <div className="bg-amber-50 text-amber-700 p-4 rounded-xl border border-amber-200 flex items-start gap-3 text-sm">
+                    <Clock className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <span>Sin conexión. Tu reporte quedó guardado y se enviará automáticamente al recuperar internet. También puedes reintentar manualmente.</span>
+                </div>
+            )}
+
             {/* Error message */}
             {errorMsg && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 flex items-start gap-3 text-sm">
@@ -577,7 +640,7 @@ function VisitExecutionContent() {
                     ) : (
                         <CheckCircle className="w-6 h-6" />
                     )}
-                    {loading ? 'Guardando...' : 'Finalizar Visita'}
+                    {loading ? 'Guardando...' : pendingRetry ? 'Reintentar envío' : 'Finalizar Visita'}
                 </button>
             )}
             <Modal open={showFinishModal} onClose={() => setShowFinishModal(false)} maxWidth="max-w-sm">
