@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon } from 'lucide-react';
+import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
@@ -44,6 +44,14 @@ class ErrorBoundary extends React.Component {
         }
         return this.props.children;
     }
+}
+
+// Construye URL wa.me a partir de un número. Normaliza: deja solo dígitos y, si
+// queda en 10 dígitos empezando por 3 (móvil Colombia), antepone "57".
+function buildWhatsAppUrl(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    const normalized = (digits.length === 10 && digits.startsWith('3')) ? `57${digits}` : digits;
+    return `https://wa.me/${normalized}`;
 }
 
 function VisitExecutionContent() {
@@ -386,19 +394,39 @@ function VisitExecutionContent() {
                             </div>
                         )}
                         {visit.clientPhone && (
-                            <a
-                                href={`tel:${visit.clientPhone}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="flex items-center gap-2 text-sm text-gray-700 hover:text-brand-600 transition sm:ml-auto"
-                            >
-                                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                                    <Phone className="w-4 h-4 text-green-600" />
+                            <div className="flex items-center gap-2 sm:ml-auto">
+                                <div className="flex items-center gap-2 text-sm text-gray-700">
+                                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                                        <Phone className="w-4 h-4 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-400">Teléfono</p>
+                                        <p className="font-semibold">{visit.clientPhone}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-400">Teléfono</p>
-                                    <p className="font-semibold">{visit.clientPhone}</p>
+                                <div className="flex items-center gap-1.5 ml-1">
+                                    <a
+                                        href={`tel:${visit.clientPhone}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label="Llamar"
+                                        title="Llamar"
+                                        className="w-9 h-9 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-600 flex items-center justify-center transition active:scale-95"
+                                    >
+                                        <Phone className="w-4 h-4" />
+                                    </a>
+                                    <a
+                                        href={buildWhatsAppUrl(visit.clientPhone)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label="Enviar WhatsApp"
+                                        title="WhatsApp"
+                                        className="w-9 h-9 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                    </a>
                                 </div>
-                            </a>
+                            </div>
                         )}
                     </div>
                 )}

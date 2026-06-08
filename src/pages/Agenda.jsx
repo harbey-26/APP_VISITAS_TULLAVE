@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
@@ -137,6 +137,14 @@ function AgendaMapView({ visits, onVisitClick }) {
             )}
         </div>
     );
+}
+
+// Construye URL wa.me a partir de un número. Normaliza: deja solo dígitos y, si
+// queda en 10 dígitos empezando por 3 (móvil Colombia), antepone "57".
+function buildWhatsAppUrl(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    const normalized = (digits.length === 10 && digits.startsWith('3')) ? `57${digits}` : digits;
+    return `https://wa.me/${normalized}`;
 }
 
 // Agrupa visitas en bloques horarios
@@ -605,6 +613,30 @@ export default function Agenda() {
                                                                 {visit.clientPhone && (
                                                                     <span className="text-gray-400">· {visit.clientPhone}</span>
                                                                 )}
+                                                            </div>
+                                                        )}
+                                                        {visit.clientPhone && (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <a
+                                                                    href={`tel:${visit.clientPhone}`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    aria-label="Llamar"
+                                                                    title="Llamar"
+                                                                    className="w-6 h-6 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-600 flex items-center justify-center transition active:scale-95"
+                                                                >
+                                                                    <Phone className="w-3 h-3" />
+                                                                </a>
+                                                                <a
+                                                                    href={buildWhatsAppUrl(visit.clientPhone)}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    aria-label="WhatsApp"
+                                                                    title="WhatsApp"
+                                                                    className="w-6 h-6 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95"
+                                                                >
+                                                                    <MessageCircle className="w-3 h-3" />
+                                                                </a>
                                                             </div>
                                                         )}
                                                         {user?.role === 'ADMIN' && visit.user?.name && (
