@@ -4,6 +4,15 @@ import { hashPassword } from '../src/utils/auth.js';
 const prisma = new PrismaClient();
 
 async function main() {
+    // Bootstrap-only: si ya hay usuarios en la BD, no sembramos nada. Esto evita
+    // que los usuarios eliminados por el admin "resuciten" en cada deploy de
+    // Railway. El seed solo aplica en la primera instalación (BD vacía).
+    const existingCount = await prisma.user.count();
+    if (existingCount > 0) {
+        console.log(`Seed omitido: ya hay ${existingCount} usuario(s) en la BD.`);
+        return { skipped: true };
+    }
+
     const rawAdminPassword = process.env.SEED_ADMIN_PASSWORD;
     const rawAgentPassword = process.env.SEED_AGENT_PASSWORD;
 
@@ -14,10 +23,8 @@ async function main() {
     const adminPassword = await hashPassword(rawAdminPassword);
     const agentPassword = await hashPassword(rawAgentPassword);
 
-    const user = await prisma.user.upsert({
-        where: { email: 'admin@tullave.com' },
-        update: {},
-        create: {
+    const user = await prisma.user.create({
+        data: {
             email: 'admin@tullave.com',
             name: 'Admin User',
             password: adminPassword,
@@ -25,10 +32,8 @@ async function main() {
         }
     });
 
-    const agent = await prisma.user.upsert({
-        where: { email: 'agente@tullave.com' },
-        update: {},
-        create: {
+    const agent = await prisma.user.create({
+        data: {
             email: 'agente@tullave.com',
             name: 'Agente Inmobiliario',
             password: agentPassword,
