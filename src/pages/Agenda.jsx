@@ -206,6 +206,12 @@ export default function Agenda() {
             const res = await fetch(`${API_URL}/api/visits${query}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            if (res.status === 401) {
+                // Token inválido o caducado (típico tras rotar JWT_SECRET):
+                // disparamos el evento global para que AuthContext cierre sesión.
+                window.dispatchEvent(new Event('auth:unauthorized'));
+                return;
+            }
             if (res.ok) {
                 const data = await res.json();
                 setVisits(Array.isArray(data) ? data : []);
