@@ -176,6 +176,22 @@ export const updateUser = async (req, res) => {
             delete updateData.password;
         }
 
+        // Hardening: un admin NO puede modificar a otro admin (role/password/email),
+        // así se evita escalada lateral o golpes mutuos entre admins. El propio
+        // admin sí puede modificarse a sí mismo. Promover agente → admin requiere
+        // acción manual en BD para evitar accidentes.
+        const target = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true },
+        });
+        if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+        if (target.role === 'ADMIN' && target.id !== req.user.id) {
+            return res.status(403).json({ error: 'No puedes modificar a otro administrador.' });
+        }
+        if (updateData.role === 'ADMIN' && target.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Promover a admin requiere acción manual en base de datos.' });
+        }
+
         const user = await prisma.user.update({
             where: { id: userId },
             data: updateData,
@@ -208,6 +224,16 @@ export const deleteUser = async (req, res) => {
     }
 
     try {
+        // Hardening: un admin no puede eliminar a otro admin (proteger la cuenta
+        // raíz contra golpes mutuos y bloqueo accidental).
+        const target = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, role: true },
+        });
+        if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+        if (target.role === 'ADMIN') {
+            return res.status(403).json({ error: 'No se puede eliminar a otro administrador.' });
+        }
         await prisma.user.delete({ where: { id: userId } });
         res.json({ message: 'Usuario eliminado correctamente' });
     } catch (error) {
