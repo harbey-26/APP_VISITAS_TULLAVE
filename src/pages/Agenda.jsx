@@ -199,8 +199,8 @@ export default function Agenda() {
     const navigate = useNavigate();
     const toast = useToast();
 
-    const fetchVisits = async () => {
-        setLoadingVisits(true); // M1
+    const fetchVisits = async (silent = false) => {
+        if (!silent) setLoadingVisits(true); // El polling y el visibility-refresh no muestran spinner
         try {
             const query = `?startDate=${dateRange.start}&endDate=${dateRange.end}`;
             const res = await fetch(`${API_URL}/api/visits${query}`, {
@@ -213,7 +213,7 @@ export default function Agenda() {
         } catch (error) {
             console.error('Error al cargar visitas', error);
         } finally {
-            setLoadingVisits(false); // M1
+            if (!silent) setLoadingVisits(false);
         }
     };
 
@@ -251,6 +251,27 @@ export default function Agenda() {
             fetchAgents();
         }
     }, [token, user, dateRange]);
+
+    // Mantener la lista de visitas fresca sin necesidad de cambiar de módulo:
+    // - Polling silencioso cada 45 s (captura asignaciones/eliminaciones del admin)
+    // - Refresh inmediato al volver del background o al ganar foco la ventana
+    //   (típico cuando el agente abre la app tras recibir la push de notificación)
+    useEffect(() => {
+        if (!token) return;
+        const tick = () => fetchVisits(true); // silencioso, sin spinner
+        const interval = setInterval(tick, 45000);
+        const onVisibilityOrFocus = () => {
+            if (document.visibilityState === 'visible') tick();
+        };
+        document.addEventListener('visibilitychange', onVisibilityOrFocus);
+        window.addEventListener('focus', onVisibilityOrFocus);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+            window.removeEventListener('focus', onVisibilityOrFocus);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, dateRange.start, dateRange.end]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
