@@ -17,6 +17,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Permite al workflow crear releases públicos con el APK como asset
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
@@ -87,15 +90,53 @@ jobs:
         run: |
           sed -i 's|</manifest>|    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n</manifest>|' android/app/src/main/AndroidManifest.xml
 
+      # Inyecta la versión de package.json en build.gradle para que App.getInfo()
+      # devuelva la misma versión que el backend compara. Sin esto, el APK siempre
+      # reportaría "1.0" y el banner se quedaría pegado.
+      - name: Inject app version into build.gradle
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          VERSION_CODE=${{ github.run_number }}
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION\"/" android/app/build.gradle
+          sed -i "s/versionCode [0-9]\+/versionCode $VERSION_CODE/" android/app/build.gradle
+          echo "App versionName=$VERSION versionCode=$VERSION_CODE"
+          grep -E "version(Name|Code)" android/app/build.gradle
+
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload APK (artifact interno)
         uses: actions/upload-artifact@v5
         with:
           name: VisitTrack-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      # Leer la versión del package.json y renombrar el APK con ella, así el
+      # release tiene un nombre estable y predecible.
+      - name: Read version from package.json
+        id: pkg
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          cp android/app/build/outputs/apk/debug/app-debug.apk "VisitTrack-v${VERSION}.apk"
+
+      # Crea (o actualiza) un release público con el APK como asset.
+      # URL predecible: https://github.com/<owner>/<repo>/releases/download/v<version>/VisitTrack-v<version>.apk
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.pkg.outputs.version }}
+          name: VisitTrack v${{ steps.pkg.outputs.version }}
+          body: |
+            APK generado automáticamente.
+
+            **Instalación:** descarga `VisitTrack-v${{ steps.pkg.outputs.version }}.apk` y ábrelo en el dispositivo Android.
+            (Puede pedir permitir "Instalar apps de orígenes desconocidos" la primera vez.)
+          files: VisitTrack-v${{ steps.pkg.outputs.version }}.apk
+          # Si ya existe un release con esa tag, sobrescribe el asset (útil al re-correr el workflow)
+          fail_on_unmatched_files: true
+          make_latest: 'true'

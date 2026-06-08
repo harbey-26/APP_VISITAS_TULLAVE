@@ -12,14 +12,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'));
 
-// URL de descarga del APK (último artifact del workflow). Cambia si se publica
-// el APK en otra ubicación (Play Store, S3, etc.).
-const APK_DOWNLOAD_URL = 'https://github.com/harbey-26/APP_VISITAS_TULLAVE/actions/workflows/build-apk.yml';
+// Cada build del APK publica un release público en GitHub con tag v<version> y
+// asset VisitTrack-v<version>.apk. La URL es predecible — no requiere login.
+function buildApkUrl(version) {
+    return `https://github.com/harbey-26/APP_VISITAS_TULLAVE/releases/download/v${version}/VisitTrack-v${version}.apk`;
+}
 
 router.get('/version', (_req, res) => {
     res.json({
         latest: pkg.version,
-        apkUrl: APK_DOWNLOAD_URL,
+        apkUrl: buildApkUrl(pkg.version),
+        // Página del release con changelog (útil si el usuario quiere ver detalles)
+        releaseUrl: `https://github.com/harbey-26/APP_VISITAS_TULLAVE/releases/tag/v${pkg.version}`,
     });
 });
 
