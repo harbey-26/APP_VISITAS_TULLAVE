@@ -10,3 +10,7 @@ coverage
 # Capacitor — generado en CI, no se commitea
 android/
 ios/
+
+# Llaves de firma Android — NUNCA commitear
+*.keystore
+*.jks

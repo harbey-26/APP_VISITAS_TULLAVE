@@ -102,17 +102,33 @@ jobs:
           echo "App versionName=$VERSION versionCode=$VERSION_CODE"
           grep -E "version(Name|Code)" android/app/build.gradle
 
-      - name: Build Debug APK
+      # Decodifica el keystore de firma (secreto base64) a un archivo. Usar una
+      # llave FIJA en cada build hace que las actualizaciones del APK no den el
+      # error "conflicto con un paquete" (firma estable entre versiones).
+      - name: Decode signing keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/visittrack-release.keystore
+          echo "Keystore restaurado ($(stat -c%s android/app/visittrack-release.keystore) bytes)"
+
+      - name: Build Signed Release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android/app/visittrack-release.keystore" \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
 
       - name: Upload APK (artifact interno)
         uses: actions/upload-artifact@v5
         with:
           name: VisitTrack-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
       # Leer la versión del package.json y renombrar el APK con ella, así el
@@ -122,7 +138,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          cp android/app/build/outputs/apk/debug/app-debug.apk "VisitTrack-v${VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "VisitTrack-v${VERSION}.apk"
 
       # Crea (o actualiza) un release público con el APK como asset.
       # URL predecible: https://github.com/<owner>/<repo>/releases/download/v<version>/VisitTrack-v<version>.apk
