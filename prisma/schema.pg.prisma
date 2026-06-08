@@ -23,6 +23,7 @@ model User {
   locationLogs   LocationLog[]
   broadcastReads BroadcastRead[]
   fcmTokens      UserFcmToken[]  // M6: soporte multi-dispositivo
+  broadcasts     Broadcast[]     // M7: notificaciones dirigidas
 }
 
 model UserFcmToken {
@@ -53,7 +54,11 @@ model Broadcast {
   title     String
   body      String
   createdAt DateTime        @default(now())
+  userId    Int?            // M7: null = masivo (todos), set = personal (solo ese agente)
+  user      User?           @relation(fields: [userId], references: [id])
   reads     BroadcastRead[]
+
+  @@index([userId])
 }
 
 model BroadcastRead {
@@ -97,6 +102,7 @@ model Visit {
   clientName       String?
   clientPhone      String?
   deletedAt        DateTime?  // A2: Soft delete — null = activa, fecha = eliminada
+  googleEventId    String?    // M8: id del evento sincronizado en Google Calendar
 
   user     User     @relation(fields: [userId], references: [id])
   property Property @relation(fields: [propertyId], references: [id])
@@ -106,6 +112,19 @@ model Visit {
   @@index([userId])
   @@index([propertyId])
   @@index([scheduledStart])
+}
+
+// M8: Tokens OAuth para integraciones (single-row: una cuenta corporativa por kind)
+model IntegrationToken {
+  id           Int      @id @default(autoincrement())
+  kind         String   @unique  // "google_calendar"
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String?
+  accountEmail String?
+  calendarId   String?  @default("primary")
+  updatedAt    DateTime @updatedAt
 }
 
 model VisitImage {

@@ -17,6 +17,7 @@ export const createBroadcast = async (req, res) => {
         });
 
         // M6: Leer tokens de la tabla UserFcmToken (soporte multi-dispositivo)
+        // M7: createBroadcast sigue siendo solo masivo (userId null); las personales usan utils/notify.js
         if (messaging) {
             const tokenRecords = await prisma.userFcmToken.findMany({ select: { token: true } });
             const tokens = tokenRecords.map(r => r.token);
@@ -56,7 +57,9 @@ export const createBroadcast = async (req, res) => {
 // Admin: listar todos los comunicados con totales de lectura
 export const getBroadcasts = async (req, res) => {
     try {
+        // M7: el listado de admin muestra solo masivos (las personales son ruido aquí)
         const broadcasts = await prisma.broadcast.findMany({
+            where: { userId: null },
             orderBy: { createdAt: 'desc' },
             take: 20,
             include: { _count: { select: { reads: true } } },
@@ -68,11 +71,15 @@ export const getBroadcasts = async (req, res) => {
 };
 
 // Agente/Admin: bandeja de notificaciones — historial (30 días) con estado leído/no leído
+// M7: incluye notificaciones masivas (userId null) y personales dirigidas al usuario
 export const getInbox = async (req, res) => {
     try {
         const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const broadcasts = await prisma.broadcast.findMany({
-            where: { createdAt: { gte: since } },
+            where: {
+                createdAt: { gte: since },
+                OR: [{ userId: null }, { userId: req.user.id }],
+            },
             orderBy: { createdAt: 'desc' },
             take: 100,
             select: {
@@ -95,7 +102,11 @@ export const markAllBroadcastsRead = async (req, res) => {
     try {
         const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const unread = await prisma.broadcast.findMany({
-            where: { createdAt: { gte: since }, reads: { none: { userId: req.user.id } } },
+            where: {
+                createdAt: { gte: since },
+                reads: { none: { userId: req.user.id } },
+                OR: [{ userId: null }, { userId: req.user.id }],
+            },
             select: { id: true },
         });
         for (const b of unread) {
@@ -119,6 +130,7 @@ export const getPendingBroadcasts = async (req, res) => {
             where: {
                 createdAt: { gte: since },
                 reads: { none: { userId: req.user.id } },
+                OR: [{ userId: null }, { userId: req.user.id }],
             },
             orderBy: { createdAt: 'asc' },
             select: { id: true, title: true, body: true, createdAt: true },

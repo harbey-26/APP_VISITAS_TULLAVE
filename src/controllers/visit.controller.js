@@ -1,6 +1,38 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { comparePassword, hashPassword } from '../utils/auth.js';
+import { sendPersonalNotification } from '../utils/notify.js';
+import { upsertVisitEvent, deleteVisitEvent } from '../utils/googleCalendar.js';
+
+// M8: Sincronizar una visita con Google Calendar (no bloquea la respuesta HTTP)
+async function syncToCalendar(visitId) {
+    try {
+        const v = await prisma.visit.findUnique({
+            where: { id: visitId },
+            include: { property: true, user: { select: { name: true } } },
+        });
+        if (!v || v.deletedAt) return;
+        const eventId = await upsertVisitEvent(v);
+        if (eventId && eventId !== v.googleEventId) {
+            await prisma.visit.update({ where: { id: visitId }, data: { googleEventId: eventId } });
+        }
+    } catch (e) {
+        console.warn('[Calendar sync]', e.message);
+    }
+}
+
+// M7: Formatear fecha/hora en zona Bogotá para el cuerpo de la notificación
+function formatScheduledForNotify(date) {
+    try {
+        return new Intl.DateTimeFormat('es-CO', {
+            timeZone: 'America/Bogota',
+            weekday: 'short', day: '2-digit', month: 'short',
+            hour: '2-digit', minute: '2-digit', hour12: true,
+        }).format(date);
+    } catch {
+        return date.toISOString();
+    }
+}
 
 // C2: Cachear el hash de MASTER_DELETE_PASSWORD al primer uso para nunca comparar plaintext
 let _masterHash = null;
@@ -208,6 +240,19 @@ export const createVisit = async (req, res) => {
                 property: true
             }
         });
+
+        // M7: Notificar al agente cuando un admin le asigna una visita (no a sí mismo)
+        if (targetUserId !== req.user.id) {
+            sendPersonalNotification(
+                targetUserId,
+                '🗓️ Nueva visita asignada',
+                `${visit.property.address} — ${formatScheduledForNotify(scheduledStart)}`,
+            ).catch(() => {});
+        }
+
+        // M8: Sincronizar con Google Calendar (best-effort)
+        syncToCalendar(visit.id);
+
         res.status(201).json(visit);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -448,8 +493,16 @@ export const deleteVisit = async (req, res) => {
     }
 
     try {
+        // M8: Borrar evento en Calendar antes del soft-delete (necesitamos el googleEventId)
+        const existing = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (existing?.googleEventId) {
+            deleteVisitEvent(existing).catch(e => console.warn('[Calendar delete]', e.message));
+        }
         // A2: Soft delete — marcar como eliminada en lugar de borrar el registro
-        await prisma.visit.update({ where: { id: visitId }, data: { deletedAt: new Date() } });
+        await prisma.visit.update({
+            where: { id: visitId },
+            data: { deletedAt: new Date(), googleEventId: null },
+        });
         res.json({ message: 'Visita eliminada correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -501,6 +554,19 @@ export const reassignVisit = async (req, res) => {
             data: { userId: assignedUserId },
             include: { property: true, user: { select: { id: true, name: true } } }
         });
+
+        // M7: Notificar al nuevo agente que recibió una reasignación
+        if (assignedUserId !== visit.userId) {
+            sendPersonalNotification(
+                assignedUserId,
+                '🔄 Visita reasignada a ti',
+                `${updated.property.address} — ${formatScheduledForNotify(updated.scheduledStart)}`,
+            ).catch(() => {});
+        }
+
+        // M8: Resincronizar el evento (cambia descripción con nombre del nuevo agente)
+        syncToCalendar(visitId);
+
         res.json(updated);
     } catch (error) {
         res.status(400).json({ error: error.message });

@@ -32,10 +32,21 @@ function isActive(lastSeenAt) {
     return getMinutesSince(lastSeenAt) <= 3;
 }
 
-// Verifica si estamos en horario laboral (8am–5pm)
-function isBusinessHours() {
-    const h = new Date().getHours();
-    return h >= 8 && h <= 17;
+// Horario laboral TuLlave: L-V 9am–6pm, Sábado 9am–1pm, Domingo cerrado
+function isBusinessHours(date = new Date()) {
+    const h = date.getHours();
+    const d = date.getDay(); // 0=domingo, 6=sábado
+    if (d === 0) return false;
+    if (d === 6) return h >= 9 && h < 13;
+    return h >= 9 && h < 18;
+}
+
+// Horas a mostrar en la grilla de check-in según el día
+function getBusinessHoursForToday() {
+    const d = new Date().getDay();
+    if (d === 0) return [];                                       // domingo
+    if (d === 6) return [9, 10, 11, 12];                          // sábado 9-13
+    return [9, 10, 11, 12, 13, 14, 15, 16, 17];                   // L-V 9-18
 }
 
 // Agente no respondió a la última notificación horaria (>70 min sin actualizar en horario laboral)
@@ -82,7 +93,7 @@ function StatusBadge({ agent }) {
     );
 }
 
-const BUSINESS_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+const BUSINESS_HOURS = getBusinessHoursForToday();
 
 function formatHour(h) {
     if (h === 12) return '12pm';

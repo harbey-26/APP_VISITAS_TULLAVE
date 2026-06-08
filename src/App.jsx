@@ -10,6 +10,7 @@ import Users from './pages/Users';
 import Properties from './pages/Properties';
 import Tracking from './pages/Tracking';
 import Notifications from './pages/Notifications';
+import Settings from './pages/Settings';
 import Layout from './components/layout/Layout';
 
 const LoadingScreen = () => (
@@ -72,6 +73,11 @@ function App() {
                         <Route path="tracking" element={
                             <AdminRoute>
                                 <Tracking />
+                            </AdminRoute>
+                        } />
+                        <Route path="settings" element={
+                            <AdminRoute>
+                                <Settings />
                             </AdminRoute>
                         } />
                     </Route>

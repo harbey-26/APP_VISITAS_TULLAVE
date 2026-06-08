@@ -9,8 +9,16 @@ const CHECK_INTERVAL_MS   = 15 * 60 * 1000;      // revisar cada 15 min
 const SILENCE_MIN_MS      = 2  * 60 * 60 * 1000; // sin reportar > 2h → recordar
 const SILENCE_MAX_MS      = 12 * 60 * 60 * 1000; // pero activo en las últimas 12h (evita cuentas inactivas/día libre)
 const REMINDER_THROTTLE_MS = 2 * 60 * 60 * 1000; // máximo un recordatorio cada 2h por agente
-const WORK_START_HOUR = 8;   // 8am Bogotá
-const WORK_END_HOUR   = 18;  // hasta las 5:59pm
+// Horario laboral TuLlave: L-V 9am–6pm, Sábado 9am–1pm, Domingo cerrado
+const WORK_START_HOUR     = 9;   // 9am Bogotá (todos los días laborales)
+const WORK_END_HOUR_WEEK  = 18;  // L-V: hasta las 5:59pm
+const WORK_END_HOUR_SAT   = 13;  // Sábado: hasta las 12:59pm
+
+function isWorkingNow(hour, day) {
+    if (day === 0) return false;                  // domingo
+    if (day === 6) return hour >= WORK_START_HOUR && hour < WORK_END_HOUR_SAT;
+    return hour >= WORK_START_HOUR && hour < WORK_END_HOUR_WEEK;
+}
 
 // Throttle en memoria: userId -> timestamp del último recordatorio
 const lastRemindedAt = new Map();
@@ -23,8 +31,7 @@ function bogotaParts(date = new Date()) {
 
 async function checkSilentAgents() {
     const { hour, day } = bogotaParts();
-    if (day === 0) return;                                   // domingo: no molestar
-    if (hour < WORK_START_HOUR || hour >= WORK_END_HOUR) return; // fuera de horario
+    if (!isWorkingNow(hour, day)) return; // fuera de horario laboral (L-V 9-18, Sáb 9-13)
 
     const now = Date.now();
     const agents = await prisma.user.findMany({

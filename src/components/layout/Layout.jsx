@@ -18,7 +18,8 @@ import {
     Menu,
     X,
     Bell,
-    LayoutDashboard
+    LayoutDashboard,
+    Settings as SettingsIcon
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationsContext';
 
@@ -385,6 +386,7 @@ export default function Layout() {
                             <NavItem to="/properties" icon={MapPin}          label="Inmuebles"  />
                             <NavItem to="/users"      icon={Users}           label="Usuarios"   />
                             <NavItem to="/tracking"   icon={Radio}           label="Rastreo"    />
+                            <NavItem to="/settings"   icon={SettingsIcon}    label="Ajustes"    />
                         </>
                     )}
                 </nav>
