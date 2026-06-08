@@ -41,12 +41,13 @@ function isBusinessHours(date = new Date()) {
     return h >= 9 && h < 18;
 }
 
-// Horas a mostrar en la grilla de check-in según el día
+// Horas a mostrar en la grilla de check-in según el día (incluye la hora de cierre
+// como referencia visual: la columna 6pm = slot 5-6pm; 1pm sáb = slot 12-1pm)
 function getBusinessHoursForToday() {
     const d = new Date().getDay();
-    if (d === 0) return [];                                       // domingo
-    if (d === 6) return [9, 10, 11, 12];                          // sábado 9-13
-    return [9, 10, 11, 12, 13, 14, 15, 16, 17];                   // L-V 9-18
+    if (d === 0) return [];                                                 // domingo
+    if (d === 6) return [9, 10, 11, 12, 13];                                // sábado 9am-1pm
+    return [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];                         // L-V 9am-6pm
 }
 
 // Agente no respondió a la última notificación horaria (>70 min sin actualizar en horario laboral)

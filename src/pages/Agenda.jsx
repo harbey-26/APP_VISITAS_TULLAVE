@@ -572,19 +572,19 @@ export default function Agenda() {
                                                                 {statusConfig.label}
                                                             </span>
                                                             {isPastPending && (
-                                                                <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
-                                                                    <UserX className="w-3.5 h-3.5" />
+                                                                <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
+                                                                    <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
                                                             {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
-                                                                    <UserCheck className="w-3.5 h-3.5" />
+                                                                <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
+                                                                    <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
-                                                            <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 transition p-1 opacity-100 md:opacity-40 md:group-hover:opacity-100">
-                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Eliminar">
+                                                                <Trash2 className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                             </button>
-                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+                                                            <ChevronRight className="w-5 h-5 md:w-4 md:h-4 text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
                                                         </div>
                                                     </div>
 
@@ -616,15 +616,15 @@ export default function Agenda() {
                                                             </div>
                                                         )}
                                                         {visit.clientPhone && (
-                                                            <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center gap-2">
                                                                 <a
                                                                     href={`tel:${visit.clientPhone}`}
                                                                     onClick={(e) => e.stopPropagation()}
                                                                     aria-label="Llamar"
                                                                     title="Llamar"
-                                                                    className="w-6 h-6 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-600 flex items-center justify-center transition active:scale-95"
+                                                                    className="w-10 h-10 md:w-7 md:h-7 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-600 flex items-center justify-center transition active:scale-95 shadow-sm"
                                                                 >
-                                                                    <Phone className="w-3 h-3" />
+                                                                    <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
                                                                 <a
                                                                     href={buildWhatsAppUrl(visit.clientPhone)}
@@ -633,9 +633,9 @@ export default function Agenda() {
                                                                     onClick={(e) => e.stopPropagation()}
                                                                     aria-label="WhatsApp"
                                                                     title="WhatsApp"
-                                                                    className="w-6 h-6 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95"
+                                                                    className="w-10 h-10 md:w-7 md:h-7 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95 shadow-sm"
                                                                 >
-                                                                    <MessageCircle className="w-3 h-3" />
+                                                                    <MessageCircle className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
                                                             </div>
                                                         )}
