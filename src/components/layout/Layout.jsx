@@ -9,6 +9,7 @@ import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } f
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import PermissionsOnboarding, { ONBOARDING_KEY } from '../PermissionsOnboarding';
+import UpdateBanner from '../UpdateBanner';
 import {
     Calendar,
     LogOut,
@@ -429,6 +430,7 @@ export default function Layout() {
                     style={{ height: 'calc(max(env(safe-area-inset-top), 1.75rem) + 3.5rem)' }}
                 />
                 {/* Banner de sin conexión */}
+                <UpdateBanner />
                 {!isOnline && (
                     <div className="flex-shrink-0 bg-amber-500 text-white text-xs font-semibold text-center py-2 px-4 flex items-center justify-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-white/80 inline-block" />

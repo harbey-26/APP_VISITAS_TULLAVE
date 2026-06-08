@@ -67,11 +67,18 @@ APP_VISITAS_TULLAVE/
 - Para desplegar: `git push origin main` — Railway hace auto-deploy
 
 ### APK Android (GitHub Actions)
-- Se compila automáticamente en cada push a `main`
+- Se compila **solo cuando cambian archivos nativos** (`capacitor.config.ts`,
+  `package.json`, `package-lock.json`, íconos en `assets/ic_*.png`, o el propio
+  workflow). Los cambios en `src/`, `server.js`, `prisma/`, `docs/` NO regeneran
+  APK — el WebView ya los toma al recargar la app.
 - También se puede lanzar manualmente: **GitHub → Actions → Build Android APK → Run workflow**
 - El APK generado se descarga en: **Actions → run más reciente → Artifacts → VisitTrack-APK**
 - El APK carga la misma URL de Railway (WebView nativo), mismo backend y BD
 - Duración del build: ~5-8 minutos
+- **Aviso de update al usuario:** al subir `version` en `package.json`, el banner
+  de [`UpdateBanner.jsx`](src/components/UpdateBanner.jsx) aparece automáticamente
+  en el APK con un enlace de descarga. El backend expone la versión vigente en
+  `/api/app/version`.
 
 ---
 

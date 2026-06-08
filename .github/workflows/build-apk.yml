@@ -3,6 +3,15 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+    # Solo regenerar el APK cuando cambien archivos que afectan al binario nativo.
+    # Los cambios en src/, server.js, prisma/, docs/ NO requieren reinstalar:
+    # la app es un WebView que ya consume las nuevas versiones de Railway.
+    paths:
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'assets/ic_*.png'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:   # permite ejecutar manualmente desde GitHub
 
 jobs:
