@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import prisma from './src/utils/prisma.js';
 import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
@@ -27,6 +28,11 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
     : defaultOrigins;
 
+// Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
+// CSP queda desactivada — el frontend embebe assets de Google Maps/Firebase
+// y manejar la lista completa de orígenes con un CSP estricto rompería la app.
+app.use(helmet({ contentSecurityPolicy: false }));
+
 app.use(cors({
     origin: (origin, callback) => {
         // Sin origin = peticiones nativas (APK, curl, Postman) → permitir
@@ -36,7 +42,9 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+// Límite explícito para evitar abuso por payloads enormes. Las fotos de visita
+// llegan como base64 (~hasta 4-5 MB cada una), así que 8 MB es holgado.
+app.use(express.json({ limit: '8mb' }));
 
 // C1: Solo loguear método + URL en producción (nunca el body — puede contener contraseñas)
 app.use((req, res, next) => {
