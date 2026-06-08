@@ -77,7 +77,18 @@ export function NotificationsProvider({ children }) {
         if (!token) { setItems([]); return; }
         refresh();
         const interval = setInterval(refresh, 60000);
-        return () => clearInterval(interval);
+        // Refresh inmediato al volver del background o ganar foco la ventana
+        // (típico cuando el agente abre la app tras una push de notificación)
+        const onVisibilityOrFocus = () => {
+            if (document.visibilityState === 'visible') refresh();
+        };
+        document.addEventListener('visibilitychange', onVisibilityOrFocus);
+        window.addEventListener('focus', onVisibilityOrFocus);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+            window.removeEventListener('focus', onVisibilityOrFocus);
+        };
     }, [token, refresh]);
 
     return (
