@@ -494,7 +494,10 @@ export const deleteVisit = async (req, res) => {
 
     try {
         // M8: Borrar evento en Calendar antes del soft-delete (necesitamos el googleEventId)
-        const existing = await prisma.visit.findUnique({ where: { id: visitId } });
+        const existing = await prisma.visit.findUnique({
+            where: { id: visitId },
+            include: { property: true },
+        });
         if (existing?.googleEventId) {
             deleteVisitEvent(existing).catch(e => console.warn('[Calendar delete]', e.message));
         }
@@ -503,6 +506,16 @@ export const deleteVisit = async (req, res) => {
             where: { id: visitId },
             data: { deletedAt: new Date(), googleEventId: null },
         });
+
+        // M7: Notificar al agente cuando otro (admin) le elimina su visita
+        if (existing && existing.userId !== req.user.id) {
+            sendPersonalNotification(
+                existing.userId,
+                '🗑️ Visita eliminada',
+                `Se canceló tu visita en ${existing.property?.address || ''} · ${formatScheduledForNotify(existing.scheduledStart)}`,
+            ).catch(() => {});
+        }
+
         res.json({ message: 'Visita eliminada correctamente' });
     } catch (error) {
         res.status(400).json({ error: error.message });
