@@ -44,4 +44,20 @@ Para cambiar la URL por defecto (`...up.railway.app`):
 2.  Configura tu dominio propio (ej. `api.tullave.com`) mediante registros CNAME.
 
 ---
+
+## Licencia y derechos de autor
+
+© 2026 **Harbey Perdomo**. Todos los derechos reservados.
+
+Este es **software propietario**. El código se publica de forma visible
+únicamente con fines de despliegue y transparencia, lo que **no** otorga ningún
+derecho de uso, copia, modificación, distribución o comercialización.
+
+Queda prohibido usar, copiar, modificar o distribuir este software sin
+autorización previa y por escrito del titular. Consulta el archivo
+[`LICENSE`](LICENSE) para los términos completos.
+
+Para licencias comerciales o autorizaciones: **harbey.26@gmail.com**
+
+---
 Desarrollado para Tullave Inmobiliaria.
