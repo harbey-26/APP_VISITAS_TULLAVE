@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVisits, getVisitStats, getAgentStats, createVisit, startVisit, finishVisit, deleteVisit, markMissed, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
+import { getVisits, getVisitStats, getAgentStats, createVisit, updateVisit, startVisit, finishVisit, deleteVisit, markMissed, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -10,6 +10,7 @@ router.get('/stats', requireAdmin, getVisitStats);
 router.get('/stats/agents', requireAdmin, getAgentStats);
 router.get('/', getVisits);
 router.post('/', createVisit);
+router.patch('/:id', updateVisit);                          // Editar visita (dueño/admin)
 router.patch('/:id/start', startVisit);
 router.patch('/:id/finish', finishVisit);
 router.patch('/:id/missed', markMissed);                    // A2: marcar no atendida

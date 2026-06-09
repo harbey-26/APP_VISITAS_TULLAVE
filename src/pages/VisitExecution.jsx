@@ -6,6 +6,7 @@ import { API_URL } from '../config';
 import { STATUS_CONFIG } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import { Button, Modal, Select } from '../components/ui';
 
 class ErrorBoundary extends React.Component {
@@ -58,10 +59,7 @@ function VisitExecutionContent() {
     const { id } = useParams();
     const { token } = useAuth();
     const navigate = useNavigate();
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    });
+    const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
     const [visit, setVisit] = useState(null);
     const [fetchError, setFetchError] = useState(null); // M3
     const [elapsed, setElapsed] = useState(0);
@@ -367,6 +365,12 @@ function VisitExecutionContent() {
                 <h2 className="text-xl font-bold text-gray-900 mb-2">
                     {visit.property?.address || 'Dirección desconocida'}
                 </h2>
+                {visit.property?.client && visit.property.client !== 'Cliente General' && (
+                    <p className="flex items-center gap-1.5 text-gray-600 font-medium mb-2 -mt-1">
+                        <MapPin className="w-4 h-4 text-brand-400 flex-shrink-0" />
+                        {visit.property.client}
+                    </p>
+                )}
                 {STATUS_CONFIG[visit.status] && (
                     <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-semibold mb-3 ${STATUS_CONFIG[visit.status].bg} ${STATUS_CONFIG[visit.status].text}`}>
                         {STATUS_CONFIG[visit.status].label}

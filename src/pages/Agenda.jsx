@@ -1,17 +1,63 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle, Pencil, MapPin, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
-import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
+import { useJsApiLoader, GoogleMap, Autocomplete } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import { Button, Modal, Select, Input } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
-const MAPS_LIBRARIES = [];
+
+// Campo de dirección con autocompletado de Google Places. Al seleccionar una
+// sugerencia entrega { address, lat, lng } con coordenadas exactas, lo que evita
+// depender de la geocodificación del servidor (más frágil). Si el script de
+// Maps aún no cargó, degrada a un input de texto normal.
+function AddressAutocomplete({ value, onChange, isLoaded, placeholder, required }) {
+    const acRef = useRef(null);
+
+    const handlePlaceChanged = () => {
+        const place = acRef.current?.getPlace();
+        if (!place?.geometry?.location) return;
+        onChange({
+            address: place.formatted_address || place.name || value,
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng(),
+        });
+    };
+
+    const inputEl = (
+        <input
+            type="text"
+            placeholder={placeholder}
+            className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+            value={value}
+            required={required}
+            // Al teclear a mano limpiamos lat/lng: dejan de ser válidos hasta
+            // que el usuario elija una sugerencia o el servidor geocodifique.
+            onChange={e => onChange({ address: e.target.value, lat: null, lng: null })}
+        />
+    );
+
+    if (!isLoaded || !window.google?.maps?.places) return inputEl;
+
+    return (
+        <Autocomplete
+            onLoad={ac => { acRef.current = ac; }}
+            onPlaceChanged={handlePlaceChanged}
+            options={{
+                componentRestrictions: { country: 'co' },
+                fields: ['formatted_address', 'geometry', 'name'],
+            }}
+        >
+            {inputEl}
+        </Autocomplete>
+    );
+}
 
 // Mapa de agenda con card overlay (evita el iframe de InfoWindow)
 function AgendaMapView({ visits, onVisitClick }) {
@@ -19,10 +65,7 @@ function AgendaMapView({ visits, onVisitClick }) {
     const markersRef = useRef([]);
     const [selectedVisit, setSelectedVisit] = useState(null);
 
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-    });
+    const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
 
     const visitsWithCoords = visits.filter(v => v.property?.lat && v.property?.lng);
     const center = visitsWithCoords[0]
@@ -122,6 +165,12 @@ function AgendaMapView({ visits, onVisitClick }) {
                                 </span>
                             </div>
                             <p className="font-bold text-gray-900 leading-snug truncate">{selectedVisit.property.address}</p>
+                            {selectedVisit.property.client && selectedVisit.property.client !== 'Cliente General' && (
+                                <p className="flex items-center gap-1 text-sm text-gray-500 mt-0.5 truncate">
+                                    <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                    {selectedVisit.property.client}
+                                </p>
+                            )}
                             {selectedVisit.clientName && (
                                 <p className="text-sm text-gray-500 mt-0.5">{selectedVisit.clientName}</p>
                             )}
@@ -145,6 +194,42 @@ function buildWhatsAppUrl(phone) {
     const digits = String(phone || '').replace(/\D/g, '');
     const normalized = (digits.length === 10 && digits.startsWith('3')) ? `57${digits}` : digits;
     return `https://wa.me/${normalized}`;
+}
+
+// Normaliza una dirección para compararla: minúsculas, sin tildes, sin
+// ciudad/país y sin nada que no sea letra o número (espacios, #, guiones, comas).
+// Así "Calle 18 # 110-20, Bogotá" y "calle 18 110 20" se consideran iguales.
+function normalizeAddress(str) {
+    return String(str || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\b(bogota|colombia|cundinamarca|d ?c)\b/g, '')
+        .replace(/[^a-z0-9]/g, '');
+}
+
+// Distancia en metros entre dos coordenadas (Haversine). Devuelve Infinity si
+// falta alguna coordenada, para que nunca cuente como "cercano".
+function metersBetween(a, b) {
+    if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return Infinity;
+    const R = 6371e3;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const h = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Busca un inmueble ya registrado que coincida con el que se intenta crear:
+// misma dirección normalizada O coordenadas a menos de 30 m (mismo edificio).
+function findDuplicateProperty(properties, { address, lat, lng }) {
+    const norm = normalizeAddress(address);
+    if (!norm && lat == null) return null;
+    return properties.find(p => {
+        const sameAddress = norm && normalizeAddress(p.address) === norm;
+        const sameSpot = metersBetween({ lat, lng }, { lat: p.lat, lng: p.lng }) < 30;
+        return sameAddress || sameSpot;
+    }) || null;
 }
 
 // Agrupa visitas en bloques horarios
@@ -183,6 +268,8 @@ export default function Agenda() {
         propertyId: '',
         newAddress: '',
         newClient: '',
+        newLat: null,
+        newLng: null,
         assignedUserId: '',
         date: new Date().toISOString().split('T')[0],
         time: '09:00',
@@ -193,11 +280,20 @@ export default function Agenda() {
         clientPhone: ''
     });
 
+    // Edición de visita
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editForm, setEditForm] = useState(null);
+    const [savingEdit, setSavingEdit] = useState(false);
+
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'map'
 
     const { token, user } = useAuth();
     const navigate = useNavigate();
     const toast = useToast();
+
+    // Cargamos el script de Maps a nivel de página para que el autocompletado de
+    // Places funcione dentro de los modales aunque la vista activa sea la lista.
+    const { isLoaded: mapsLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
 
     const fetchVisits = async (silent = false) => {
         if (!silent) setLoadingVisits(true); // El polling y el visibility-refresh no muestran spinner
@@ -289,8 +385,10 @@ export default function Agenda() {
                     body: JSON.stringify({
                         address: formData.newAddress,
                         client: formData.newClient || 'Cliente General',
-                        lat: 4.6097,
-                        lng: -74.0817
+                        // Coordenadas exactas si el agente eligió del autocompletado;
+                        // si las dejó en null, el servidor geocodifica como respaldo.
+                        lat: formData.newLat,
+                        lng: formData.newLng
                     })
                 });
                 if (!propRes.ok) {
@@ -298,9 +396,13 @@ export default function Agenda() {
                     throw new Error(errData.error || 'Error al registrar inmueble');
                 }
                 const newProp = await propRes.json();
-                toast.success('Inmueble registrado correctamente');
+                if (newProp.lat == null || newProp.lng == null) {
+                    toast.error('No se pudo ubicar la dirección en el mapa. Elige una sugerencia del autocompletado para fijar la ubicación.');
+                } else {
+                    toast.success('Inmueble registrado correctamente');
+                }
                 await fetchProperties();
-                setFormData(prev => ({ ...prev, propertyId: newProp.id, newAddress: '', newClient: '' }));
+                setFormData(prev => ({ ...prev, propertyId: newProp.id, newAddress: '', newClient: '', newLat: null, newLng: null }));
                 setIsNewProperty(false);
                 return;
             }
@@ -327,7 +429,7 @@ export default function Agenda() {
                 setShowModal(false);
                 fetchVisits();
                 setFormData({
-                    propertyId: '', newAddress: '', newClient: '', assignedUserId: '',
+                    propertyId: '', newAddress: '', newClient: '', newLat: null, newLng: null, assignedUserId: '',
                     date: new Date().toISOString().split('T')[0], time: '09:00',
                     duration: 60, type: 'RENTAL_SHOWING', notes: '', clientName: '', clientPhone: ''
                 });
@@ -416,11 +518,114 @@ export default function Agenda() {
         }
     };
 
+    // Abrir el modal de edición con los datos actuales de la visita precargados
+    const openEdit = (e, visit) => {
+        e.stopPropagation();
+        const start = new Date(visit.scheduledStart);
+        const pad = n => String(n).padStart(2, '0');
+        setEditForm({
+            id: visit.id,
+            propertyId: visit.property?.id ?? null,
+            address: visit.property?.address || '',
+            client: visit.property?.client || '',
+            lat: visit.property?.lat ?? null,
+            lng: visit.property?.lng ?? null,
+            addressChanged: false,
+            date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+            time: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+            duration: visit.estimatedDuration,
+            type: visit.type,
+            clientName: visit.clientName || '',
+            clientPhone: visit.clientPhone || '',
+            notes: visit.notes || '',
+            assignedUserId: String(visit.user?.id ?? visit.userId ?? ''),
+        });
+        setShowEditModal(true);
+    };
+
+    const saveEdit = async () => {
+        if (!editForm || savingEdit) return;
+        setSavingEdit(true);
+        try {
+            // 1) Si cambió la dirección/ubicación, actualizar primero el inmueble
+            if (editForm.addressChanged && editForm.propertyId) {
+                const propRes = await fetch(`${API_URL}/api/properties/${editForm.propertyId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({
+                        address: editForm.address,
+                        client: editForm.client || 'Cliente General',
+                        lat: editForm.lat,
+                        lng: editForm.lng,
+                    }),
+                });
+                if (!propRes.ok) {
+                    const err = await propRes.json();
+                    throw new Error(err.error || 'Error al actualizar la dirección');
+                }
+                const updatedProp = await propRes.json();
+                if (updatedProp.lat == null || updatedProp.lng == null) {
+                    toast.error('La dirección se guardó pero no se pudo ubicar en el mapa. Elige una sugerencia del autocompletado.');
+                }
+            }
+
+            // 2) Actualizar los datos de la visita
+            const scheduledStart = new Date(`${editForm.date}T${editForm.time}:00`).toISOString();
+            const payload = {
+                scheduledStart,
+                estimatedDuration: parseInt(editForm.duration),
+                type: editForm.type,
+                notes: editForm.notes,
+                clientName: editForm.clientName,
+                clientPhone: editForm.clientPhone,
+            };
+            if (user?.role === 'ADMIN' && editForm.assignedUserId) {
+                payload.assignedUserId = parseInt(editForm.assignedUserId);
+            }
+
+            const res = await fetch(`${API_URL}/api/visits/${editForm.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Error al guardar la visita');
+            }
+
+            setShowEditModal(false);
+            setEditForm(null);
+            await Promise.all([fetchVisits(), fetchProperties()]);
+            toast.success('Visita actualizada correctamente');
+        } catch (error) {
+            toast.error(friendlyError(error));
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    // El agente eligió/escribió una dirección nueva que ya coincide con un
+    // inmueble registrado: en vez de duplicarlo, lo seleccionamos.
+    const useExistingProperty = (prop) => {
+        setIsNewProperty(false);
+        setFormData(prev => ({
+            ...prev,
+            propertyId: String(prop.id),
+            newAddress: '', newClient: '', newLat: null, newLng: null,
+        }));
+        toast.success('Seleccionamos el inmueble que ya estaba registrado.');
+    };
+
     const formatDate = (d) =>
         new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 
     const groupedVisits = groupByTimeSlot(visits);
     const hasVisits = visits.length > 0;
+
+    // Aviso de duplicado: solo mientras se registra un inmueble nuevo en el modal.
+    const duplicateProperty = (showModal && isNewProperty)
+        ? findDuplicateProperty(properties, { address: formData.newAddress, lat: formData.newLat, lng: formData.newLng })
+        : null;
 
     return (
         <div className="space-y-6 relative min-h-[80vh]">
@@ -603,6 +808,11 @@ export default function Agenda() {
                                                                     <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
+                                                            {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                <button onClick={(e) => openEdit(e, visit)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Editar visita">
+                                                                    <Pencil className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
                                                             {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
                                                                 <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
                                                                     <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
@@ -618,9 +828,17 @@ export default function Agenda() {
                                                     {/* Row 2: Dirección + thumbnail */}
                                                     <div className="flex items-start gap-2 mb-2.5">
                                                         <Home className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
-                                                        <p className="font-bold text-gray-900 text-base leading-snug flex-1">
-                                                            {visit.property?.address || 'Dirección desconocida'}
-                                                        </p>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-bold text-gray-900 text-base leading-snug">
+                                                                {visit.property?.address || 'Dirección desconocida'}
+                                                            </p>
+                                                            {visit.property?.client && visit.property.client !== 'Cliente General' && (
+                                                                <p className="flex items-center gap-1 text-sm text-gray-500 mt-0.5">
+                                                                    <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                                                    {visit.property.client}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                         {visit.images?.[0]?.url && (
                                                             <img
                                                                 src={visit.images[0].url}
@@ -741,15 +959,49 @@ export default function Agenda() {
                                 </div>
 
                                 {isNewProperty ? (
-                                    <div className="space-y-3">
-                                        <input
-                                            type="text"
-                                            placeholder="Dirección del inmueble"
-                                            className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    <div className="space-y-2">
+                                        <AddressAutocomplete
+                                            isLoaded={mapsLoaded}
                                             value={formData.newAddress}
-                                            onChange={e => setFormData({ ...formData, newAddress: e.target.value })}
+                                            placeholder="Dirección del inmueble"
                                             required={isNewProperty}
+                                            onChange={({ address, lat, lng }) => setFormData(prev => ({
+                                                ...prev,
+                                                newAddress: address,
+                                                newLat: lat !== undefined ? lat : prev.newLat,
+                                                newLng: lng !== undefined ? lng : prev.newLng,
+                                            }))}
                                         />
+                                        <p className="flex items-center gap-1 text-xs text-gray-500">
+                                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                                            {formData.newLat != null
+                                                ? <span className="text-emerald-600 font-medium">Ubicación fijada en el mapa ✓</span>
+                                                : <span>Elige una sugerencia para ubicar el inmueble en el mapa.</span>}
+                                        </p>
+                                        {duplicateProperty && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                                <p className="flex items-start gap-1.5 text-sm font-semibold text-amber-800">
+                                                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                                    Este inmueble ya está registrado
+                                                </p>
+                                                <p className="text-sm text-amber-700 mt-1 pl-6">
+                                                    {duplicateProperty.address}
+                                                    {duplicateProperty.client && duplicateProperty.client !== 'Cliente General' && (
+                                                        <span className="block text-amber-600">{duplicateProperty.client}</span>
+                                                    )}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => useExistingProperty(duplicateProperty)}
+                                                    className="mt-2 w-full bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 rounded-lg transition active:scale-95"
+                                                >
+                                                    Usar el inmueble existente
+                                                </button>
+                                                <p className="text-xs text-amber-600 mt-1.5 text-center">
+                                                    o continúa abajo si de verdad es otra unidad
+                                                </p>
+                                            </div>
+                                        )}
                                         <input
                                             type="text"
                                             placeholder="Nombre del Conjunto o Edificio (Opcional)"
@@ -865,6 +1117,133 @@ export default function Agenda() {
                     </div>
                 </div>
             )}
+
+            {/* Edit Visit Modal */}
+            <Modal open={showEditModal} onClose={() => { setShowEditModal(false); setEditForm(null); }} title="Editar Visita" maxWidth="max-w-md">
+                {editForm && (
+                    <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1 space-y-4">
+                        {user?.role === 'ADMIN' && (
+                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                <label className="block text-sm font-medium text-blue-800 mb-1">Agente asignado</label>
+                                <Select value={editForm.assignedUserId} onChange={e => setEditForm({ ...editForm, assignedUserId: e.target.value })}>
+                                    {agents.map(agent => (
+                                        <option key={agent.id} value={agent.id}>{agent.name} ({agent.email})</option>
+                                    ))}
+                                </Select>
+                            </div>
+                        )}
+
+                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">Dirección del inmueble</label>
+                            <AddressAutocomplete
+                                isLoaded={mapsLoaded}
+                                value={editForm.address}
+                                placeholder="Dirección del inmueble"
+                                onChange={({ address, lat, lng }) => setEditForm(prev => ({
+                                    ...prev,
+                                    address,
+                                    lat: lat !== undefined ? lat : prev.lat,
+                                    lng: lng !== undefined ? lng : prev.lng,
+                                    addressChanged: true,
+                                }))}
+                            />
+                            <p className="flex items-center gap-1 text-xs text-gray-500">
+                                <MapPin className="w-3 h-3 flex-shrink-0" />
+                                {editForm.lat != null
+                                    ? <span className="text-emerald-600 font-medium">Ubicación fijada en el mapa ✓</span>
+                                    : <span>Sin ubicación: elige una sugerencia para que aparezca en el mapa.</span>}
+                            </p>
+                            <input
+                                type="text"
+                                placeholder="Nombre del Conjunto o Edificio (Opcional)"
+                                className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                value={editForm.client}
+                                onChange={e => setEditForm({ ...editForm, client: e.target.value, addressChanged: true })}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                                <input
+                                    type="date"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.date}
+                                    onChange={e => setEditForm({ ...editForm, date: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                                <input
+                                    type="time"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.time}
+                                    onChange={e => setEditForm({ ...editForm, time: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Cliente</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.clientName}
+                                    onChange={e => setEditForm({ ...editForm, clientName: e.target.value })}
+                                    placeholder="Opcional"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Cliente</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.clientPhone}
+                                    onChange={e => setEditForm({ ...editForm, clientPhone: e.target.value })}
+                                    placeholder="Opcional"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                                <select
+                                    className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.type}
+                                    onChange={e => setEditForm({ ...editForm, type: e.target.value })}
+                                >
+                                    <option value="RENTAL_SHOWING">Mostrar en Arriendo</option>
+                                    <option value="PROPERTY_INTAKE">Captación</option>
+                                    <option value="HANDOVER">Entrega</option>
+                                    <option value="MOVE_OUT">Desocupación</option>
+                                    <option value="INSPECTION">Inspección</option>
+                                    <option value="OTHER">Otro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Duración (min)</label>
+                                <input
+                                    type="number"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    value={editForm.duration}
+                                    min={1}
+                                    max={480}
+                                    onChange={e => setEditForm({ ...editForm, duration: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <Button variant="secondary" className="flex-1" onClick={() => { setShowEditModal(false); setEditForm(null); }}>Cancelar</Button>
+                            <Button className="flex-1" disabled={savingEdit} onClick={saveEdit}>
+                                {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
 
             {/* Reassign Modal (M2) */}
             <Modal open={showReassignModal} onClose={() => setShowReassignModal(false)} maxWidth="max-w-sm">

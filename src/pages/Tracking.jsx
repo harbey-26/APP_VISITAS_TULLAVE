@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
@@ -103,10 +104,7 @@ function formatHour(h) {
 
 export default function Tracking() {
     const { token } = useAuth();
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    });
+    const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
     const mapRef = useRef(null);
     const [agents, setAgents] = useState([]);
     const [checkIns, setCheckIns] = useState({});

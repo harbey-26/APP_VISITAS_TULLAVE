@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
+import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import { Card, Button, PageHeader, EmptyState, Skeleton } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
@@ -33,10 +34,7 @@ export default function Properties() {
     const { token } = useAuth();
     const toast = useToast();
 
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    });
+    const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
 
     const fetchProperties = async () => {
         setLoading(true); // M1

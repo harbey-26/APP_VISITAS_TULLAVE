@@ -260,6 +260,111 @@ export const createVisit = async (req, res) => {
 };
 
 
+// Edición de una visita ya creada. Todos los campos son opcionales: el cliente
+// envía solo lo que cambió. assignedUserId solo lo aplica un admin.
+const updateVisitSchema = z.object({
+    scheduledStart: z.string().datetime().optional(),
+    estimatedDuration: z.number().int().positive().max(480).optional(),
+    type: z.enum([
+        'RENTAL_SHOWING', 'PROPERTY_INTAKE', 'HANDOVER',
+        'MOVE_OUT', 'INSPECTION', 'OTHER'
+    ]).optional(),
+    notes: z.string().optional(),
+    clientName: z.string().optional(),
+    clientPhone: z.string().optional(),
+    assignedUserId: z.number().int().positive().optional(),
+});
+
+export const updateVisit = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const data = updateVisitSchema.parse(req.body);
+
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+
+        // Permisos: el agente dueño o un admin
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'No tienes permiso para editar esta visita.' });
+        }
+        // Solo se editan visitas que aún no se cerraron
+        if (!['PENDING', 'IN_PROGRESS'].includes(visit.status)) {
+            return res.status(400).json({ error: 'Solo se pueden editar visitas pendientes o en curso.' });
+        }
+
+        // Reasignar agente: solo admin
+        let targetUserId = visit.userId;
+        if (data.assignedUserId && req.user.role === 'ADMIN') {
+            const newUser = await prisma.user.findUnique({ where: { id: data.assignedUserId } });
+            if (!newUser) return res.status(404).json({ error: 'Agente no encontrado' });
+            targetUserId = data.assignedUserId;
+        }
+
+        const newStart = data.scheduledStart ? new Date(data.scheduledStart) : new Date(visit.scheduledStart);
+        const newDuration = data.estimatedDuration ?? visit.estimatedDuration;
+
+        // Re-validar solapamiento de horario (excluyendo la propia visita)
+        if (data.scheduledStart || data.estimatedDuration || data.assignedUserId) {
+            const newEnd = new Date(newStart.getTime() + newDuration * 60 * 1000);
+            const dayStart = new Date(newStart); dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(newStart); dayEnd.setHours(23, 59, 59, 999);
+
+            const potentialOverlaps = await prisma.visit.findMany({
+                where: {
+                    userId: targetUserId,
+                    id: { not: visitId },
+                    status: { notIn: ['MISSED'] },
+                    deletedAt: null,
+                    scheduledStart: { gte: dayStart, lte: dayEnd },
+                },
+            });
+            const hasConflict = potentialOverlaps.some(v => {
+                const vStart = new Date(v.scheduledStart);
+                const vEnd = new Date(vStart.getTime() + v.estimatedDuration * 60 * 1000);
+                return (newStart < vEnd && newEnd > vStart);
+            });
+            if (hasConflict) {
+                return res.status(400).json({
+                    error: 'El agente ya tiene una visita programada en ese horario que se solapa con esta.'
+                });
+            }
+        }
+
+        const updated = await prisma.visit.update({
+            where: { id: visitId },
+            data: {
+                ...(data.scheduledStart ? { scheduledStart: newStart } : {}),
+                ...(data.estimatedDuration ? { estimatedDuration: newDuration } : {}),
+                ...(data.type ? { type: data.type } : {}),
+                ...(data.notes !== undefined ? { notes: data.notes } : {}),
+                ...(data.clientName !== undefined ? { clientName: data.clientName } : {}),
+                ...(data.clientPhone !== undefined ? { clientPhone: data.clientPhone } : {}),
+                userId: targetUserId,
+            },
+            include: { property: true, user: { select: { id: true, name: true } } },
+        });
+
+        // Notificar si la visita cambió de dueño
+        if (targetUserId !== visit.userId) {
+            sendPersonalNotification(
+                targetUserId,
+                '🔄 Visita reasignada a ti',
+                `${updated.property.address} — ${formatScheduledForNotify(newStart)}`,
+            ).catch(() => {});
+        }
+
+        // Re-sincronizar el evento de Calendar (cambió fecha/datos)
+        syncToCalendar(visitId);
+
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 // Helper: Calculate distance in meters (Haversine formula)
 function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
