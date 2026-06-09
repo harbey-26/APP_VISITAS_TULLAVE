@@ -7,6 +7,7 @@ import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Card, Button, PageHeader, EmptyState, Skeleton } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
@@ -80,7 +81,7 @@ export default function Properties() {
         e.preventDefault();
         try {
             const endpoint = isEditing ? `${API_URL}/api/properties/${formData.id}` : `${API_URL}/api/properties`;
-            const method = isEditing ? 'PATCH' : 'POST';
+            const method = isEditing ? 'PUT' : 'POST';
 
             const payload = {
                 address: formData.address,
@@ -237,16 +238,21 @@ export default function Properties() {
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div>
                                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Dirección</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:outline-none transition-all text-sm"
-                                    placeholder="Ej. Calle 123 # 45-67"
+                                <AddressAutocomplete
+                                    isLoaded={isLoaded}
                                     value={formData.address}
-                                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                    required
+                                    placeholder="Ej. Calle 123 # 45-67"
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:outline-none transition-all text-sm"
+                                    onChange={({ address, lat, lng }) => setFormData(prev => ({
+                                        ...prev,
+                                        address,
+                                        lat: lat != null ? lat : '',
+                                        lng: lng != null ? lng : '',
+                                    }))}
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
-                                    El sistema intentará geolocalizarla automáticamente.
+                                    Elige una sugerencia para fijar la ubicación exacta, o ajústala abajo en el mapa.
                                 </p>
                             </div>
 

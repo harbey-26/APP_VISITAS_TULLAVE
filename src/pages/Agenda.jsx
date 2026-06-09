@@ -6,58 +6,13 @@ import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
-import { useJsApiLoader, GoogleMap, Autocomplete } from '@react-google-maps/api';
+import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Button, Modal, Select, Input } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
-
-// Campo de dirección con autocompletado de Google Places. Al seleccionar una
-// sugerencia entrega { address, lat, lng } con coordenadas exactas, lo que evita
-// depender de la geocodificación del servidor (más frágil). Si el script de
-// Maps aún no cargó, degrada a un input de texto normal.
-function AddressAutocomplete({ value, onChange, isLoaded, placeholder, required }) {
-    const acRef = useRef(null);
-
-    const handlePlaceChanged = () => {
-        const place = acRef.current?.getPlace();
-        if (!place?.geometry?.location) return;
-        onChange({
-            address: place.formatted_address || place.name || value,
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-        });
-    };
-
-    const inputEl = (
-        <input
-            type="text"
-            placeholder={placeholder}
-            className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-            value={value}
-            required={required}
-            // Al teclear a mano limpiamos lat/lng: dejan de ser válidos hasta
-            // que el usuario elija una sugerencia o el servidor geocodifique.
-            onChange={e => onChange({ address: e.target.value, lat: null, lng: null })}
-        />
-    );
-
-    if (!isLoaded || !window.google?.maps?.places) return inputEl;
-
-    return (
-        <Autocomplete
-            onLoad={ac => { acRef.current = ac; }}
-            onPlaceChanged={handlePlaceChanged}
-            options={{
-                componentRestrictions: { country: 'co' },
-                fields: ['formatted_address', 'geometry', 'name'],
-            }}
-        >
-            {inputEl}
-        </Autocomplete>
-    );
-}
 
 // Mapa de agenda con card overlay (evita el iframe de InfoWindow)
 function AgendaMapView({ visits, onVisitClick }) {
@@ -261,8 +216,39 @@ export default function Agenda() {
     const [agents, setAgents] = useState([]);
     const [isNewProperty, setIsNewProperty] = useState(false);
 
-    const today = new Date().toISOString().split('T')[0];
-    const [dateRange, setDateRange] = useState({ start: today, end: today });
+    // Fechas en hora LOCAL (no UTC) para que "Hoy" sea correcto también de noche
+    // en Bogotá (UTC-5), donde toISOString() ya habría saltado al día siguiente.
+    const localYmd = (d) => {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const today = localYmd(new Date());
+    const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return localYmd(d); })();
+    // Semana actual de lunes a domingo
+    const weekDow = (new Date().getDay() + 6) % 7; // lunes=0 … domingo=6
+    const weekStart = (() => { const d = new Date(); d.setDate(d.getDate() - weekDow); return localYmd(d); })();
+    const weekEnd = (() => { const d = new Date(); d.setDate(d.getDate() + (6 - weekDow)); return localYmd(d); })();
+
+    const datePresets = [
+        { key: 'today', label: 'Hoy', start: today, end: today },
+        { key: 'tomorrow', label: 'Mañana', start: tomorrow, end: tomorrow },
+        { key: 'week', label: 'Esta semana', start: weekStart, end: weekEnd },
+    ];
+
+    // Persistimos el rango elegido para que, al entrar a una visita y volver,
+    // se conserve el filtro (Hoy/Mañana/Esta semana/personalizado) en vez de
+    // reiniciar a "Hoy" cada vez que se remonta la Agenda.
+    const [dateRange, setDateRange] = useState(() => {
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('agendaDateRange') || 'null');
+            if (saved?.start && saved?.end) return saved;
+        } catch { /* ignora JSON corrupto */ }
+        return { start: today, end: today };
+    });
+
+    useEffect(() => {
+        try { sessionStorage.setItem('agendaDateRange', JSON.stringify(dateRange)); } catch { /* sin storage */ }
+    }, [dateRange]);
 
     const [formData, setFormData] = useState({
         propertyId: '',
@@ -666,12 +652,18 @@ export default function Agenda() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl shadow-card border border-gray-200 w-full sm:w-fit">
-                    <button
-                        onClick={() => setDateRange({ start: today, end: today })}
-                        className="text-sm font-semibold px-3 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-brand-600 hover:text-white active:scale-95 transition whitespace-nowrap flex-shrink-0"
-                    >
-                        Hoy
-                    </button>
+                    {datePresets.map(p => {
+                        const active = dateRange.start === p.start && dateRange.end === p.end;
+                        return (
+                            <button
+                                key={p.key}
+                                onClick={() => setDateRange({ start: p.start, end: p.end })}
+                                className={`text-sm font-semibold px-3 py-2 rounded-lg active:scale-95 transition whitespace-nowrap flex-shrink-0 ${active ? 'bg-brand-600 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-brand-600 hover:text-white'}`}
+                            >
+                                {p.label}
+                            </button>
+                        );
+                    })}
                     <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium text-gray-500 whitespace-nowrap">Del</span>
                         <input
