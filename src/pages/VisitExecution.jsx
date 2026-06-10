@@ -57,7 +57,8 @@ function buildWhatsAppUrl(phone) {
 
 function VisitExecutionContent() {
     const { id } = useParams();
-    const { token } = useAuth();
+    const { token, user } = useAuth();
+    const isAdmin = user?.role === 'ADMIN';
     const navigate = useNavigate();
     const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
     const [visit, setVisit] = useState(null);
@@ -681,6 +682,11 @@ function VisitExecutionContent() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Finalizar Visita</h3>
                 <p className="text-gray-500 mb-5 text-sm text-center">¿Confirmas que deseas finalizar la visita? Esta acción no se puede deshacer.</p>
+                {isAdmin && (
+                    <p className="text-xs text-brand-600 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 mb-4 text-center font-medium">
+                        Como administrador puedes finalizar sin estar en la ubicación del inmueble.
+                    </p>
+                )}
                 {outcome && (
                     <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
                         <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>

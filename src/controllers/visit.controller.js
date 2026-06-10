@@ -475,21 +475,26 @@ export const finishVisit = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden finalizar visitas que estén en curso.' });
         }
 
-        // C1: Bloquear si el inmueble no tiene coordenadas — igual que startVisit
-        if (!visit.property?.lat || !visit.property?.lng) {
-            return res.status(400).json({
-                error: 'El inmueble no tiene coordenadas registradas. Contacta al administrador para configurarlas antes de finalizar la visita.'
-            });
-        }
+        // Geofencing al finalizar — el agente debe estar en el inmueble.
+        // EXCEPCIÓN: el ADMIN puede finalizar desde cualquier ubicación (cierre
+        // remoto de visitas), por lo que omite tanto la validación de coordenadas
+        // del inmueble como la de distancia.
+        if (req.user.role !== 'ADMIN') {
+            // C1: Bloquear si el inmueble no tiene coordenadas — igual que startVisit
+            if (!visit.property?.lat || !visit.property?.lng) {
+                return res.status(400).json({
+                    error: 'El inmueble no tiene coordenadas registradas. Contacta al administrador para configurarlas antes de finalizar la visita.'
+                });
+            }
 
-        // Geofencing al finalizar — el agente debe estar en el inmueble
-        const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
-        const maxDistance = getMaxDistance(req.user.role);
+            const distance = getDistanceInMeters(data.lat, data.lng, visit.property.lat, visit.property.lng);
+            const maxDistance = getMaxDistance(req.user.role);
 
-        if (distance > maxDistance) {
-            return res.status(400).json({
-                error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para finalizar la visita.`
-            });
+            if (distance > maxDistance) {
+                return res.status(400).json({
+                    error: `Estás demasiado lejos de la propiedad (${Math.round(distance)}m). Debes estar a menos de ${maxDistance}m para finalizar la visita.`
+                });
+            }
         }
 
         const updatedVisit = await prisma.visit.update({

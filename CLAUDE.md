@@ -33,8 +33,9 @@ APP_VISITAS_TULLAVE/
 │   │   ├── Tracking.jsx        # Rastreo de agentes en tiempo real (admin)
 │   │   ├── Users.jsx           # CRUD usuarios (admin)
 │   │   └── VisitExecution.jsx  # Ejecución de visita (agente)
-│   ├── components/layout/
-│   │   └── Layout.jsx          # Sidebar + nav móvil + GPS + WakeLock
+│   ├── components/
+│   │   ├── layout/Layout.jsx       # Sidebar + nav móvil + GPS + WakeLock
+│   │   └── AddressAutocomplete.jsx # Input de dirección con Google Places (compartido)
 │   ├── controllers/            # Lógica de negocio Express
 │   ├── routes/                 # Endpoints de la API
 │   ├── context/
@@ -45,6 +46,7 @@ APP_VISITAS_TULLAVE/
 │   └── utils/
 │       ├── auth.js             # Helpers de bcrypt / JWT
 │       ├── geo.js              # Abstracción GPS: nativo (APK) vs web
+│       ├── mapsLoader.js       # Opciones únicas de useJsApiLoader (libs ['places'])
 │       └── visitTypes.js       # Constantes de tipos de visita
 ├── prisma/
 │   ├── schema.prisma           # Schema SQLite (desarrollo local)
@@ -117,6 +119,8 @@ VisitImage — id, visitId, url
 | GET | `/api/users/locations` | JWT+Admin | Listar ubicaciones de agentes |
 | GET/POST | `/api/properties` | JWT | Inmuebles |
 | GET/POST | `/api/visits` | JWT | Visitas |
+| PATCH | `/api/visits/:id` | JWT | Editar visita (dueño/admin): fecha, duración, tipo, cliente, notas, agente. Solo PENDING/IN_PROGRESS. Re-valida conflictos + re-sync Calendar |
+| PUT | `/api/properties/:id` | JWT | Editar inmueble (NO es PATCH). Geocodifica si lat/lng son null o defaults |
 | GET | `/api/visits/stats` | JWT+Admin | Estadísticas globales del período |
 | GET | `/api/visits/stats/agents` | JWT+Admin | Estadísticas por agente |
 | PATCH | `/api/visits/:id/start` | JWT | Iniciar visita |
@@ -144,10 +148,20 @@ VisitImage — id, visitId, url
 |----------|-------|---------|
 | `DATABASE_URL` | Railway (backend) | Conexión PostgreSQL |
 | `JWT_SECRET` | Railway (backend) | Firma de tokens |
-| `VITE_GOOGLE_MAPS_API_KEY` | `.env` local + GitHub Secret | Google Maps |
+| `VITE_GOOGLE_MAPS_API_KEY` | `.env` local + Railway + GitHub Secret | Google Maps en el frontend (mapa + Places). **Se embebe en build-time**, por eso debe estar también en Railway |
+| `GOOGLE_MAPS_API_KEY` | `.env` local + Railway | Geocoding del servidor (respaldo) — `property.controller.js` |
 | `VITE_API_URL` | `.env` local (vacío = proxy) | URL del backend |
 
 Secreto en GitHub Actions: `VITE_GOOGLE_MAPS_API_KEY`
+
+> ⚠️ **Las keys de Maps fueron rotadas (jun 2026).** Local y producción usan
+> **valores distintos** (ambos válidos): la de Railway es independiente de la del
+> `.env`. Si el mapa muestra `ExpiredKeyMapError`, la key de ese entorno está
+> muerta → copiar la vigente desde Google Cloud Console (proyecto
+> `Tullave-Mapas-App`). La key es de navegador, restringida por referrer
+> (incluye `localhost:3000/5173` y el dominio de Railway). **No** se guarda el
+> valor en este repo. Proyecto en Google Cloud: `Tullave-Mapas-App`; APIs
+> habilitadas: Maps JavaScript API, Places API, Geocoding API.
 
 ---
 
@@ -185,8 +199,12 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 ### Agenda (`Agenda.jsx`)
 - Vista lista agrupada por bloques horarios (Mañana/Tarde/Noche)
 - **Vista mapa** con toggle Lista/Mapa — marcadores de color por tipo de visita; al tocar un marcador aparece una card overlay (fuera del iframe de Maps) con botón "Abrir visita"
-- Filtro por rango de fechas
+- **Filtros rápidos de fecha:** Hoy / Mañana / Esta semana (lun–dom), con resaltado del activo, más rango manual "Del/al". El rango **persiste en `sessionStorage`** (`agendaDateRange`) para no reiniciarse al entrar/salir de una visita. Las fechas se calculan en **hora local** (no UTC) para que "Hoy" sea correcto de noche en Bogotá
 - Crear visita con validación de conflictos horarios
+- **Editar visita** (botón lápiz, solo PENDING/IN_PROGRESS) — modal que cambia fecha/hora, tipo, duración, cliente, agente (admin) y la **dirección/ubicación del inmueble**
+- **Dirección con Google Places Autocomplete** (`AddressAutocomplete`): captura `lat/lng` exactos al elegir una sugerencia; ya no depende de la geocodificación del servidor
+- **Aviso de inmueble duplicado** al registrar uno nuevo: detecta coincidencia por dirección normalizada O coordenadas a <30 m, y ofrece "usar el existente" sin bloquear
+- Muestra el **conjunto/edificio** (`property.client`) bajo la dirección en lista y card del mapa
 - Reasignar agente (admin), marcar no atendida, eliminar con contraseña
 
 ### Dashboard (`Dashboard.jsx`)
@@ -194,9 +212,9 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Pestaña Por Agente:** ranking de agentes con total, completadas (barra %), no atendidas, conversión (semáforo) y duración promedio; medallas 🥇🥈🥉
 
 ### Otras páginas
-- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro
-- `Tracking.jsx` — mapa en tiempo real de agentes con clustering y comunicados
-- `Users.jsx` / `Properties.jsx` — CRUD completo
+- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección
+- `Tracking.jsx` — mapa en tiempo real de agentes con clustering y comunicados; tabla "Check-in horario" muestra el nombre completo del agente
+- `Users.jsx` / `Properties.jsx` — CRUD completo. Inmuebles usa `AddressAutocomplete` (Places) + picker de mapa manual como ajuste fino
 
 ---
 
@@ -209,4 +227,6 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - Los paquetes `@capacitor/geolocation` y `@capacitor-community/background-geolocation`
   están marcados como `external` en `vite.config.js` — el runtime nativo los resuelve
 - La label del step en el workflow dice "Setup Java 17" pero usa Java 21 (Capacitor v8 lo requiere)
-- **Google Maps:** todos los `useJsApiLoader` deben usar `id: 'google-map-script'` — si falta ese id en algún componente, al navegar entre páginas con mapa se lanza una excepción que el ErrorBoundary captura como "error inesperado"
+- **Google Maps — loader centralizado:** todos los `useJsApiLoader` deben importar y pasar `MAPS_LOADER_OPTIONS` desde `src/utils/mapsLoader.js` (mismo `id: 'google-map-script'` y mismas `libraries: ['places']`). Si un componente carga el script con opciones distintas, Google lanza "Loader must not be called again with different options" y, al navegar entre páginas con mapa, el ErrorBoundary lo captura como "error inesperado". Lo usan: Agenda, Tracking, VisitExecution, Properties
+- **Direcciones:** se capturan con `AddressAutocomplete` (Google Places) que entrega `lat/lng` exactos desde el navegador. El geocoding del servidor (`property.controller.js`, `process.env.GOOGLE_MAPS_API_KEY`) es solo respaldo y **falla en producción** si la key está restringida por referrer (las llamadas de servidor no llevan referrer) — por eso Places es el camino principal
+- **Editar inmueble usa `PUT`**, no `PATCH` (la ruta es `router.put('/:id')`). Enviar PATCH da 404

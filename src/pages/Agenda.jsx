@@ -511,12 +511,9 @@ export default function Agenda() {
         const pad = n => String(n).padStart(2, '0');
         setEditForm({
             id: visit.id,
-            propertyId: visit.property?.id ?? null,
+            // address/client solo para mostrar (lectura); no se editan aquí
             address: visit.property?.address || '',
             client: visit.property?.client || '',
-            lat: visit.property?.lat ?? null,
-            lng: visit.property?.lng ?? null,
-            addressChanged: false,
             date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
             time: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
             duration: visit.estimatedDuration,
@@ -533,29 +530,9 @@ export default function Agenda() {
         if (!editForm || savingEdit) return;
         setSavingEdit(true);
         try {
-            // 1) Si cambió la dirección/ubicación, actualizar primero el inmueble
-            if (editForm.addressChanged && editForm.propertyId) {
-                const propRes = await fetch(`${API_URL}/api/properties/${editForm.propertyId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({
-                        address: editForm.address,
-                        client: editForm.client || 'Cliente General',
-                        lat: editForm.lat,
-                        lng: editForm.lng,
-                    }),
-                });
-                if (!propRes.ok) {
-                    const err = await propRes.json();
-                    throw new Error(err.error || 'Error al actualizar la dirección');
-                }
-                const updatedProp = await propRes.json();
-                if (updatedProp.lat == null || updatedProp.lng == null) {
-                    toast.error('La dirección se guardó pero no se pudo ubicar en el mapa. Elige una sugerencia del autocompletado.');
-                }
-            }
-
-            // 2) Actualizar los datos de la visita
+            // La dirección/ubicación del inmueble NO se edita desde aquí (para que
+            // los agentes no la alteren). Se gestiona solo en la sección Inmuebles
+            // (admin). Aquí solo se actualizan los datos de la visita.
             const scheduledStart = new Date(`${editForm.date}T${editForm.time}:00`).toISOString();
             const payload = {
                 scheduledStart,
@@ -581,7 +558,7 @@ export default function Agenda() {
 
             setShowEditModal(false);
             setEditForm(null);
-            await Promise.all([fetchVisits(), fetchProperties()]);
+            await fetchVisits();
             toast.success('Visita actualizada correctamente');
         } catch (error) {
             toast.error(friendlyError(error));
@@ -1125,33 +1102,21 @@ export default function Agenda() {
                             </div>
                         )}
 
-                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">Dirección del inmueble</label>
-                            <AddressAutocomplete
-                                isLoaded={mapsLoaded}
-                                value={editForm.address}
-                                placeholder="Dirección del inmueble"
-                                onChange={({ address, lat, lng }) => setEditForm(prev => ({
-                                    ...prev,
-                                    address,
-                                    lat: lat !== undefined ? lat : prev.lat,
-                                    lng: lng !== undefined ? lng : prev.lng,
-                                    addressChanged: true,
-                                }))}
-                            />
-                            <p className="flex items-center gap-1 text-xs text-gray-500">
-                                <MapPin className="w-3 h-3 flex-shrink-0" />
-                                {editForm.lat != null
-                                    ? <span className="text-emerald-600 font-medium">Ubicación fijada en el mapa ✓</span>
-                                    : <span>Sin ubicación: elige una sugerencia para que aparezca en el mapa.</span>}
+                        {/* Inmueble en solo lectura: la dirección/ubicación no se
+                            edita desde la visita (se gestiona en la sección Inmuebles). */}
+                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Inmueble</label>
+                            <p className="flex items-start gap-1.5 font-semibold text-gray-900">
+                                <Home className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
+                                {editForm.address || 'Sin dirección'}
                             </p>
-                            <input
-                                type="text"
-                                placeholder="Nombre del Conjunto o Edificio (Opcional)"
-                                className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                value={editForm.client}
-                                onChange={e => setEditForm({ ...editForm, client: e.target.value, addressChanged: true })}
-                            />
+                            {editForm.client && editForm.client !== 'Cliente General' && (
+                                <p className="flex items-center gap-1.5 text-sm text-gray-500 mt-1 pl-6">
+                                    <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                    {editForm.client}
+                                </p>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1.5">La dirección solo se cambia en la sección Inmuebles.</p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
