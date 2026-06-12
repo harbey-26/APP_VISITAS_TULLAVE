@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle, Pencil, MapPin, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
-import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
+import { VISIT_TYPE_CONFIG, STATUS_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
@@ -14,18 +14,32 @@ import { Button, Modal, Select, Input } from '../components/ui';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
+// Pin SVG para los agentes — forma de gota (claramente distinta de los círculos
+// de las visitas). Anclado en la punta (0,0); el círculo queda centrado en (0,-30).
+const AGENT_PIN_PATH = 'M 0,0 C -2,-20 -10,-22 -10,-30 A 10,10 0 1,1 10,-30 C 10,-22 2,-20 0,0 z';
+
+// Un agente se considera "activo" si reportó ubicación hace ≤ 5 minutos.
+function isAgentActive(lastSeenAt) {
+    if (!lastSeenAt) return false;
+    return (Date.now() - new Date(lastSeenAt).getTime()) / 60000 <= 5;
+}
+
 // Mapa de agenda con card overlay (evita el iframe de InfoWindow)
-function AgendaMapView({ visits, onVisitClick }) {
+function AgendaMapView({ visits, agents = [], onVisitClick }) {
     const mapRef = useRef(null);
     const markersRef = useRef([]);
     const [selectedVisit, setSelectedVisit] = useState(null);
+    const [selectedAgent, setSelectedAgent] = useState(null);
 
     const { isLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
 
     const visitsWithCoords = visits.filter(v => v.property?.lat && v.property?.lng);
+    const agentsWithCoords = agents.filter(a => a.lastLat != null && a.lastLng != null);
     const center = visitsWithCoords[0]
         ? { lat: visitsWithCoords[0].property.lat, lng: visitsWithCoords[0].property.lng }
-        : BOGOTA;
+        : agentsWithCoords[0]
+            ? { lat: agentsWithCoords[0].lastLat, lng: agentsWithCoords[0].lastLng }
+            : BOGOTA;
 
     const createMarkers = (map) => {
         markersRef.current.forEach(m => m.setMap(null));
@@ -50,16 +64,49 @@ function AgendaMapView({ visits, onVisitClick }) {
                     strokeWeight: 2.5,
                 },
             });
-            marker.addListener('click', () => setSelectedVisit(visit));
+            marker.addListener('click', () => { setSelectedAgent(null); setSelectedVisit(visit); });
             markersRef.current.push(marker);
             bounds.extend(pos);
         });
 
-        if (visitsWithCoords.length === 1) {
+        // #3: Marcadores de agentes (gota indigo con inicial) — distintos de las
+        // visitas para que el admin vea de un vistazo si están cerca del punto.
+        agentsWithCoords.forEach(agent => {
+            const pos = { lat: agent.lastLat, lng: agent.lastLng };
+            const active = isAgentActive(agent.lastSeenAt);
+            const marker = new window.google.maps.Marker({
+                map,
+                position: pos,
+                title: agent.name,
+                zIndex: 999, // por encima de los círculos de visita
+                icon: {
+                    path: AGENT_PIN_PATH,
+                    fillColor: active ? '#4f46e5' : '#9ca3af',
+                    fillOpacity: 1,
+                    strokeColor: '#fff',
+                    strokeWeight: 1.5,
+                    scale: 1,
+                    anchor: new window.google.maps.Point(0, 0),
+                    labelOrigin: new window.google.maps.Point(0, -30),
+                },
+                label: {
+                    text: (agent.name || '?').charAt(0).toUpperCase(),
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                },
+            });
+            marker.addListener('click', () => { setSelectedVisit(null); setSelectedAgent(agent); });
+            markersRef.current.push(marker);
+            bounds.extend(pos);
+        });
+
+        const totalPoints = visitsWithCoords.length + agentsWithCoords.length;
+        if (totalPoints === 1) {
             // Un solo punto: centrar y usar zoom 16 (igual que VisitExecution)
             map.setCenter(bounds.getCenter());
             map.setZoom(16);
-        } else if (visitsWithCoords.length > 1) {
+        } else if (totalPoints > 1) {
             map.fitBounds(bounds, 60); // padding 60px
         }
     };
@@ -67,12 +114,12 @@ function AgendaMapView({ visits, onVisitClick }) {
     const handleMapLoad = (map) => {
         mapRef.current = map;
         createMarkers(map);
-        map.addListener('click', () => setSelectedVisit(null));
+        map.addListener('click', () => { setSelectedVisit(null); setSelectedAgent(null); });
     };
 
     useEffect(() => {
         if (mapRef.current) createMarkers(mapRef.current);
-    }, [visits]);
+    }, [visits, agents]);
 
     if (!isLoaded) return (
         <div className="flex items-center justify-center h-full bg-gray-50">
@@ -80,7 +127,7 @@ function AgendaMapView({ visits, onVisitClick }) {
         </div>
     );
 
-    if (visitsWithCoords.length === 0) return (
+    if (visitsWithCoords.length === 0 && agentsWithCoords.length === 0) return (
         <div className="flex flex-col items-center justify-center h-full bg-gray-50 gap-3">
             <MapIcon className="w-10 h-10 text-gray-300" />
             <p className="text-gray-400 text-sm">Sin visitas con ubicación para mostrar</p>
@@ -99,6 +146,42 @@ function AgendaMapView({ visits, onVisitClick }) {
                 options={{ styles: MAP_STYLE, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
                 onLoad={handleMapLoad}
             />
+            {/* #3: Leyenda — distingue agentes de las visitas */}
+            {agentsWithCoords.length > 0 && (
+                <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-100 px-3 py-2 z-10 text-xs">
+                    <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                        <span className="font-semibold text-gray-700">Agentes</span>
+                        <span className="text-gray-400">· última ubicación</span>
+                    </div>
+                </div>
+            )}
+            {/* #3: Card del agente seleccionado */}
+            {selectedAgent && (
+                <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-10 animate-slide-up">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold ${isAgentActive(selectedAgent.lastSeenAt) ? 'bg-indigo-600' : 'bg-gray-400'}`}>
+                                {(selectedAgent.name || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="font-bold text-gray-900 leading-snug truncate">{selectedAgent.name}</p>
+                                <p className="text-sm text-gray-500 flex items-center gap-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isAgentActive(selectedAgent.lastSeenAt) ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                    {isAgentActive(selectedAgent.lastSeenAt)
+                                        ? 'Activo ahora'
+                                        : selectedAgent.lastSeenAt
+                                            ? `Última vez: ${new Date(selectedAgent.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                            : 'Sin reporte de ubicación'}
+                                </p>
+                            </div>
+                        </div>
+                        <button onClick={() => setSelectedAgent(null)} className="text-gray-400 hover:text-gray-600 shrink-0 p-1">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* Card overlay — fuera del iframe de Maps, navegación React normal */}
             {selectedVisit && (
                 <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-10 animate-slide-up">
@@ -214,6 +297,7 @@ export default function Agenda() {
 
     const [properties, setProperties] = useState([]);
     const [agents, setAgents] = useState([]);
+    const [agentLocations, setAgentLocations] = useState([]); // #3: última ubicación de agentes en el mapa (admin)
     const [isNewProperty, setIsNewProperty] = useState(false);
 
     // Fechas en hora LOCAL (no UTC) para que "Hoy" sea correcto también de noche
@@ -332,11 +416,27 @@ export default function Agenda() {
         }
     };
 
+    // #3: Última ubicación registrada de los agentes (solo admin). Reusa el
+    // mismo endpoint que el módulo de Rastreo. Silencioso: si falla, el mapa
+    // simplemente no pinta agentes.
+    const fetchAgentLocations = async () => {
+        if (user?.role !== 'ADMIN') return;
+        try {
+            const res = await fetch(`${API_URL}/api/users/locations`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setAgentLocations(await res.json());
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     useEffect(() => {
         if (token) {
             fetchVisits();
             fetchProperties();
             fetchAgents();
+            fetchAgentLocations();
         }
     }, [token, user, dateRange]);
 
@@ -346,7 +446,7 @@ export default function Agenda() {
     //   (típico cuando el agente abre la app tras recibir la push de notificación)
     useEffect(() => {
         if (!token) return;
-        const tick = () => fetchVisits(true); // silencioso, sin spinner
+        const tick = () => { fetchVisits(true); fetchAgentLocations(); }; // silencioso, sin spinner
         const interval = setInterval(tick, 45000);
         const onVisibilityOrFocus = () => {
             if (document.visibilityState === 'visible') tick();
@@ -689,6 +789,7 @@ export default function Agenda() {
                 <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: '65vh' }}>
                     <AgendaMapView
                         visits={visits}
+                        agents={agentLocations}
                         onVisitClick={(id) => navigate(`/visit/${id}`)}
                     />
                 </div>
@@ -737,6 +838,7 @@ export default function Agenda() {
                                         const statusConfig = STATUS_CONFIG[visit.status] || STATUS_CONFIG.PENDING;
                                         const isCompleted = visit.status === 'COMPLETED';
                                         const isPastPending = visit.status === 'PENDING' && new Date(visit.scheduledStart) < new Date();
+                                        const lateMin = getLateStartMinutes(visit); // #2: inició tarde
 
                                         return (
                                             <div
@@ -764,6 +866,12 @@ export default function Agenda() {
                                                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${typeConfig.bg} ${typeConfig.text}`}>
                                                                 {typeConfig.label}
                                                             </span>
+                                                            {lateMin != null && (
+                                                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800" title={`Inició ${lateMin} min después de lo programado`}>
+                                                                    <AlertTriangle className="w-3 h-3" />
+                                                                    Tarde +{lateMin}m
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-1.5">
                                                             <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.bg} ${statusConfig.text}`}>

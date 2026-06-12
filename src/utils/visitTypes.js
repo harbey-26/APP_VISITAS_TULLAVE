@@ -49,6 +49,20 @@ export const VISIT_TYPE_CONFIG = {
     },
 };
 
+// Minutos de tolerancia antes de considerar que una visita "inició tarde".
+// Evita marcar como tardías diferencias mínimas de reloj/GPS.
+export const LATE_START_GRACE_MIN = 10;
+
+// Devuelve cuántos minutos tarde inició la visita respecto a lo programado.
+// null si no ha iniciado o si entró dentro de la tolerancia.
+export function getLateStartMinutes(visit) {
+    if (!visit?.actualStart || !visit?.scheduledStart) return null;
+    const diffMin = Math.round(
+        (new Date(visit.actualStart).getTime() - new Date(visit.scheduledStart).getTime()) / 60000
+    );
+    return diffMin > LATE_START_GRACE_MIN ? diffMin : null;
+}
+
 export const STATUS_CONFIG = {
     PENDING:     { label: 'Pendiente',    bg: 'bg-yellow-100', text: 'text-yellow-800', pulse: false },
     IN_PROGRESS: { label: 'En Curso',     bg: 'bg-blue-100',   text: 'text-blue-800',   pulse: true  },

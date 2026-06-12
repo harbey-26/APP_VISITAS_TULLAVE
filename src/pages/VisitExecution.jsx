@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
-import { STATUS_CONFIG } from '../utils/visitTypes';
+import { STATUS_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
@@ -318,6 +318,14 @@ function VisitExecutionContent() {
         } catch (_) { /* silencioso */ }
     };
 
+    // #2: minutos de retraso del inicio real frente a lo programado (null si a tiempo)
+    const lateMinutes = getLateStartMinutes(visit);
+
+    // #1: duración real de la visita (check-in → check-out) en minutos
+    const realDurationMin = visit?.actualStart && visit?.actualEnd
+        ? Math.max(1, Math.round((new Date(visit.actualEnd).getTime() - new Date(visit.actualStart).getTime()) / 60000))
+        : null;
+
     const safeFormatTime = (dateString) => {
         try {
             const date = new Date(dateString);
@@ -372,11 +380,20 @@ function VisitExecutionContent() {
                         {visit.property.client}
                     </p>
                 )}
-                {STATUS_CONFIG[visit.status] && (
-                    <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-semibold mb-3 ${STATUS_CONFIG[visit.status].bg} ${STATUS_CONFIG[visit.status].text}`}>
-                        {STATUS_CONFIG[visit.status].label}
-                    </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                    {STATUS_CONFIG[visit.status] && (
+                        <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_CONFIG[visit.status].bg} ${STATUS_CONFIG[visit.status].text}`}>
+                            {STATUS_CONFIG[visit.status].label}
+                        </span>
+                    )}
+                    {/* #2: aviso de inicio tardío respecto a lo programado */}
+                    {lateMinutes != null && (
+                        <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-100 text-amber-800">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Inició {lateMinutes} min tarde
+                        </span>
+                    )}
+                </div>
                 <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-4">
                     <Clock className="w-4 h-4" />
                     <span>Programada: {safeFormatTime(visit.scheduledStart)}</span>
@@ -559,6 +576,21 @@ function VisitExecutionContent() {
                     <div className="text-center text-green-600 font-bold flex items-center justify-center gap-2">
                         <CheckCircle className="w-5 h-5" />
                         Visita Completada
+                    </div>
+                    {/* #1: horas reales de la visita — útiles para el administrador */}
+                    <div className="bg-white p-3 rounded-xl border border-green-100 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Inicio</p>
+                            <p className="text-gray-900 font-bold text-sm tabular-nums">{visit.actualStart ? safeFormatTime(visit.actualStart) : '—'}</p>
+                        </div>
+                        <div className="border-x border-gray-100">
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Terminación</p>
+                            <p className="text-gray-900 font-bold text-sm tabular-nums">{visit.actualEnd ? safeFormatTime(visit.actualEnd) : '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Duración</p>
+                            <p className="text-gray-900 font-bold text-sm tabular-nums">{realDurationMin != null ? `${realDurationMin} min` : '—'}</p>
+                        </div>
                     </div>
                     <div className="bg-white p-3 rounded-xl border border-green-100">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Resultado</p>
