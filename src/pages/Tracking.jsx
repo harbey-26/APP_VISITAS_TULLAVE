@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
 import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History } from 'lucide-react';
 import { Button, Modal, Input, inputClass } from '../components/ui';
+import { agentMarkerIcon } from '../utils/mapMarkers';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 const LOCATION_REFRESH_MS = 30_000;   // M3: ubicaciones cada 30 s
@@ -191,14 +192,13 @@ export default function Tracking() {
             const marker = new window.google.maps.Marker({
                 position: { lat: agent.lastLat, lng: agent.lastLng },
                 title: `${agent.name}${subtitle ? ' — ' + subtitle : ''}`,
-                icon: {
-                    path: window.google.maps.SymbolPath.CIRCLE,
-                    scale: 9,
-                    fillColor: active ? '#22c55e' : '#ef4444',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2,
-                },
+                // Avatar con inicial (mismo estilo que el mapa de la Agenda).
+                // Aquí "sin señal" es alerta → dot rojo en lugar de gris.
+                icon: agentMarkerIcon(window.google, {
+                    initial: (agent.name || '?').charAt(0),
+                    active,
+                    inactiveDot: '#ef4444',
+                }),
             });
             marker.addListener('click', () => setSelectedAgent(agent));
             return marker;

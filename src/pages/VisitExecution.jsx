@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
-import { STATUS_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
+import { STATUS_CONFIG, VISIT_TYPE_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
+import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
@@ -504,25 +505,32 @@ function VisitExecutionContent() {
                                 zoom={15}
                                 options={{ styles: MAP_STYLE, disableDefaultUI: true, zoomControl: true }}
                             >
-                                {/* Marker: propiedad geocodificada */}
+                                {/* Marker: inmueble — pin con el color del tipo de visita */}
                                 {visit.property?.lat && visit.property?.lng && (
                                     <Marker
                                         position={{ lat: visit.property.lat, lng: visit.property.lng }}
                                         title={`Inmueble: ${visit.property.address}`}
+                                        zIndex={10}
+                                        icon={visitMarkerIcon(window.google, {
+                                            color: (VISIT_TYPE_CONFIG[visit.type] || VISIT_TYPE_CONFIG.OTHER).barColor,
+                                            status: visit.status,
+                                        })}
                                     />
                                 )}
-                                {/* Marker: check-in del agente */}
+                                {/* Marker: check-in del agente (punto verde) */}
                                 {visit.checkInLat && visit.checkInLng && (
                                     <Marker
                                         position={{ lat: visit.checkInLat, lng: visit.checkInLng }}
                                         title="Inicio de visita"
+                                        icon={dotIcon(window.google, '#22c55e')}
                                     />
                                 )}
-                                {/* Marker: check-out del agente */}
+                                {/* Marker: check-out del agente (punto azul) */}
                                 {visit.checkOutLat && visit.checkOutLng && (
                                     <Marker
                                         position={{ lat: visit.checkOutLat, lng: visit.checkOutLng }}
                                         title="Fin de visita"
+                                        icon={dotIcon(window.google, '#3b82f6')}
                                     />
                                 )}
                             </GoogleMap>

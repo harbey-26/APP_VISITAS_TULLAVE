@@ -11,12 +11,9 @@ import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Button, Modal, Select, Input } from '../components/ui';
+import { visitMarkerIcon, agentMarkerIcon } from '../utils/mapMarkers';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
-
-// Pin SVG para los agentes — forma de gota (claramente distinta de los círculos
-// de las visitas). Anclado en la punta (0,0); el círculo queda centrado en (0,-30).
-const AGENT_PIN_PATH = 'M 0,0 C -2,-20 -10,-22 -10,-30 A 10,10 0 1,1 10,-30 C 10,-22 2,-20 0,0 z';
 
 // Un agente se considera "activo" si reportó ubicación hace ≤ 5 minutos.
 function isAgentActive(lastSeenAt) {
@@ -55,14 +52,10 @@ function AgendaMapView({ visits, agents = [], onVisitClick }) {
                 map,
                 position: pos,
                 title: visit.property.address,
-                icon: {
-                    path: window.google.maps.SymbolPath.CIRCLE,
-                    scale: 11,
-                    fillColor: typeCfg.barColor || '#e31c25',
-                    fillOpacity: 1,
-                    strokeColor: '#fff',
-                    strokeWeight: 2.5,
-                },
+                icon: visitMarkerIcon(window.google, {
+                    color: typeCfg.barColor || '#e31c25',
+                    status: visit.status,
+                }),
             });
             marker.addListener('click', () => { setSelectedAgent(null); setSelectedVisit(visit); });
             markersRef.current.push(marker);
@@ -78,23 +71,11 @@ function AgendaMapView({ visits, agents = [], onVisitClick }) {
                 map,
                 position: pos,
                 title: agent.name,
-                zIndex: 999, // por encima de los círculos de visita
-                icon: {
-                    path: AGENT_PIN_PATH,
-                    fillColor: active ? '#4f46e5' : '#9ca3af',
-                    fillOpacity: 1,
-                    strokeColor: '#fff',
-                    strokeWeight: 1.5,
-                    scale: 1,
-                    anchor: new window.google.maps.Point(0, 0),
-                    labelOrigin: new window.google.maps.Point(0, -30),
-                },
-                label: {
-                    text: (agent.name || '?').charAt(0).toUpperCase(),
-                    color: '#fff',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                },
+                zIndex: 999, // por encima de los pines de visita
+                icon: agentMarkerIcon(window.google, {
+                    initial: (agent.name || '?').charAt(0),
+                    active,
+                }),
             });
             marker.addListener('click', () => { setSelectedVisit(null); setSelectedAgent(agent); });
             markersRef.current.push(marker);
@@ -146,14 +127,24 @@ function AgendaMapView({ visits, agents = [], onVisitClick }) {
                 options={{ styles: MAP_STYLE, zoomControl: true, streetViewControl: false, mapTypeControl: false, fullscreenControl: true }}
                 onLoad={handleMapLoad}
             />
-            {/* #3: Leyenda — distingue agentes de las visitas */}
-            {agentsWithCoords.length > 0 && (
-                <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-100 px-3 py-2 z-10 text-xs">
-                    <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
-                        <span className="font-semibold text-gray-700">Agentes</span>
-                        <span className="text-gray-400">· última ubicación</span>
-                    </div>
+            {/* Leyenda — tipos de visita presentes + agentes (admin) */}
+            {(visitsWithCoords.length > 0 || agentsWithCoords.length > 0) && (
+                <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-100 px-3 py-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 max-w-[78%] text-[11px]">
+                    {[...new Set(visitsWithCoords.map(v => v.type))].map(t => {
+                        const cfg = VISIT_TYPE_CONFIG[t] || VISIT_TYPE_CONFIG.OTHER;
+                        return (
+                            <span key={t} className="flex items-center gap-1.5 font-semibold text-gray-600 whitespace-nowrap">
+                                <span className="w-2.5 h-2.5 rounded-full ring-1 ring-white shadow" style={{ backgroundColor: cfg.barColor }} />
+                                {cfg.label}
+                            </span>
+                        );
+                    })}
+                    {agentsWithCoords.length > 0 && (
+                        <span className="flex items-center gap-1.5 font-semibold text-indigo-700 whitespace-nowrap">
+                            <span className="w-3.5 h-3.5 rounded-full bg-indigo-600 ring-1 ring-white shadow text-white text-[8px] font-bold flex items-center justify-center leading-none">A</span>
+                            Agentes
+                        </span>
+                    )}
                 </div>
             )}
             {/* #3: Card del agente seleccionado */}

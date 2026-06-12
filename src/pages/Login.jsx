@@ -160,7 +160,7 @@ export default function Login() {
                 </p>
 
                 <p className="text-center text-[10px] text-gray-300 mt-4 leading-relaxed">
-                    © 2026 Harbey Perdomo. Todos los derechos reservados.<br />
+                    © {new Date().getFullYear()} Harbey Perdomo. Todos los derechos reservados.<br />
                     Software propietario — uso autorizado únicamente.
                 </p>
             </div>
