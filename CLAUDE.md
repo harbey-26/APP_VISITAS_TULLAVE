@@ -176,6 +176,10 @@ npx prisma studio    # UI de base de datos
 # Producción / build
 npm run build        # Compila frontend → dist/
 
+# Calidad (CI los corre en cada push — .github/workflows/ci.yml)
+npm run lint         # ESLint 9 (flat config en eslint.config.js)
+npm test             # Vitest — tests de lógica pura en tests/ (sin BD)
+
 # Base de datos
 npx prisma db push --schema prisma/schema.prisma      # Aplica cambios en local (SQLite)
 npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railway (PG)
@@ -190,6 +194,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Backend:** controladores separados por entidad en `src/controllers/`
 - **Validación:** Zod en controladores del backend
 - **Errores GPS:** siempre silenciosos (`.catch(() => {})`) — no interrumpen al usuario
+- **Lógica testeable en utils:** geofencing (`utils/distance.js`), solapamiento de
+  visitas (`utils/scheduleConflict.js`), WhatsApp (`utils/phone.js`) — con tests en
+  `tests/`. Al tocarlos, correr `npm test`
+- **Marcadores de mapa:** usar `utils/mapMarkers.js` (pin por tipo de visita,
+  avatar de agente, dots de check-in/out) — no crear íconos inline
+- **package-lock:** si se añaden deps, regenerarlo con
+  `rm -rf node_modules package-lock.json && npm install --ignore-scripts`;
+  regenerarlo con node_modules presente omite binarios de Linux y rompe `npm ci` en CI
+- **ESLint pineado a v9** (`eslint-plugin-react` no soporta v10 aún)
 - **Esquemas Prisma:** modificar SIEMPRE ambos (`schema.prisma` + `schema.pg.prisma`)
 
 ---
