@@ -1,17 +1,38 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { NotificationsProvider } from './context/NotificationsContext';
 import Login from './pages/Login';
-import Agenda from './pages/Agenda';
-import VisitExecution from './pages/VisitExecution';
-import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
-import Properties from './pages/Properties';
-import Tracking from './pages/Tracking';
-import Notifications from './pages/Notifications';
-import Settings from './pages/Settings';
 import Layout from './components/layout/Layout';
+
+// Code-splitting por ruta: cada página se descarga solo cuando se navega a
+// ella (un agente que solo usa la Agenda no baja el Dashboard ni Tracking).
+// Login y Layout quedan eager: son la primera pantalla siempre.
+//
+// Tras un deploy, los chunks viejos dan 404 si la app quedó abierta durante
+// la actualización; en ese caso recargamos una vez para tomar la versión nueva.
+const lazyPage = (importer) => lazy(() =>
+    importer().catch((err) => {
+        const KEY = 'chunk_reload_at';
+        const last = Number(sessionStorage.getItem(KEY) || 0);
+        if (Date.now() - last > 30_000) {
+            sessionStorage.setItem(KEY, String(Date.now()));
+            window.location.reload();
+            return new Promise(() => {}); // mantiene el Suspense mientras recarga
+        }
+        throw err;
+    })
+);
+
+const Agenda = lazyPage(() => import('./pages/Agenda'));
+const VisitExecution = lazyPage(() => import('./pages/VisitExecution'));
+const Dashboard = lazyPage(() => import('./pages/Dashboard'));
+const Users = lazyPage(() => import('./pages/Users'));
+const Properties = lazyPage(() => import('./pages/Properties'));
+const Tracking = lazyPage(() => import('./pages/Tracking'));
+const Notifications = lazyPage(() => import('./pages/Notifications'));
+const Settings = lazyPage(() => import('./pages/Settings'));
 
 const LoadingScreen = () => (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -43,6 +64,7 @@ function App() {
             <ToastProvider>
             <NotificationsProvider>
             <Router>
+                <Suspense fallback={<LoadingScreen />}>
                 <Routes>
                     <Route path="/login" element={<Login />} />
 
@@ -83,6 +105,7 @@ function App() {
                     </Route>
                     <Route path="*" element={<Navigate to="/agenda" replace />} />
                 </Routes>
+                </Suspense>
             </Router>
             </NotificationsProvider>
             </ToastProvider>

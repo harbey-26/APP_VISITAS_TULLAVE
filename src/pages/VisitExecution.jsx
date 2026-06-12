@@ -5,6 +5,7 @@ import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, 
 import { API_URL } from '../config';
 import { STATUS_CONFIG, VISIT_TYPE_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
+import { compressImage } from '../utils/imageCompress';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
@@ -284,12 +285,8 @@ function VisitExecutionContent() {
         setUploadingPhoto(true);
         setErrorMsg(null);
         try {
-            const base64 = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
+            // Comprimir antes de subir (con respaldo al original si falla)
+            const base64 = await compressImage(file);
 
             const res = await fetch(`${API_URL}/api/visits/${id}/images`, {
                 method: 'POST',
