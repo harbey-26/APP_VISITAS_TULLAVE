@@ -12,6 +12,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Button, Modal, Select, Input } from '../components/ui';
 import { visitMarkerIcon, agentMarkerIcon } from '../utils/mapMarkers';
+import { buildWhatsAppUrl } from '../utils/phone';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
@@ -215,14 +216,6 @@ function AgendaMapView({ visits, agents = [], onVisitClick }) {
             )}
         </div>
     );
-}
-
-// Construye URL wa.me a partir de un número. Normaliza: deja solo dígitos y, si
-// queda en 10 dígitos empezando por 3 (móvil Colombia), antepone "57".
-function buildWhatsAppUrl(phone) {
-    const digits = String(phone || '').replace(/\D/g, '');
-    const normalized = (digits.length === 10 && digits.startsWith('3')) ? `57${digits}` : digits;
-    return `https://wa.me/${normalized}`;
 }
 
 // Normaliza una dirección para compararla: minúsculas, sin tildes, sin
@@ -660,7 +653,8 @@ export default function Agenda() {
 
     // El agente eligió/escribió una dirección nueva que ya coincide con un
     // inmueble registrado: en vez de duplicarlo, lo seleccionamos.
-    const useExistingProperty = (prop) => {
+    // (No empieza con "use": no es un hook, solo un handler.)
+    const selectExistingProperty = (prop) => {
         setIsNewProperty(false);
         setFormData(prev => ({
             ...prev,
@@ -1060,7 +1054,7 @@ export default function Agenda() {
                                                 </p>
                                                 <button
                                                     type="button"
-                                                    onClick={() => useExistingProperty(duplicateProperty)}
+                                                    onClick={() => selectExistingProperty(duplicateProperty)}
                                                     className="mt-2 w-full bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 rounded-lg transition active:scale-95"
                                                 >
                                                     Usar el inmueble existente

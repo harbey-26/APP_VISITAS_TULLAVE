@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { comparePassword, hashPassword } from '../utils/auth.js';
 import { sendPersonalNotification } from '../utils/notify.js';
 import { upsertVisitEvent, deleteVisitEvent } from '../utils/googleCalendar.js';
+import { getDistanceInMeters } from '../utils/distance.js';
+import { hasScheduleConflict } from '../utils/scheduleConflict.js';
 
 // M8: Sincronizar una visita con Google Calendar (no bloquea la respuesta HTTP)
 async function syncToCalendar(visitId) {
@@ -196,8 +198,6 @@ export const createVisit = async (req, res) => {
         }
 
         const scheduledStart = new Date(data.scheduledStart);
-        const durationMs = data.estimatedDuration * 60 * 1000;
-        const scheduledEnd = new Date(scheduledStart.getTime() + durationMs);
 
         const dayStart = new Date(scheduledStart);
         dayStart.setHours(0, 0, 0, 0);
@@ -213,13 +213,7 @@ export const createVisit = async (req, res) => {
             }
         });
 
-        const hasConflict = potentialOverlaps.some(v => {
-            const vStart = new Date(v.scheduledStart);
-            const vEnd = new Date(vStart.getTime() + (v.estimatedDuration * 60 * 1000));
-            return (scheduledStart < vEnd && scheduledEnd > vStart);
-        });
-
-        if (hasConflict) {
+        if (hasScheduleConflict(potentialOverlaps, scheduledStart, data.estimatedDuration)) {
             return res.status(400).json({
                 error: 'El agente ya tiene una visita programada en ese horario que se solapa con la nueva.'
             });
@@ -308,7 +302,6 @@ export const updateVisit = async (req, res) => {
 
         // Re-validar solapamiento de horario (excluyendo la propia visita)
         if (data.scheduledStart || data.estimatedDuration || data.assignedUserId) {
-            const newEnd = new Date(newStart.getTime() + newDuration * 60 * 1000);
             const dayStart = new Date(newStart); dayStart.setHours(0, 0, 0, 0);
             const dayEnd = new Date(newStart); dayEnd.setHours(23, 59, 59, 999);
 
@@ -321,12 +314,7 @@ export const updateVisit = async (req, res) => {
                     scheduledStart: { gte: dayStart, lte: dayEnd },
                 },
             });
-            const hasConflict = potentialOverlaps.some(v => {
-                const vStart = new Date(v.scheduledStart);
-                const vEnd = new Date(vStart.getTime() + v.estimatedDuration * 60 * 1000);
-                return (newStart < vEnd && newEnd > vStart);
-            });
-            if (hasConflict) {
+            if (hasScheduleConflict(potentialOverlaps, newStart, newDuration)) {
                 return res.status(400).json({
                     error: 'El agente ya tiene una visita programada en ese horario que se solapa con esta.'
                 });
@@ -364,22 +352,6 @@ export const updateVisit = async (req, res) => {
         res.status(400).json({ error: error.message });
     }
 };
-
-// Helper: Calculate distance in meters (Haversine formula)
-function getDistanceInMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371e3;
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-}
 
 // C5: Validar que un ID de URL sea un entero válido
 function parseId(raw) {

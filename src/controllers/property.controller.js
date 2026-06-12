@@ -36,7 +36,7 @@ const geocodeAddress = async (address) => {
         }
 
         // 4. Último fallback: dirección limpia sin caracteres especiales
-        const cleanAddress = address.replace(/[#\-]/g, ' ').replace(/\s+/g, ' ').trim();
+        const cleanAddress = address.replace(/[#-]/g, ' ').replace(/\s+/g, ' ').trim();
         queries.push(`${cleanAddress}, Bogotá, Colombia`);
 
         for (const q of queries) {

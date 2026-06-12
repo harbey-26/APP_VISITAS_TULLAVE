@@ -6,6 +6,7 @@ import { API_URL } from '../config';
 import { STATUS_CONFIG, VISIT_TYPE_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
 import { compressImage } from '../utils/imageCompress';
+import { buildWhatsAppUrl } from '../utils/phone';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
@@ -47,14 +48,6 @@ class ErrorBoundary extends React.Component {
         }
         return this.props.children;
     }
-}
-
-// Construye URL wa.me a partir de un número. Normaliza: deja solo dígitos y, si
-// queda en 10 dígitos empezando por 3 (móvil Colombia), antepone "57".
-function buildWhatsAppUrl(phone) {
-    const digits = String(phone || '').replace(/\D/g, '');
-    const normalized = (digits.length === 10 && digits.startsWith('3')) ? `57${digits}` : digits;
-    return `https://wa.me/${normalized}`;
 }
 
 function VisitExecutionContent() {
