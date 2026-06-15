@@ -102,6 +102,7 @@ Property  — id, address, client, lat, lng
 Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
             status (PENDING/IN_PROGRESS/COMPLETED/MISSED),
             type (SHOWING/APPRAISAL/INSPECTION),
+            modality (ON_SITE/PHONE) — PHONE = captación por llamada, sin GPS,
             actualStart, actualEnd, checkInLat/Lng, checkOutLat/Lng,
             notes, outcome, clientName, clientPhone
 VisitImage — id, visitId, url
@@ -119,12 +120,13 @@ VisitImage — id, visitId, url
 | GET | `/api/users/locations` | JWT+Admin | Listar ubicaciones de agentes |
 | GET/POST | `/api/properties` | JWT | Inmuebles |
 | GET/POST | `/api/visits` | JWT | Visitas |
-| PATCH | `/api/visits/:id` | JWT | Editar visita (dueño/admin): fecha, duración, tipo, cliente, notas, agente. Solo PENDING/IN_PROGRESS. Re-valida conflictos + re-sync Calendar |
+| PATCH | `/api/visits/:id` | JWT | Editar visita (dueño/admin): fecha, duración, tipo, modalidad, cliente, notas, agente. Solo PENDING/IN_PROGRESS. Re-valida conflictos + re-sync Calendar |
 | PUT | `/api/properties/:id` | JWT | Editar inmueble (NO es PATCH). Geocodifica si lat/lng son null o defaults |
 | GET | `/api/visits/stats` | JWT+Admin | Estadísticas globales del período |
 | GET | `/api/visits/stats/agents` | JWT+Admin | Estadísticas por agente |
 | PATCH | `/api/visits/:id/start` | JWT | Iniciar visita |
 | PATCH | `/api/visits/:id/finish` | JWT | Finalizar visita |
+| PATCH | `/api/visits/:id/complete-call` | JWT | Registrar captación por llamada (modalidad PHONE): PENDING→COMPLETED en un paso, sin GPS ni geofencing. Captura resultado + notas |
 | PATCH | `/api/visits/:id/missed` | JWT | Marcar como no atendida |
 | PATCH | `/api/visits/:id/reassign` | JWT+Admin | Reasignar a otro agente |
 | GET/POST | `/api/visits/:id/images` | JWT | Fotos de visita |
@@ -214,7 +216,9 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Vista mapa** con toggle Lista/Mapa — marcadores de color por tipo de visita; al tocar un marcador aparece una card overlay (fuera del iframe de Maps) con botón "Abrir visita"
 - **Filtros rápidos de fecha:** Hoy / Mañana / Esta semana (lun–dom), con resaltado del activo, más rango manual "Del/al". El rango **persiste en `sessionStorage`** (`agendaDateRange`) para no reiniciarse al entrar/salir de una visita. Las fechas se calculan en **hora local** (no UTC) para que "Hoy" sea correcto de noche en Bogotá
 - Crear visita con validación de conflictos horarios
-- **Editar visita** (botón lápiz, solo PENDING/IN_PROGRESS) — modal que cambia fecha/hora, tipo, duración, cliente, agente (admin) y la **dirección/ubicación del inmueble**
+- **Campo de notas** en agendar/editar: información libre para el agente (ej.: "estudio realizado, requiere para 6 meses"). Se guarda en `visit.notes`; se muestra en la tarjeta de la lista y en `VisitExecution` (como "Nota del agendamiento" antes de iniciar). Comparte el mismo campo `notes` que el reporte de cierre del agente (que la pre-llena al ejecutar)
+- **Modalidad presencial / por llamada** (selector en agendar/editar): `visit.modality` = `ON_SITE`|`PHONE`. Las visitas `PHONE` (captaciones telefónicas) llevan badge "Por llamada" y se registran sin GPS — ver `VisitExecution` y endpoint `complete-call`
+- **Editar visita** (botón lápiz, solo PENDING/IN_PROGRESS) — modal que cambia fecha/hora, tipo, modalidad, duración, notas, cliente, agente (admin) y la **dirección/ubicación del inmueble**
 - **Dirección con Google Places Autocomplete** (`AddressAutocomplete`): captura `lat/lng` exactos al elegir una sugerencia; ya no depende de la geocodificación del servidor
 - **Aviso de inmueble duplicado** al registrar uno nuevo: detecta coincidencia por dirección normalizada O coordenadas a <30 m, y ofrece "usar el existente" sin bloquear
 - Muestra el **conjunto/edificio** (`property.client`) bajo la dirección en lista y card del mapa
@@ -225,7 +229,7 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Pestaña Por Agente:** ranking de agentes con total, completadas (barra %), no atendidas, conversión (semáforo) y duración promedio; medallas 🥇🥈🥉
 
 ### Otras páginas
-- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección
+- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un botón "Registrar llamada" que cierra la visita en un paso (`complete-call`), sin pedir ubicación
 - `Tracking.jsx` — mapa en tiempo real de agentes con clustering y comunicados; tabla "Check-in horario" muestra el nombre completo del agente
 - `Users.jsx` / `Properties.jsx` — CRUD completo. Inmuebles usa `AddressAutocomplete` (Places) + picker de mapa manual como ajuste fino
 

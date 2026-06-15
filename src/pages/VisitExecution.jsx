@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle } from 'lucide-react';
 import { API_URL } from '../config';
-import { STATUS_CONFIG, VISIT_TYPE_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
+import { STATUS_CONFIG, VISIT_TYPE_CONFIG, MODALITY_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
 import { compressImage } from '../utils/imageCompress';
 import { buildWhatsAppUrl } from '../utils/phone';
@@ -65,6 +65,10 @@ function VisitExecutionContent() {
     const [errorMsg, setErrorMsg] = useState(null);
     const [outcome, setOutcome] = useState('');
     const [showFinishModal, setShowFinishModal] = useState(false);
+    const [showCallModal, setShowCallModal] = useState(false);
+
+    // Captación por llamada: sin GPS, sin geofencing; se registra en un solo paso.
+    const isPhone = visit?.modality === 'PHONE';
 
     // #4: No perder datos — borrador local de resultado+comentarios y reintento al recuperar señal
     const DRAFT_KEY = `visit_draft_${id}`;
@@ -259,6 +263,39 @@ function VisitExecutionContent() {
         }
     };
 
+    // Registrar una visita por llamada (modalidad PHONE): un solo paso PENDING→COMPLETED,
+    // sin pedir ubicación ni geofencing. Captura resultado y comentarios.
+    const handleCompleteCall = async () => {
+        if (!outcome) {
+            setErrorMsg('Debes seleccionar un resultado para registrar la llamada.');
+            return;
+        }
+        setLoading(true);
+        setErrorMsg(null);
+        let res;
+        try {
+            res = await fetch(`${API_URL}/api/visits/${id}/complete-call`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ notes, outcome })
+            });
+        } catch {
+            setErrorMsg('Sin conexión. Intenta de nuevo cuando recuperes internet.');
+            setLoading(false);
+            return;
+        }
+        if (res.ok) {
+            try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+            setVisit(await res.json());
+            navigate('/agenda');
+        } else {
+            let msg = 'Error al registrar la llamada';
+            try { msg = (await res.json()).error || msg; } catch { /* sin cuerpo */ }
+            setErrorMsg(msg);
+            setLoading(false);
+        }
+    };
+
     // #4: Reintentar el envío automáticamente cuando vuelva la conexión
     const handleFinishRef = useRef();
     handleFinishRef.current = handleFinish;
@@ -377,6 +414,12 @@ function VisitExecutionContent() {
                             {STATUS_CONFIG[visit.status].label}
                         </span>
                     )}
+                    {isPhone && (
+                        <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold ${MODALITY_CONFIG.PHONE.bg} ${MODALITY_CONFIG.PHONE.text}`}>
+                            <Phone className="w-3.5 h-3.5" />
+                            {MODALITY_CONFIG.PHONE.label}
+                        </span>
+                    )}
                     {/* #2: aviso de inicio tardío respecto a lo programado */}
                     {lateMinutes != null && (
                         <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-100 text-amber-800">
@@ -444,6 +487,15 @@ function VisitExecutionContent() {
                     </div>
                 )}
 
+                {/* Nota del agendamiento — visible antes de iniciar (cuando ya está
+                    en curso, el texto se edita en el campo de Comentarios). */}
+                {visit.status === 'PENDING' && !isPhone && visit.notes && (
+                    <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Nota del agendamiento</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{visit.notes}</p>
+                    </div>
+                )}
+
                 {/* Timer */}
                 <div className="mt-4 text-center">
                     {visit.status === 'COMPLETED' ? (
@@ -484,7 +536,8 @@ function VisitExecutionContent() {
                 </div>
             </div>
 
-            {/* Mapa */}
+            {/* Mapa — solo para visitas presenciales (las de llamada no tienen ubicación) */}
+            {!isPhone && (
             <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-card">
                 <div className="h-52 relative z-0">
                     {currentPos ? (
@@ -538,13 +591,14 @@ function VisitExecutionContent() {
                     )}
                 </div>
             </div>
+            )}
 
-            {/* Resultado y comentarios — solo en progreso */}
-            {visit.status === 'IN_PROGRESS' && (
+            {/* Resultado y comentarios — en progreso (presencial) o pendiente (por llamada) */}
+            {(visit.status === 'IN_PROGRESS' || (visit.status === 'PENDING' && isPhone)) && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4 space-y-4">
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Resultado de la Visita <span className="text-red-400">*</span>
+                            {isPhone ? 'Resultado de la llamada' : 'Resultado de la Visita'} <span className="text-red-400">*</span>
                         </label>
                         <Select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
                             <option value="">Seleccionar resultado...</option>
@@ -675,7 +729,7 @@ function VisitExecutionContent() {
             )}
 
             {/* Action buttons */}
-            {visit.status === 'PENDING' && (
+            {visit.status === 'PENDING' && !isPhone && (
                 <button
                     onClick={handleStart}
                     disabled={loading}
@@ -688,6 +742,23 @@ function VisitExecutionContent() {
                         <Play className="w-6 h-6" />
                     )}
                     {loading ? 'Obteniendo ubicación...' : 'Iniciar Visita'}
+                </button>
+            )}
+
+            {/* Visita por llamada: registro en un solo paso, sin GPS */}
+            {visit.status === 'PENDING' && isPhone && (
+                <button
+                    onClick={() => { if (!outcome) { setErrorMsg('Debes seleccionar un resultado para registrar la llamada.'); return; } setShowCallModal(true); }}
+                    disabled={loading}
+                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', boxShadow: '0 8px 24px rgba(22,163,74,0.35)' }}
+                >
+                    {loading ? (
+                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
+                    ) : (
+                        <Phone className="w-6 h-6" />
+                    )}
+                    {loading ? 'Guardando...' : 'Registrar llamada'}
                 </button>
             )}
 
@@ -728,6 +799,28 @@ function VisitExecutionContent() {
                         Cancelar
                     </Button>
                     <Button variant="success" className="flex-1" loading={loading} onClick={() => { setShowFinishModal(false); handleFinish(); }}>
+                        Confirmar
+                    </Button>
+                </div>
+            </Modal>
+
+            <Modal open={showCallModal} onClose={() => setShowCallModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Phone className="w-6 h-6 text-indigo-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Registrar llamada</h3>
+                <p className="text-gray-500 mb-5 text-sm text-center">Esta captación se registrará como realizada por llamada (sin ubicación). Esta acción no se puede deshacer.</p>
+                {outcome && (
+                    <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
+                        <p className="text-gray-800 font-medium">{outcome}</p>
+                    </div>
+                )}
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowCallModal(false)}>
+                        Cancelar
+                    </Button>
+                    <Button variant="success" className="flex-1" loading={loading} onClick={() => { setShowCallModal(false); handleCompleteCall(); }}>
                         Confirmar
                     </Button>
                 </div>

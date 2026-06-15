@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle, Pencil, MapPin, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
-import { VISIT_TYPE_CONFIG, STATUS_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
+import { VISIT_TYPE_CONFIG, STATUS_CONFIG, MODALITY_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
 import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
@@ -193,6 +193,12 @@ function AgendaMapView({ visits, agents = [], onVisitClick }) {
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${selStatusCfg.bg} ${selStatusCfg.text}`}>
                                     {selStatusCfg.label}
                                 </span>
+                                {selectedVisit.modality === 'PHONE' && (
+                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold ${MODALITY_CONFIG.PHONE.bg} ${MODALITY_CONFIG.PHONE.text}`}>
+                                        <Phone className="w-3 h-3" />
+                                        {MODALITY_CONFIG.PHONE.label}
+                                    </span>
+                                )}
                             </div>
                             <p className="font-bold text-gray-900 leading-snug truncate">{selectedVisit.property.address}</p>
                             {selectedVisit.property.client && selectedVisit.property.client !== 'Cliente General' && (
@@ -329,6 +335,7 @@ export default function Agenda() {
         time: '09:00',
         duration: 60,
         type: 'RENTAL_SHOWING',
+        modality: 'ON_SITE',
         notes: '',
         clientName: '',
         clientPhone: ''
@@ -483,6 +490,7 @@ export default function Agenda() {
                 scheduledStart,
                 estimatedDuration: parseInt(formData.duration),
                 type: formData.type,
+                modality: formData.modality,
                 notes: formData.notes,
                 clientName: formData.clientName,
                 clientPhone: formData.clientPhone
@@ -501,7 +509,7 @@ export default function Agenda() {
                 setFormData({
                     propertyId: '', newAddress: '', newClient: '', newLat: null, newLng: null, assignedUserId: '',
                     date: new Date().toISOString().split('T')[0], time: '09:00',
-                    duration: 60, type: 'RENTAL_SHOWING', notes: '', clientName: '', clientPhone: ''
+                    duration: 60, type: 'RENTAL_SHOWING', modality: 'ON_SITE', notes: '', clientName: '', clientPhone: ''
                 });
             } else {
                 const err = await res.json();
@@ -602,6 +610,7 @@ export default function Agenda() {
             time: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
             duration: visit.estimatedDuration,
             type: visit.type,
+            modality: visit.modality || 'ON_SITE',
             clientName: visit.clientName || '',
             clientPhone: visit.clientPhone || '',
             notes: visit.notes || '',
@@ -622,6 +631,7 @@ export default function Agenda() {
                 scheduledStart,
                 estimatedDuration: parseInt(editForm.duration),
                 type: editForm.type,
+                modality: editForm.modality,
                 notes: editForm.notes,
                 clientName: editForm.clientName,
                 clientPhone: editForm.clientPhone,
@@ -851,6 +861,12 @@ export default function Agenda() {
                                                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${typeConfig.bg} ${typeConfig.text}`}>
                                                                 {typeConfig.label}
                                                             </span>
+                                                            {visit.modality === 'PHONE' && (
+                                                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold ${MODALITY_CONFIG.PHONE.bg} ${MODALITY_CONFIG.PHONE.text}`}>
+                                                                    <Phone className="w-3 h-3" />
+                                                                    {MODALITY_CONFIG.PHONE.label}
+                                                                </span>
+                                                            )}
                                                             {lateMin != null && (
                                                                 <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800" title={`Inició ${lateMin} min después de lo programado`}>
                                                                     <AlertTriangle className="w-3 h-3" />
@@ -959,6 +975,14 @@ export default function Agenda() {
                                                         )}
                                                         <span className="text-gray-400">{visit.estimatedDuration} min</span>
                                                     </div>
+
+                                                    {/* Notas del agendamiento (info para el agente) */}
+                                                    {visit.notes && (
+                                                        <div className="mt-2 ml-6 flex items-start gap-1.5 text-xs text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                                                            <Pencil className="w-3 h-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                                                            <span className="whitespace-pre-wrap break-words">{visit.notes}</span>
+                                                        </div>
+                                                    )}
 
                                                     {/* Resultado si completada */}
                                                     {isCompleted && visit.outcome && (
@@ -1166,6 +1190,49 @@ export default function Agenda() {
                                         </div>
                                     </div>
 
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Modalidad</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { value: 'ON_SITE', label: 'Presencial', icon: MapPin },
+                                                { value: 'PHONE', label: 'Por llamada', icon: Phone },
+                                            ].map(opt => {
+                                                const active = formData.modality === opt.value;
+                                                const Icon = opt.icon;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => setFormData({ ...formData, modality: opt.value })}
+                                                        className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-sm font-medium transition ${
+                                                            active
+                                                                ? 'border-brand-500 bg-brand-50 text-brand-700'
+                                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        <Icon className="w-4 h-4" />
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {formData.modality === 'PHONE' && (
+                                            <p className="text-xs text-gray-400 mt-1.5">
+                                                Las visitas por llamada se registran sin GPS ni ubicación.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                                        <textarea
+                                            className="w-full p-2 border rounded-lg h-20 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                            value={formData.notes}
+                                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                                            placeholder="Información para el agente (ej.: estudio realizado, requiere para 6 meses...)"
+                                        />
+                                    </div>
+
                                     <Button type="submit" size="lg" className="w-full mt-4">
                                         Agendar Visita
                                     </Button>
@@ -1283,6 +1350,44 @@ export default function Agenda() {
                                     onChange={e => setEditForm({ ...editForm, duration: e.target.value })}
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Modalidad</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { value: 'ON_SITE', label: 'Presencial', icon: MapPin },
+                                    { value: 'PHONE', label: 'Por llamada', icon: Phone },
+                                ].map(opt => {
+                                    const active = editForm.modality === opt.value;
+                                    const Icon = opt.icon;
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setEditForm({ ...editForm, modality: opt.value })}
+                                            className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-sm font-medium transition ${
+                                                active
+                                                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <Icon className="w-4 h-4" />
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                            <textarea
+                                className="w-full p-2 border rounded-lg h-20 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                value={editForm.notes}
+                                onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
+                                placeholder="Información para el agente..."
+                            />
                         </div>
 
                         <div className="flex gap-3 pt-2">

@@ -49,6 +49,21 @@ export const VISIT_TYPE_CONFIG = {
     },
 };
 
+// Modalidad de la visita: presencial (en sitio) o por llamada telefónica
+// (típico en captaciones). La modalidad PHONE omite el check-in/geofencing GPS.
+export const MODALITY_CONFIG = {
+    ON_SITE: {
+        label: 'Presencial',
+        bg: 'bg-gray-100',
+        text: 'text-gray-600',
+    },
+    PHONE: {
+        label: 'Por llamada',
+        bg: 'bg-indigo-100',
+        text: 'text-indigo-700',
+    },
+};
+
 // Minutos de tolerancia antes de considerar que una visita "inició tarde".
 // Evita marcar como tardías diferencias mínimas de reloj/GPS.
 export const LATE_START_GRACE_MIN = 10;

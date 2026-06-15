@@ -101,6 +101,7 @@ model Visit {
   outcome          String?   // Resultado: "Cliente interesado", etc.
   clientName       String?
   clientPhone      String?
+  modality         String    @default("ON_SITE") // ON_SITE (presencial), PHONE (captación por llamada)
   deletedAt        DateTime?  // A2: Soft delete — null = activa, fecha = eliminada
   googleEventId    String?    // M8: id del evento sincronizado en Google Calendar
 

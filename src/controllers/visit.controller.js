@@ -59,7 +59,9 @@ const createVisitSchema = z.object({
     ]),
     notes: z.string().optional(),
     clientName: z.string().optional(),
-    clientPhone: z.string().optional()
+    clientPhone: z.string().optional(),
+    // Modalidad: presencial (en sitio) o captación realizada por llamada telefónica.
+    modality: z.enum(['ON_SITE', 'PHONE']).optional()
 });
 
 const startVisitSchema = z.object({
@@ -228,7 +230,8 @@ export const createVisit = async (req, res) => {
                 type: data.type,
                 notes: data.notes,
                 clientName: data.clientName,
-                clientPhone: data.clientPhone
+                clientPhone: data.clientPhone,
+                modality: data.modality ?? 'ON_SITE'
             },
             include: {
                 property: true
@@ -266,6 +269,7 @@ const updateVisitSchema = z.object({
     notes: z.string().optional(),
     clientName: z.string().optional(),
     clientPhone: z.string().optional(),
+    modality: z.enum(['ON_SITE', 'PHONE']).optional(),
     assignedUserId: z.number().int().positive().optional(),
 });
 
@@ -330,6 +334,7 @@ export const updateVisit = async (req, res) => {
                 ...(data.notes !== undefined ? { notes: data.notes } : {}),
                 ...(data.clientName !== undefined ? { clientName: data.clientName } : {}),
                 ...(data.clientPhone !== undefined ? { clientPhone: data.clientPhone } : {}),
+                ...(data.modality !== undefined ? { modality: data.modality } : {}),
                 userId: targetUserId,
             },
             include: { property: true, user: { select: { id: true, name: true } } },
@@ -476,6 +481,63 @@ export const finishVisit = async (req, res) => {
                 actualEnd: new Date(),
                 checkOutLat: data.lat,
                 checkOutLng: data.lng,
+                notes: data.notes,
+                outcome: data.outcome
+            }
+        });
+        res.json(updatedVisit);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+
+// Completar una visita por llamada (modalidad PHONE). Las captaciones telefónicas
+// no ocurren en sitio: no hay check-in ni geofencing por GPS. Se registra en un
+// solo paso desde PENDING a COMPLETED, capturando resultado y notas. actualStart
+// y actualEnd quedan en el instante del registro (duración ~0, es una llamada).
+const completeCallSchema = z.object({
+    notes: z.string().optional(),
+    outcome: z.enum([
+        'Cliente interesado',
+        'Cliente no interesado',
+        'Requiere seguimiento',
+        'Cliente no asistió',
+        'Cancelada'
+    ])
+});
+
+export const completeCallVisit = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const data = completeCallSchema.parse(req.body);
+
+        const visit = await prisma.visit.findUnique({ where: { id: parseId(id) } });
+        if (!visit || visit.deletedAt) {
+            return res.status(404).json({ error: 'Visita no encontrada' });
+        }
+
+        // Solo el dueño o un admin
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'No tienes permiso para registrar esta visita.' });
+        }
+
+        // Este flujo es exclusivo de las visitas por llamada
+        if (visit.modality !== 'PHONE') {
+            return res.status(400).json({ error: 'Esta visita es presencial; debe iniciarse y finalizarse con ubicación.' });
+        }
+
+        if (visit.status !== 'PENDING') {
+            return res.status(400).json({ error: 'Solo se pueden registrar visitas por llamada que estén pendientes.' });
+        }
+
+        const now = new Date();
+        const updatedVisit = await prisma.visit.update({
+            where: { id: parseId(id) },
+            data: {
+                status: 'COMPLETED',
+                actualStart: now,
+                actualEnd: now,
                 notes: data.notes,
                 outcome: data.outcome
             }
