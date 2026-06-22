@@ -324,6 +324,14 @@ export default function Agenda() {
         try { sessionStorage.setItem('agendaDateRange', JSON.stringify(dateRange)); } catch { /* sin storage */ }
     }, [dateRange]);
 
+    // Filtro por agente (solo admin) — 'all' = todos. Persiste como el rango.
+    const [agentFilter, setAgentFilter] = useState(() => {
+        try { return sessionStorage.getItem('agendaAgentFilter') || 'all'; } catch { return 'all'; }
+    });
+    useEffect(() => {
+        try { sessionStorage.setItem('agendaAgentFilter', agentFilter); } catch { /* sin storage */ }
+    }, [agentFilter]);
+
     const [formData, setFormData] = useState({
         propertyId: '',
         newAddress: '',
@@ -698,8 +706,16 @@ export default function Agenda() {
     const formatDate = (d) =>
         new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 
-    const groupedVisits = groupByTimeSlot(visits);
-    const hasVisits = visits.length > 0;
+    // Aplica el filtro de agente (admin) sobre las visitas ya cargadas del período.
+    const visibleVisits = (user?.role === 'ADMIN' && agentFilter !== 'all')
+        ? visits.filter(v => String(v.user?.id ?? v.userId) === String(agentFilter))
+        : visits;
+    const visibleAgentLocations = (user?.role === 'ADMIN' && agentFilter !== 'all')
+        ? agentLocations.filter(a => String(a.id) === String(agentFilter))
+        : agentLocations;
+
+    const groupedVisits = groupByTimeSlot(visibleVisits);
+    const hasVisits = visibleVisits.length > 0;
 
     // Aviso de duplicado: solo mientras se registra un inmueble nuevo en el modal.
     const duplicateProperty = (showModal && isNewProperty)
@@ -775,6 +791,23 @@ export default function Agenda() {
                             className="border border-gray-200 rounded-lg text-sm font-semibold text-gray-800 tabular-nums px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:outline-none"
                         />
                     </div>
+
+                    {/* Filtro por agente — solo admin */}
+                    {user?.role === 'ADMIN' && (
+                        <div className="flex items-center gap-1.5">
+                            <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <select
+                                value={agentFilter}
+                                onChange={(e) => setAgentFilter(e.target.value)}
+                                className="border border-gray-200 rounded-lg text-sm font-semibold text-gray-800 px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-transparent focus:outline-none"
+                            >
+                                <option value="all">Todos los agentes</option>
+                                {agents.map(agent => (
+                                    <option key={agent.id} value={String(agent.id)}>{agent.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -804,8 +837,8 @@ export default function Agenda() {
             {!loadingVisits && viewMode === 'map' && (
                 <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: '65vh' }}>
                     <AgendaMapView
-                        visits={visits}
-                        agents={agentLocations}
+                        visits={visibleVisits}
+                        agents={visibleAgentLocations}
                         onVisitClick={(id) => navigate(`/visit/${id}`)}
                     />
                 </div>
@@ -823,10 +856,14 @@ export default function Agenda() {
                         </div>
                     </div>
                     <p className="text-gray-800 font-bold text-lg">
-                        {dateRange.start === dateRange.end ? 'Día libre de visitas' : 'Sin visitas en este período'}
+                        {agentFilter !== 'all'
+                            ? 'Este agente no tiene visitas'
+                            : (dateRange.start === dateRange.end ? 'Día libre de visitas' : 'Sin visitas en este período')}
                     </p>
                     <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
-                        Agenda la primera visita del {dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.
+                        {agentFilter !== 'all'
+                            ? 'No hay visitas para el agente seleccionado en este período. Cambia el filtro o el rango de fechas.'
+                            : `Agenda la primera visita del ${dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.`}
                     </p>
                     <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
                         Agendar visita
