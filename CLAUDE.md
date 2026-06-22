@@ -104,7 +104,11 @@ Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
             type (SHOWING/APPRAISAL/INSPECTION),
             modality (ON_SITE/PHONE) — PHONE = captación por llamada, sin GPS,
             actualStart, actualEnd, checkInLat/Lng, checkOutLat/Lng,
-            notes, outcome, clientName, clientPhone
+            notes, outcome, clientName, clientPhone, clientEmail,
+            confirmedAt — clientName/clientPhone OBLIGATORIOS al crear;
+            clientEmail opcional (si se llena, se invita al cliente al evento
+            de Google Calendar con sendUpdates=all → email de confirmación).
+            confirmedAt lo marca el botón de WhatsApp "Confirmar cita"
 VisitImage — id, visitId, url
 ```
 

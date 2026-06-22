@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getVisits, getVisitStats, getAgentStats, createVisit, updateVisit, startVisit, finishVisit, completeCallVisit, deleteVisit, markMissed, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
+import { getVisits, getVisitStats, getAgentStats, createVisit, updateVisit, startVisit, finishVisit, completeCallVisit, deleteVisit, markMissed, confirmVisit, reassignVisit, addVisitImage, getVisitImages, deleteVisitImage } from '../controllers/visit.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -15,6 +15,7 @@ router.patch('/:id/start', startVisit);
 router.patch('/:id/finish', finishVisit);
 router.patch('/:id/complete-call', completeCallVisit);      // Captación por llamada (sin GPS)
 router.patch('/:id/missed', markMissed);                    // A2: marcar no atendida
+router.patch('/:id/confirm', confirmVisit);                 // Confirmar cita con el cliente (WhatsApp)
 router.patch('/:id/reassign', requireAdmin, reassignVisit); // M2: reasignar (admin)
 router.get('/:id/images', getVisitImages);                  // M1: listar fotos
 router.post('/:id/images', addVisitImage);                  // M1: subir foto

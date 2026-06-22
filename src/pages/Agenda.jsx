@@ -12,7 +12,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Button, Modal, Select, Input } from '../components/ui';
 import { visitMarkerIcon, agentMarkerIcon } from '../utils/mapMarkers';
-import { buildWhatsAppUrl } from '../utils/phone';
+import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
@@ -338,7 +338,8 @@ export default function Agenda() {
         modality: 'ON_SITE',
         notes: '',
         clientName: '',
-        clientPhone: ''
+        clientPhone: '',
+        clientEmail: ''
     });
 
     // Edición de visita
@@ -493,7 +494,8 @@ export default function Agenda() {
                 modality: formData.modality,
                 notes: formData.notes,
                 clientName: formData.clientName,
-                clientPhone: formData.clientPhone
+                clientPhone: formData.clientPhone,
+                clientEmail: formData.clientEmail
             };
             if (formData.assignedUserId) payload.assignedUserId = parseInt(formData.assignedUserId);
 
@@ -509,7 +511,7 @@ export default function Agenda() {
                 setFormData({
                     propertyId: '', newAddress: '', newClient: '', newLat: null, newLng: null, assignedUserId: '',
                     date: new Date().toISOString().split('T')[0], time: '09:00',
-                    duration: 60, type: 'RENTAL_SHOWING', modality: 'ON_SITE', notes: '', clientName: '', clientPhone: ''
+                    duration: 60, type: 'RENTAL_SHOWING', modality: 'ON_SITE', notes: '', clientName: '', clientPhone: '', clientEmail: ''
                 });
             } else {
                 const err = await res.json();
@@ -567,6 +569,23 @@ export default function Agenda() {
         }
     };
 
+    // Marcar la cita como confirmada (al escribirle al cliente por WhatsApp).
+    // Fire-and-forget: el enlace de WhatsApp abre igual aunque esto falle.
+    const handleConfirmAppointment = async (id) => {
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/confirm`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                fetchVisits();
+                toast.success('Cita marcada como confirmada');
+            }
+        } catch {
+            // silencioso: lo importante es que se abrió WhatsApp
+        }
+    };
+
     // M2: Reasignar visita (admin)
     const initiateReassign = (e, id) => {
         e.stopPropagation();
@@ -613,6 +632,7 @@ export default function Agenda() {
             modality: visit.modality || 'ON_SITE',
             clientName: visit.clientName || '',
             clientPhone: visit.clientPhone || '',
+            clientEmail: visit.clientEmail || '',
             notes: visit.notes || '',
             assignedUserId: String(visit.user?.id ?? visit.userId ?? ''),
         });
@@ -635,6 +655,7 @@ export default function Agenda() {
                 notes: editForm.notes,
                 clientName: editForm.clientName,
                 clientPhone: editForm.clientPhone,
+                clientEmail: editForm.clientEmail,
             };
             if (user?.role === 'ADMIN' && editForm.assignedUserId) {
                 payload.assignedUserId = parseInt(editForm.assignedUserId);
@@ -873,6 +894,12 @@ export default function Agenda() {
                                                                     Tarde +{lateMin}m
                                                                 </span>
                                                             )}
+                                                            {visit.confirmedAt && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700" title={`Confirmada el ${new Date(visit.confirmedAt).toLocaleString('es-CO')}`}>
+                                                                    <CheckCircle className="w-3 h-3" />
+                                                                    Confirmada
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-1.5">
                                                             <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.bg} ${statusConfig.text}`}>
@@ -950,12 +977,12 @@ export default function Agenda() {
                                                                     <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
                                                                 <a
-                                                                    href={buildWhatsAppUrl(visit.clientPhone)}
+                                                                    href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name))}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    aria-label="WhatsApp"
-                                                                    title="WhatsApp"
+                                                                    onClick={(e) => { e.stopPropagation(); handleConfirmAppointment(visit.id); }}
+                                                                    aria-label="Confirmar cita por WhatsApp"
+                                                                    title="Confirmar cita por WhatsApp"
                                                                     className="w-10 h-10 md:w-7 md:h-7 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95 shadow-sm"
                                                                 >
                                                                     <MessageCircle className="w-5 h-5 md:w-3.5 md:h-3.5" />
@@ -1139,25 +1166,38 @@ export default function Agenda() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Cliente</label>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Cliente <span className="text-red-500">*</span></label>
                                             <input
                                                 type="text"
                                                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                                 value={formData.clientName}
                                                 onChange={e => setFormData({ ...formData, clientName: e.target.value })}
-                                                placeholder="Opcional"
+                                                placeholder="Nombre del cliente"
+                                                required
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Cliente</label>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Cliente <span className="text-red-500">*</span></label>
                                             <input
-                                                type="text"
+                                                type="tel"
                                                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                                 value={formData.clientPhone}
                                                 onChange={e => setFormData({ ...formData, clientPhone: e.target.value })}
-                                                placeholder="Opcional"
+                                                placeholder="Número de contacto"
+                                                required
                                             />
                                         </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Correo Cliente</label>
+                                        <input
+                                            type="email"
+                                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                            value={formData.clientEmail}
+                                            onChange={e => setFormData({ ...formData, clientEmail: e.target.value })}
+                                            placeholder="Opcional — para enviar invitación por correo"
+                                        />
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
@@ -1302,25 +1342,38 @@ export default function Agenda() {
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Cliente</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Cliente <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                     value={editForm.clientName}
                                     onChange={e => setEditForm({ ...editForm, clientName: e.target.value })}
-                                    placeholder="Opcional"
+                                    placeholder="Nombre del cliente"
+                                    required
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Cliente</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Cliente <span className="text-red-500">*</span></label>
                                 <input
-                                    type="text"
+                                    type="tel"
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
                                     value={editForm.clientPhone}
                                     onChange={e => setEditForm({ ...editForm, clientPhone: e.target.value })}
-                                    placeholder="Opcional"
+                                    placeholder="Número de contacto"
+                                    required
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Correo Cliente</label>
+                            <input
+                                type="email"
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                value={editForm.clientEmail}
+                                onChange={e => setEditForm({ ...editForm, clientEmail: e.target.value })}
+                                placeholder="Opcional — para enviar invitación por correo"
+                            />
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

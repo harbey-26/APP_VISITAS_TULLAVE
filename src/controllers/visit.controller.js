@@ -58,8 +58,10 @@ const createVisitSchema = z.object({
         'OTHER'             // Otro
     ]),
     notes: z.string().optional(),
-    clientName: z.string().optional(),
-    clientPhone: z.string().optional(),
+    clientName: z.string().trim().min(1, 'El nombre del cliente es obligatorio'),
+    clientPhone: z.string().trim().min(1, 'El teléfono del cliente es obligatorio'),
+    // Correo opcional — si se llena, se invita al cliente al evento de Calendar.
+    clientEmail: z.string().trim().email('Correo electrónico inválido').optional().or(z.literal('')),
     // Modalidad: presencial (en sitio) o captación realizada por llamada telefónica.
     modality: z.enum(['ON_SITE', 'PHONE']).optional()
 });
@@ -231,6 +233,7 @@ export const createVisit = async (req, res) => {
                 notes: data.notes,
                 clientName: data.clientName,
                 clientPhone: data.clientPhone,
+                clientEmail: data.clientEmail || null,
                 modality: data.modality ?? 'ON_SITE'
             },
             include: {
@@ -267,8 +270,9 @@ const updateVisitSchema = z.object({
         'MOVE_OUT', 'INSPECTION', 'OTHER'
     ]).optional(),
     notes: z.string().optional(),
-    clientName: z.string().optional(),
-    clientPhone: z.string().optional(),
+    clientName: z.string().trim().min(1, 'El nombre del cliente es obligatorio').optional(),
+    clientPhone: z.string().trim().min(1, 'El teléfono del cliente es obligatorio').optional(),
+    clientEmail: z.string().trim().email('Correo electrónico inválido').optional().or(z.literal('')),
     modality: z.enum(['ON_SITE', 'PHONE']).optional(),
     assignedUserId: z.number().int().positive().optional(),
 });
@@ -334,6 +338,7 @@ export const updateVisit = async (req, res) => {
                 ...(data.notes !== undefined ? { notes: data.notes } : {}),
                 ...(data.clientName !== undefined ? { clientName: data.clientName } : {}),
                 ...(data.clientPhone !== undefined ? { clientPhone: data.clientPhone } : {}),
+                ...(data.clientEmail !== undefined ? { clientEmail: data.clientEmail || null } : {}),
                 ...(data.modality !== undefined ? { modality: data.modality } : {}),
                 userId: targetUserId,
             },
@@ -682,6 +687,32 @@ export const markMissed = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden marcar como no atendidas las visitas pendientes.' });
         }
         const updated = await prisma.visit.update({ where: { id: visitId }, data: { status: 'MISSED' } });
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// Marcar la cita como confirmada con el cliente (tras escribirle por WhatsApp).
+// Solo registra la fecha; el envío real lo hace el asesor en su WhatsApp.
+export const confirmVisit = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso para modificar esta visita.' });
+        }
+        if (!['PENDING', 'IN_PROGRESS'].includes(visit.status)) {
+            return res.status(400).json({ error: 'Solo se pueden confirmar visitas pendientes o en curso.' });
+        }
+        const updated = await prisma.visit.update({
+            where: { id: visitId },
+            data: { confirmedAt: new Date() },
+        });
         res.json(updated);
     } catch (error) {
         res.status(400).json({ error: error.message });

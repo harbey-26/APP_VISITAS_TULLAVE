@@ -144,17 +144,24 @@ function eventPayloadFor(visit) {
         visit.property?.client ? `Cliente inmueble: ${visit.property.client}` : null,
         visit.clientName ? `Contacto: ${visit.clientName}` : null,
         visit.clientPhone ? `Tel: ${visit.clientPhone}` : null,
+        visit.clientEmail ? `Correo: ${visit.clientEmail}` : null,
         visit.user?.name ? `Agente: ${visit.user.name}` : null,
         visit.notes ? `Notas: ${visit.notes}` : null,
     ].filter(Boolean);
     const location = visit.property?.address || '';
-    return {
+    const payload = {
         summary,
         description: descLines.join('\n'),
         location,
         start: { dateTime: start.toISOString(), timeZone: 'America/Bogota' },
         end:   { dateTime: end.toISOString(),   timeZone: 'America/Bogota' },
     };
+    // Si hay correo del cliente, se le invita al evento; Google le envía la
+    // invitación/confirmación por email (con sendUpdates=all en la petición).
+    if (visit.clientEmail) {
+        payload.attendees = [{ email: visit.clientEmail, displayName: visit.clientName || undefined }];
+    }
+    return payload;
 }
 
 // Crea o actualiza el evento. Devuelve el eventId resultante (o null si no hay integración).
@@ -166,7 +173,7 @@ export async function upsertVisitEvent(visit) {
     const calId = encodeURIComponent(calendarId);
 
     if (visit.googleEventId) {
-        const r = await fetch(`${CAL_API}/${calId}/events/${encodeURIComponent(visit.googleEventId)}`, {
+        const r = await fetch(`${CAL_API}/${calId}/events/${encodeURIComponent(visit.googleEventId)}?sendUpdates=all`, {
             method: 'PATCH',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -181,7 +188,7 @@ export async function upsertVisitEvent(visit) {
         // 404/410: el evento ya no existe; caemos a crear uno nuevo
     }
 
-    const r = await fetch(`${CAL_API}/${calId}/events`, {
+    const r = await fetch(`${CAL_API}/${calId}/events?sendUpdates=all`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -197,7 +204,7 @@ export async function deleteVisitEvent(visit) {
     if (!session) return;
     const { token, calendarId } = session;
     const calId = encodeURIComponent(calendarId);
-    const r = await fetch(`${CAL_API}/${calId}/events/${encodeURIComponent(visit.googleEventId)}`, {
+    const r = await fetch(`${CAL_API}/${calId}/events/${encodeURIComponent(visit.googleEventId)}?sendUpdates=all`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
     });

@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle } from 'lucide-react';
+import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle, Mail } from 'lucide-react';
 import { API_URL } from '../config';
 import { STATUS_CONFIG, VISIT_TYPE_CONFIG, MODALITY_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
 import { compressImage } from '../utils/imageCompress';
-import { buildWhatsAppUrl } from '../utils/phone';
+import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
@@ -296,6 +296,20 @@ function VisitExecutionContent() {
         }
     };
 
+    // Marcar la cita como confirmada al escribirle al cliente por WhatsApp.
+    // Fire-and-forget: el enlace abre igual aunque la petición falle.
+    const handleConfirmAppointment = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/confirm`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setVisit(prev => ({ ...prev, confirmedAt: new Date().toISOString() }));
+        } catch {
+            // silencioso
+        }
+    };
+
     // #4: Reintentar el envío automáticamente cuando vuelva la conexión
     const handleFinishRef = useRef();
     handleFinishRef.current = handleFinish;
@@ -436,7 +450,7 @@ function VisitExecutionContent() {
                 </div>
 
                 {/* Info del cliente */}
-                {(visit.clientName || visit.clientPhone) && (
+                {(visit.clientName || visit.clientPhone || visit.clientEmail) && (
                     <div className="bg-gray-50 rounded-xl border border-gray-100 p-3 flex flex-col sm:flex-row gap-3">
                         {visit.clientName && (
                             <div className="flex items-center gap-2 text-sm text-gray-700">
@@ -458,6 +472,12 @@ function VisitExecutionContent() {
                                     <div>
                                         <p className="text-xs text-gray-400">Teléfono</p>
                                         <p className="font-semibold">{visit.clientPhone}</p>
+                                        {visit.confirmedAt && (
+                                            <span className="inline-flex items-center gap-1 mt-0.5 text-xs font-semibold text-emerald-600">
+                                                <CheckCircle className="w-3 h-3" />
+                                                Cita confirmada
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 ml-1">
@@ -471,15 +491,32 @@ function VisitExecutionContent() {
                                         <Phone className="w-4 h-4" />
                                     </a>
                                     <a
-                                        href={buildWhatsAppUrl(visit.clientPhone)}
+                                        href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name || user?.name))}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        aria-label="Enviar WhatsApp"
-                                        title="WhatsApp"
+                                        onClick={(e) => { e.stopPropagation(); handleConfirmAppointment(); }}
+                                        aria-label="Confirmar cita por WhatsApp"
+                                        title="Confirmar cita por WhatsApp"
                                         className="w-9 h-9 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95"
                                     >
                                         <MessageCircle className="w-4 h-4" />
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+                        {visit.clientEmail && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                    <Mail className="w-4 h-4 text-blue-600" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs text-gray-400">Correo</p>
+                                    <a
+                                        href={`mailto:${visit.clientEmail}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="font-semibold text-brand-600 hover:underline break-all"
+                                    >
+                                        {visit.clientEmail}
                                     </a>
                                 </div>
                             </div>

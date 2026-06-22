@@ -100,7 +100,9 @@ model Visit {
   outcome          String?
   clientName       String?
   clientPhone      String?
+  clientEmail      String?    // Correo del cliente — invita al evento de Google Calendar
   modality         String    @default("ON_SITE") // ON_SITE (presencial), PHONE (captación por llamada)
+  confirmedAt      DateTime?  // Fecha en que el asesor confirmó la cita con el cliente (WhatsApp)
   deletedAt        DateTime?  // A2: Soft delete — null = activa, fecha = eliminada
   googleEventId    String?    // M8: id del evento sincronizado en Google Calendar
 
