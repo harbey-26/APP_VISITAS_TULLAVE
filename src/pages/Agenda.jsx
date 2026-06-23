@@ -1014,7 +1014,7 @@ export default function Agenda() {
                                                                     <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
                                                                 <a
-                                                                    href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name))}
+                                                                    href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name, visit.user?.phone))}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     onClick={(e) => { e.stopPropagation(); handleConfirmAppointment(visit.id); }}

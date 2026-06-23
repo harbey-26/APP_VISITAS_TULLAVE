@@ -12,11 +12,11 @@ export default function Users() {
     const [showModal, setShowModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
-    const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'AGENT' });
+    const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', role: 'AGENT' });
 
     // M2: Estado para edición
     const [editingUser, setEditingUser] = useState(null);
-    const [editFormData, setEditFormData] = useState({ name: '', email: '', role: 'AGENT', password: '' });
+    const [editFormData, setEditFormData] = useState({ name: '', email: '', phone: '', role: 'AGENT', password: '' });
 
     const { token, user: currentUser } = useAuth();
     const toast = useToast();
@@ -56,7 +56,7 @@ export default function Users() {
             if (res.ok) {
                 setShowModal(false);
                 fetchUsers();
-                setFormData({ name: '', email: '', password: '', role: 'AGENT' });
+                setFormData({ name: '', email: '', phone: '', password: '', role: 'AGENT' });
                 toast.success('Usuario creado correctamente');
             } else {
                 const err = await res.json();
@@ -69,12 +69,12 @@ export default function Users() {
 
     const openEdit = (u) => {
         setEditingUser(u);
-        setEditFormData({ name: u.name, email: u.email, role: u.role, password: '' });
+        setEditFormData({ name: u.name, email: u.email, phone: u.phone || '', role: u.role, password: '' });
     };
 
     const handleEditSubmit = async (e) => {
         e.preventDefault();
-        const body = { name: editFormData.name, email: editFormData.email, role: editFormData.role };
+        const body = { name: editFormData.name, email: editFormData.email, phone: editFormData.phone, role: editFormData.role };
         if (editFormData.password) body.password = editFormData.password;
 
         try {
@@ -165,6 +165,7 @@ export default function Users() {
                                 <div className="min-w-0">
                                     <h3 className="font-bold text-gray-800 truncate">{u.name}</h3>
                                     <p className="text-sm text-gray-500 truncate">{u.email}</p>
+                                    {u.phone && <p className="text-xs text-gray-400 truncate">📱 {u.phone}</p>}
                                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${
                                         u.role === 'ADMIN'
                                             ? 'bg-purple-100 text-purple-700'
@@ -209,6 +210,10 @@ export default function Users() {
                         <Input type="email" required value={formData.email}
                             onChange={e => setFormData({ ...formData, email: e.target.value })} />
                     </Field>
+                    <Field label={<>Celular <span className="text-gray-400 font-normal">(aparece en la confirmación al cliente)</span></>}>
+                        <Input type="tel" placeholder="Ej: 3154333189" value={formData.phone}
+                            onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                    </Field>
                     <Field label="Contraseña">
                         <Input type="password" required minLength={6} placeholder="Mínimo 6 caracteres"
                             value={formData.password}
@@ -234,6 +239,10 @@ export default function Users() {
                     <Field label="Correo Electrónico">
                         <Input type="email" required value={editFormData.email}
                             onChange={e => setEditFormData({ ...editFormData, email: e.target.value })} />
+                    </Field>
+                    <Field label={<>Celular <span className="text-gray-400 font-normal">(aparece en la confirmación al cliente)</span></>}>
+                        <Input type="tel" placeholder="Ej: 3154333189" value={editFormData.phone}
+                            onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })} />
                     </Field>
                     <Field label="Rol">
                         <Select value={editFormData.role} onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}>

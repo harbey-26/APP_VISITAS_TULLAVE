@@ -24,8 +24,10 @@ function formatVisitDate(date) {
 
 // Arma el mensaje de confirmación de cita que el asesor envía al cliente por
 // WhatsApp. Usa los datos disponibles de la visita; omite las líneas sin dato.
-// `agentName` es opcional (nombre del asesor que atiende).
-export function buildConfirmationMessage(visit, agentName) {
+// `agentName` y `agentPhone` son opcionales (nombre y celular del asesor). El
+// celular se incluye porque muchas veces es el admin quien envía la confirmación
+// y el cliente necesita el contacto directo del asesor que lo atenderá.
+export function buildConfirmationMessage(visit, agentName, agentPhone) {
     if (!visit) return '';
     const saludo = visit.clientName ? `Hola ${visit.clientName} 👋` : 'Hola 👋';
     const fecha = visit.scheduledStart ? formatVisitDate(visit.scheduledStart) : '';
@@ -38,7 +40,12 @@ export function buildConfirmationMessage(visit, agentName) {
     ];
     if (fecha) lineas.push(`📅 ${fecha}`);
     if (ubicacion) lineas.push(`📍 ${ubicacion}`);
-    if (agentName) lineas.push(`Lo atenderá el asesor ${agentName}.`);
+    if (agentName) {
+        const tel = agentPhone ? ` (Cel: ${agentPhone})` : '';
+        lineas.push(`Lo atenderá el asesor ${agentName}${tel}.`);
+    } else if (agentPhone) {
+        lineas.push(`Celular del asesor: ${agentPhone}.`);
+    }
     lineas.push('¿Confirma su asistencia?');
 
     return lineas.join('\n');

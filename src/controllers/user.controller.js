@@ -14,6 +14,7 @@ const createUserSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
     name: z.string().min(2),
+    phone: z.string().trim().optional(),
     role: z.enum(['AGENT', 'ADMIN'])
 });
 
@@ -24,6 +25,7 @@ export const getUsers = async (req, res) => {
                 id: true,
                 email: true,
                 name: true,
+                phone: true,
                 role: true,
                 createdAt: true
             }
@@ -42,12 +44,14 @@ export const createUser = async (req, res) => {
         const user = await prisma.user.create({
             data: {
                 ...data,
+                phone: data.phone || null,
                 password: passwordHash
             },
             select: {
                 id: true,
                 email: true,
                 name: true,
+                phone: true,
                 role: true
             }
         });
@@ -157,6 +161,7 @@ export const saveFcmToken = async (req, res) => {
 const updateUserSchema = z.object({
     name: z.string().min(2).optional(),
     email: z.string().email().optional(),
+    phone: z.string().trim().optional(),
     role: z.enum(['AGENT', 'ADMIN']).optional(),
     password: z.string().min(6).optional()
 });
@@ -174,6 +179,10 @@ export const updateUser = async (req, res) => {
             updateData.password = await hashPassword(data.password);
         } else {
             delete updateData.password;
+        }
+        // Teléfono vacío → null (limpiar el campo)
+        if (data.phone !== undefined) {
+            updateData.phone = data.phone || null;
         }
 
         // Hardening: un admin NO puede modificar a otro admin (role/password/email),
@@ -195,7 +204,7 @@ export const updateUser = async (req, res) => {
         const user = await prisma.user.update({
             where: { id: userId },
             data: updateData,
-            select: { id: true, email: true, name: true, role: true }
+            select: { id: true, email: true, name: true, phone: true, role: true }
         });
         res.json(user);
     } catch (error) {

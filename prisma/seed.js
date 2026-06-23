@@ -3,7 +3,23 @@ import { hashPassword } from '../src/utils/auth.js';
 
 const prisma = new PrismaClient();
 
+// Backfill puntual del celular de agentes existentes (jun 2026). Solo escribe
+// si phone está NULL, así nunca pisa un número editado luego desde el panel.
+// Corre en cada deploy pero es idempotente; se puede borrar más adelante.
+async function backfillAgentPhones() {
+    const phones = {
+        'Jhon Fredy Cruz Alonso': '3154333189',
+        'Luis Fernando Mejia Amaya': '3151929081',
+    };
+    for (const [name, phone] of Object.entries(phones)) {
+        const r = await prisma.user.updateMany({ where: { name, phone: null }, data: { phone } });
+        if (r.count > 0) console.log(`Celular asignado a ${name}: ${phone}`);
+    }
+}
+
 async function main() {
+    await backfillAgentPhones();
+
     // Bootstrap-only: si ya hay usuarios en la BD, no sembramos nada. Esto evita
     // que los usuarios eliminados por el admin "resuciten" en cada deploy de
     // Railway. El seed solo aplica en la primera instalación (BD vacía).

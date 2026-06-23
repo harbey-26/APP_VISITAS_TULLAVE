@@ -491,7 +491,7 @@ function VisitExecutionContent() {
                                         <Phone className="w-4 h-4" />
                                     </a>
                                     <a
-                                        href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name || user?.name))}
+                                        href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name || user?.name, visit.user?.phone))}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={(e) => { e.stopPropagation(); handleConfirmAppointment(); }}

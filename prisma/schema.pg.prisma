@@ -12,6 +12,7 @@ model User {
   email      String    @unique
   password   String
   name       String
+  phone      String?   // Celular del agente — aparece en el mensaje de confirmación al cliente
   role       String    @default("AGENT") // AGENT, ADMIN
   createdAt  DateTime  @default(now())
   lastLat        Float?

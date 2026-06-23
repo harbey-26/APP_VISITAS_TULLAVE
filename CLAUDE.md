@@ -96,7 +96,8 @@ APP_VISITAS_TULLAVE/
 ## Modelos de base de datos
 
 ```prisma
-User      — id, email, password, name, role (AGENT/ADMIN),
+User      — id, email, password, name, phone (celular del agente — sale en
+            el mensaje de confirmación al cliente), role (AGENT/ADMIN),
             lastLat, lastLng, lastSeenAt, connectedSince
 Property  — id, address, client, lat, lng
 Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,

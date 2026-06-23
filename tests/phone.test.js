@@ -51,9 +51,19 @@ describe('buildConfirmationMessage', () => {
         expect(msg).toContain('¿Confirma su asistencia?');
     });
 
+    it('incluye el celular del asesor cuando se pasa', () => {
+        const msg = buildConfirmationMessage(visit, 'Carlos', '3154333189');
+        expect(msg).toContain('asesor Carlos (Cel: 3154333189)');
+    });
+
     it('omite el asesor si no se pasa nombre', () => {
         const msg = buildConfirmationMessage(visit);
         expect(msg).not.toContain('asesor');
+    });
+
+    it('sin nombre pero con celular, muestra el celular del asesor', () => {
+        const msg = buildConfirmationMessage({ ...visit, clientName: null }, null, '3151929081');
+        expect(msg).toContain('Celular del asesor: 3151929081');
     });
 
     it('usa saludo genérico sin nombre de cliente', () => {
