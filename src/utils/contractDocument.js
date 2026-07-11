@@ -377,12 +377,25 @@ function buildArrendamiento(d) {
 
 // ─────────────────────────── API pública ───────────────────────────
 
+// El contrato se imprime SIEMPRE en mayúsculas (como la proforma), incluso si
+// el dato quedó guardado en minúsculas antes de que el formulario normalizara.
+// Los correos se conservan tal cual.
+function normalizeData(d) {
+    const out = {};
+    for (const [k, val] of Object.entries(d || {})) {
+        if (Array.isArray(val)) out[k] = val.map((item) => (item && typeof item === 'object' ? normalizeData(item) : item));
+        else if (typeof val === 'string' && !/email/i.test(k)) out[k] = val.toUpperCase();
+        else out[k] = val;
+    }
+    return out;
+}
+
 // Devuelve { title, pageHeader: { title, code? }, blocks } o null si el tipo
 // no existe. pageHeader replica el membrete de la proforma (logo + código de
 // formato) en cada página.
 export function buildContractDocument(type, data) {
     const template = getTemplate(type);
     if (!template) return null;
-    const d = data || {};
+    const d = normalizeData(data);
     return type === 'ADMINISTRACION' ? buildAdministracion(d) : buildArrendamiento(d);
 }

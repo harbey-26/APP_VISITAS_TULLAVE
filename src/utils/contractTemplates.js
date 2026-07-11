@@ -54,7 +54,7 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     { key: 'propietarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'propietarioCedula', label: 'No. de identificación', type: 'text', required: true },
-                    { key: 'propietarioDireccion', label: 'Dirección de notificación', type: 'text', required: true },
+                    { key: 'propietarioDireccion', label: 'Dirección de notificación', type: 'address', required: true },
                     { key: 'propietarioTelefono', label: 'Teléfono', type: 'phone', required: true, prefill: 'clientPhone' },
                     { key: 'propietarioEmail', label: 'Correo electrónico', type: 'email', prefill: 'clientEmail' },
                 ],
@@ -64,7 +64,7 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     { key: 'tipoInmueble', label: 'Tipo de inmueble', type: 'select', required: true, options: TIPOS_INMUEBLE },
                     { key: 'ciudadInmueble', label: 'Ciudad de ubicación', type: 'text', required: true, default: 'Bogotá D.C.' },
-                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'text', required: true, prefill: 'address' },
+                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'address', required: true, prefill: 'address' },
                     { key: 'conjunto', label: 'Conjunto / Edificio (si aplica)', type: 'text', prefill: 'conjunto' },
                     { key: 'matriculaInmobiliaria', label: 'Matrícula inmobiliaria', type: 'text', required: true },
                     { key: 'estrato', label: 'Estrato', type: 'select', options: ['1', '2', '3', '4', '5', '6'] },
@@ -123,7 +123,7 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'arrendatarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'arrendatarioCedula', label: 'C.C. No.', type: 'text', required: true },
                     { key: 'arrendatarioLugarExpedicion', label: 'Lugar de expedición', type: 'text', required: true, default: 'Bogotá D.C.' },
-                    { key: 'arrendatarioDireccion', label: 'Dirección de notificación', type: 'text', required: true, hint: 'Normalmente la del inmueble arrendado', prefill: 'address' },
+                    { key: 'arrendatarioDireccion', label: 'Dirección de notificación', type: 'address', required: true, hint: 'Normalmente la del inmueble arrendado', prefill: 'address' },
                     { key: 'arrendatarioCiudad', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'arrendatarioCelular', label: 'Celular', type: 'phone', required: true, prefill: 'clientPhone' },
                     { key: 'arrendatarioEmail', label: 'Correo electrónico', type: 'email', prefill: 'clientEmail' },
@@ -138,7 +138,7 @@ export const CONTRACT_TEMPLATES = {
                             { key: 'nombre', label: 'Nombre completo', type: 'text', required: true },
                             { key: 'cedula', label: 'C.C. No.', type: 'text', required: true },
                             { key: 'lugarExpedicion', label: 'Lugar de expedición', type: 'text', default: 'Bogotá D.C.' },
-                            { key: 'direccion', label: 'Dirección de notificación', type: 'text', required: true },
+                            { key: 'direccion', label: 'Dirección de notificación', type: 'address', required: true },
                             { key: 'ciudad', label: 'Ciudad', type: 'text', default: 'Bogotá D.C.' },
                             { key: 'celular', label: 'Celular', type: 'phone' },
                             { key: 'email', label: 'Correo electrónico', type: 'email' },
@@ -149,7 +149,7 @@ export const CONTRACT_TEMPLATES = {
             {
                 title: 'Inmueble y condiciones',
                 fields: [
-                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'text', required: true, prefill: 'address' },
+                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'address', required: true, prefill: 'address' },
                     { key: 'ciudadInmueble', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'fechaInicio', label: 'Fecha de iniciación', type: 'date', required: true },
                     { key: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date', required: true },
@@ -216,9 +216,14 @@ export function prefillFromVisit(type, visit) {
         conjunto: visit.property?.client || '',
     };
     const data = {};
+    const upperTypes = ['text', 'address', 'phone'];
     for (const section of template.sections) {
         for (const f of section.fields) {
-            if (f.prefill && sources[f.prefill]) data[f.key] = sources[f.prefill];
+            if (!f.prefill || !sources[f.prefill]) continue;
+            // El formulario guarda en mayúsculas; el pre-llenado también
+            data[f.key] = upperTypes.includes(f.type)
+                ? String(sources[f.prefill]).toUpperCase()
+                : sources[f.prefill];
         }
     }
     return data;

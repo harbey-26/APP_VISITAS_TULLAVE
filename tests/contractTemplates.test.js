@@ -53,18 +53,19 @@ describe('prefillFromVisit', () => {
         property: { address: 'KR 135 17 84 TO 2 AP 1501', client: 'Estación Fontibón PH' },
     };
 
-    it('mapea cliente y propiedad a los campos de administración', () => {
+    it('mapea cliente y propiedad a los campos de administración (en MAYÚSCULAS)', () => {
         const d = prefillFromVisit('ADMINISTRACION', visit);
-        expect(d.propietarioNombre).toBe('Irma Lucía Valenzuela');
+        expect(d.propietarioNombre).toBe('IRMA LUCÍA VALENZUELA');
         expect(d.propietarioTelefono).toBe('3142154621');
         expect(d.direccionInmueble).toBe('KR 135 17 84 TO 2 AP 1501');
-        expect(d.conjunto).toBe('Estación Fontibón PH');
+        expect(d.conjunto).toBe('ESTACIÓN FONTIBÓN PH');
     });
 
-    it('mapea al arrendatario en arrendamiento', () => {
+    it('mapea al arrendatario en arrendamiento y conserva el correo tal cual', () => {
         const d = prefillFromVisit('ARRENDAMIENTO', visit);
-        expect(d.arrendatarioNombre).toBe('Irma Lucía Valenzuela');
+        expect(d.arrendatarioNombre).toBe('IRMA LUCÍA VALENZUELA');
         expect(d.direccionInmueble).toBe('KR 135 17 84 TO 2 AP 1501');
+        expect(d.arrendatarioEmail).toBe('milu@example.com'); // los correos no se tocan
     });
 
     it('tolera visita nula', () => {
@@ -159,9 +160,24 @@ describe('buildContractDocument', () => {
         };
         const doc = buildContractDocument('ARRENDAMIENTO', data);
         const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
-        expect(segunda.text).toContain('Cl. 17d #111a-35, Bogotá, Colombia.');
-        expect(segunda.text).not.toContain('Colombia, Bogotá D.C.');
+        expect(segunda.text).toContain('CL. 17D #111A-35, BOGOTÁ, COLOMBIA.');
+        expect(segunda.text).not.toContain('COLOMBIA, BOGOTÁ D.C.');
         expect(segunda.text).not.toMatch(/\.\./); // sin doble punto final
+    });
+
+    it('imprime en MAYÚSCULAS los datos guardados en minúsculas (correos intactos)', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            arrendatarioNombre: 'Jose daniel Perdomo montoya',
+            arrendatarioEmail: 'perdomo.16@gmail.com',
+            deudores: [{ nombre: 'Laura Daza huertas', cedula: '1030617868', lugarExpedicion: 'Bogotá D.C.', email: 'laura@x.com' }],
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const texto = doc.blocks.map((b) => [b.lead, b.text, b.label, b.value, ...(b.lines || [])].filter(Boolean).join(' ')).join('\n');
+        expect(texto).toContain('JOSE DANIEL PERDOMO MONTOYA');
+        expect(texto).toContain('LAURA DAZA HUERTAS');
+        expect(texto).toContain('perdomo.16@gmail.com'); // correo sin tocar
+        expect(texto).not.toContain('Jose daniel');
     });
 
     it('encabezado usa líneas etiqueta/valor (kv), no tabla, como la proforma', () => {

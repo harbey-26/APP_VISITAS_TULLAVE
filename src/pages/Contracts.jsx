@@ -12,6 +12,9 @@ import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, SearchCombobox, inputClass, cn,
 } from '../components/ui';
 import { buildWhatsAppUrl } from '../utils/phone';
+import { useJsApiLoader } from '@react-google-maps/api';
+import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
     Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail,
@@ -48,9 +51,18 @@ function formatDateTime(iso) {
 }
 
 // ─── Campo dinámico del formulario ────────────────────────────────────
+// Los campos de texto libre se guardan SIEMPRE en mayúsculas (los contratos
+// van en mayúsculas y así se evitan inconsistencias); correos, montos y
+// fechas se conservan tal cual. Las direcciones usan Google Places para
+// estandarizar la escritura (con degradación a texto libre si Maps no carga).
 
-function DynamicField({ field, value, onChange }) {
+function DynamicField({ field, value, onChange, mapsLoaded }) {
     const common = { value: value ?? '', onChange: (e) => onChange(e.target.value) };
+    const upper = {
+        value: value ?? '',
+        onChange: (e) => onChange(e.target.value.toUpperCase()),
+        className: 'uppercase',
+    };
     switch (field.type) {
         case 'select':
             return (
@@ -70,8 +82,18 @@ function DynamicField({ field, value, onChange }) {
             return <Input type="email" {...common} />;
         case 'phone':
             return <Input type="tel" {...common} />;
+        case 'address':
+            return (
+                <AddressAutocomplete
+                    isLoaded={!!mapsLoaded}
+                    value={value ?? ''}
+                    placeholder="Escribe y elige una sugerencia…"
+                    onChange={({ address }) => onChange((address || '').toUpperCase())}
+                    className={cn(inputClass, 'uppercase')}
+                />
+            );
         default:
-            return <Input type="text" {...common} />;
+            return <Input type="text" {...upper} />;
     }
 }
 
@@ -90,7 +112,7 @@ function CheckboxField({ field, value, onChange }) {
 }
 
 // Lista repetible (deudores solidarios).
-function ListField({ field, items, onChange }) {
+function ListField({ field, items, onChange, mapsLoaded }) {
     const list = Array.isArray(items) ? items : [];
     const update = (i, key, value) => {
         const next = list.map((item, idx) => (idx === i ? { ...item, [key]: value } : item));
@@ -122,7 +144,7 @@ function ListField({ field, items, onChange }) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {field.itemFields.map((f) => (
                             <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`}>
-                                <DynamicField field={f} value={item[f.key]} onChange={(v) => update(i, f.key, v)} />
+                                <DynamicField field={f} value={item[f.key]} onChange={(v) => update(i, f.key, v)} mapsLoaded={mapsLoaded} />
                             </Field>
                         ))}
                     </div>
@@ -198,6 +220,9 @@ export default function Contracts() {
     const { user } = useAuth();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
+    // Google Places para los campos de dirección (opciones únicas del loader
+    // — ver utils/mapsLoader.js; si falla, los campos degradan a texto libre)
+    const { isLoaded: mapsLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
 
     const [contracts, setContracts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -619,13 +644,15 @@ export default function Contracts() {
                                     if (f.type === 'list') {
                                         return (
                                             <ListField key={f.key} field={f} items={formData[f.key]}
-                                                onChange={(v) => setFormData({ ...formData, [f.key]: v })} />
+                                                onChange={(v) => setFormData({ ...formData, [f.key]: v })}
+                                                mapsLoaded={mapsLoaded} />
                                         );
                                     }
                                     return (
                                         <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.hint}>
                                             <DynamicField field={f} value={formData[f.key]}
-                                                onChange={(v) => setFormData({ ...formData, [f.key]: v })} />
+                                                onChange={(v) => setFormData({ ...formData, [f.key]: v })}
+                                                mapsLoaded={mapsLoaded} />
                                         </Field>
                                     );
                                 })}

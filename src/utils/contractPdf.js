@@ -17,10 +17,10 @@ const BODY_SIZE = 10;                            // ~ proforma (11pt Word)
 const LINE_HEIGHT = 4.4;
 const KV_LABEL_WIDTH = 52;                       // columna de etiquetas del encabezado
 
-// La Helvetica-Bold de algunos visores (PDFKit de macOS/iOS) es ~1% más
-// ancha que las métricas AFM de jspdf; sin colchón, la deriva acumulada en
-// títulos de cláusula largos se come el espacio con la palabra siguiente.
-const BOLD_WIDTH_CUSHION = 1.02;
+// Pequeño colchón en las medidas de negrita: la Helvetica-Bold de algunos
+// visores es una fracción más ancha que las métricas AFM de jspdf y sin él
+// el título de la cláusula puede rozar la palabra siguiente.
+const BOLD_WIDTH_CUSHION = 1.01;
 
 // Divide un texto con estilo en palabras medibles.
 function tokenize(pdf, segments, size) {
@@ -49,7 +49,13 @@ export async function generateContractPdf(contract) {
     let y = MARGIN.top;
 
     // ── Membrete (cada página): logo + código de formato + título ──
+    // Restaura fuente y tamaño al salir: el membrete se dibuja en medio de
+    // párrafos (saltos de página) y si dejara su tamaño (11/8) activo, el
+    // resto del párrafo saldría 10% más grande de lo calculado — títulos de
+    // cláusula encimados con el texto y líneas por fuera del margen derecho.
     const drawPageHeader = () => {
+        const prevFont = pdf.getFont();
+        const prevSize = pdf.getFontSize();
         try {
             // logo 343x141 px → 34 x 14 mm
             pdf.addImage(CONTRACT_LOGO, 'JPEG', MARGIN.left, 8, 34, 14);
@@ -71,6 +77,8 @@ export async function generateContractPdf(contract) {
         pdf.setDrawColor(160);
         pdf.setLineWidth(0.2);
         pdf.line(MARGIN.left, 34, PAGE.width - MARGIN.right, 34);
+        pdf.setFont(prevFont.fontName, prevFont.fontStyle);
+        pdf.setFontSize(prevSize);
     };
 
     const newPage = () => {
@@ -205,9 +213,12 @@ export async function generateContractPdf(contract) {
             y += LINE_HEIGHT + 0.5;
             pdf.setFont('helvetica', 'normal');
             for (const line of block.lines) {
-                ensureSpace(LINE_HEIGHT);
-                pdf.text(line, MARGIN.left, y);
-                y += LINE_HEIGHT;
+                // Direcciones/correos largos: envolver, nunca salirse del margen
+                for (const wrapped of pdf.splitTextToSize(line, CONTENT_WIDTH)) {
+                    ensureSpace(LINE_HEIGHT);
+                    pdf.text(wrapped, MARGIN.left, y);
+                    y += LINE_HEIGHT;
+                }
             }
         }
     }
