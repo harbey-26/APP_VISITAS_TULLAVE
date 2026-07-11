@@ -399,6 +399,25 @@ export const startVisit = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden iniciar visitas pendientes.' });
         }
 
+        // No permitir dos visitas en curso: el agente debe finalizar la que
+        // tiene abierta antes de hacer check-in en otra. Se valida sobre el
+        // dueño de la visita (visit.userId), no sobre quien hace la petición,
+        // para que aplique también cuando un admin inicia en nombre del agente.
+        const openVisit = await prisma.visit.findFirst({
+            where: {
+                userId: visit.userId,
+                status: 'IN_PROGRESS',
+                deletedAt: null
+            },
+            include: { property: { select: { address: true } } }
+        });
+        if (openVisit) {
+            return res.status(409).json({
+                error: `Tienes una visita en curso en ${openVisit.property?.address || 'otro inmueble'}. Finalízala antes de iniciar una nueva.`,
+                openVisitId: openVisit.id
+            });
+        }
+
         // FIX BUG 3: Bloquear si el inmueble no tiene coordenadas
         if (!visit.property?.lat || !visit.property?.lng) {
             return res.status(400).json({

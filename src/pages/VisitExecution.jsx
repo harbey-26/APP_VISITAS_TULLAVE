@@ -63,6 +63,7 @@ function VisitExecutionContent() {
     const [notes, setNotes] = useState('');
     const [currentPos, setCurrentPos] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
+    const [openVisitId, setOpenVisitId] = useState(null); // otra visita IN_PROGRESS que bloquea el check-in
     const [outcome, setOutcome] = useState('');
     const [showFinishModal, setShowFinishModal] = useState(false);
     const [showCallModal, setShowCallModal] = useState(false);
@@ -195,6 +196,7 @@ function VisitExecutionContent() {
     const handleStart = async () => {
         setLoading(true);
         setErrorMsg(null);
+        setOpenVisitId(null);
         try {
             const { lat, lng } = await getCurrentLocation();
             const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
@@ -208,6 +210,7 @@ function VisitExecutionContent() {
                 setVisit(prev => ({ ...updated, property: prev.property }));
             } else {
                 const errData = await res.json();
+                if (errData.openVisitId) setOpenVisitId(errData.openVisitId);
                 throw new Error(errData.error || 'Error desconocido al iniciar visita');
             }
         } catch (error) {
@@ -761,7 +764,17 @@ function VisitExecutionContent() {
             {errorMsg && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 flex items-start gap-3 text-sm">
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                    <span>{errorMsg}</span>
+                    <div>
+                        <span>{errorMsg}</span>
+                        {openVisitId && (
+                            <button
+                                onClick={() => { setErrorMsg(null); setOpenVisitId(null); navigate(`/visit/${openVisitId}`); }}
+                                className="mt-2 block font-semibold underline"
+                            >
+                                Ir a la visita en curso →
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
