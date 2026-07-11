@@ -29,6 +29,11 @@ export function fechaCorta(fecha) {
     return `${String(p.day).padStart(2, '0')} de ${MESES[p.month - 1]} de ${p.year}`;
 }
 
+// "2026-08-01" → "01 DE AGOSTO DE 2026" (formato de los encabezados de la proforma)
+export function fechaCortaCaps(fecha) {
+    return fechaCorta(fecha).toUpperCase();
+}
+
 // "2026-08-01" → "primero (01) de agosto de dos mil veintiséis (2026)"
 export function fechaEnLetras(fecha) {
     const p = partesFecha(fecha);

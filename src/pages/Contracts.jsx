@@ -136,26 +136,40 @@ function ContractPreview({ type, data }) {
     const doc = useMemo(() => buildContractDocument(type, data), [type, data]);
     if (!doc) return null;
     return (
-        <div className="bg-white text-gray-900 text-[13px] leading-relaxed space-y-3">
+        <div className="bg-white text-gray-900 text-[13px] leading-relaxed space-y-3 font-sans">
+            <h2 className="text-center font-bold text-sm uppercase pt-1">{doc.title}</h2>
             {doc.blocks.map((b, i) => {
-                if (b.kind === 'title') {
-                    return <h2 key={i} className="text-center font-bold text-base uppercase pt-1">{b.text}</h2>;
-                }
+                if (b.kind === 'title') return null; {/* el título va en el membrete */}
                 if (b.kind === 'subtitle') {
                     return <h3 key={i} className="text-center font-bold pt-2">{b.text}</h3>;
                 }
+                if (b.kind === 'kv') {
+                    return (
+                        <div key={i} className="flex gap-2 font-bold">
+                            <span className="w-44 flex-shrink-0">{b.label}</span>
+                            <span className="whitespace-pre-wrap">{b.value}</span>
+                        </div>
+                    );
+                }
                 if (b.kind === 'table') {
                     return (
-                        <table key={i} className="w-full border border-gray-300 text-[12px]">
+                        <table key={i} className="w-full border border-gray-400 text-[12px]">
                             <tbody>
                                 {b.rows.map((r, j) => (
-                                    <tr key={j} className="border-b border-gray-200 last:border-b-0">
-                                        <td className="border-r border-gray-200 bg-gray-50 font-semibold px-2 py-1 w-[38%] align-top">{r[0]}</td>
+                                    <tr key={j} className="border-b border-gray-300 last:border-b-0">
+                                        <td className="border-r border-gray-300 font-bold px-2 py-1 w-[32%] align-top">{r[0]}</td>
                                         <td className="px-2 py-1 align-top whitespace-pre-wrap">{r[1]}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                    );
+                }
+                if (b.kind === 'clause') {
+                    return (
+                        <p key={i} className="text-justify">
+                            <strong>{b.lead}</strong> {b.text}
+                        </p>
                     );
                 }
                 if (b.kind === 'signature') {
