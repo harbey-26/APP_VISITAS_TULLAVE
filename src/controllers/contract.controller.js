@@ -1,7 +1,10 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
-import { validateContractData, EDITABLE_STATUSES, getTemplate } from '../utils/contractTemplates.js';
+import crypto from 'crypto';
+import { validateContractData, EDITABLE_STATUSES, getTemplate, EMPRESA } from '../utils/contractTemplates.js';
 import { sendPersonalNotification } from '../utils/notify.js';
+import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
+import { sendEmailWithPdf } from '../utils/gmail.js';
 
 // C1: Contratos diligenciados por agentes con visto bueno del admin.
 // Flujo de estados: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED (vuelve a
@@ -200,6 +203,126 @@ export const reviewContract = async (req, res) => {
         res.json(serialize(updated));
     } catch (error) {
         res.status(400).json({ error: error.message });
+    }
+};
+
+// ── C2: envío al cliente (WhatsApp con link público / correo con adjunto) ──
+
+// Solo los contratos con visto bueno del admin se pueden compartir.
+const SENDABLE_STATUSES = ['APPROVED', 'SENT'];
+
+const clientNameOf = (data) => data?.propietarioNombre || data?.arrendatarioNombre || '';
+const clientEmailOf = (data) => data?.propietarioEmail || data?.arrendatarioEmail || '';
+
+// URL base pública (Railway va detrás de proxy → x-forwarded-proto).
+function publicBaseUrl(req) {
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    return `${proto}://${req.get('host')}`;
+}
+
+const publicPdfPath = (token) => `/api/contracts/public/${token}/pdf`;
+
+// Carga el contrato y valida permisos/estado para compartir. Devuelve
+// { contract } o { error, status } listo para responder.
+async function loadSendable(req) {
+    const id = parseId(req.params.id);
+    const contract = await prisma.contract.findUnique({ where: { id }, include: includeRefs });
+    if (!contract) return { error: 'Contrato no encontrado', status: 404 };
+    if (contract.userId !== req.user.id && req.user.role !== 'ADMIN') {
+        return { error: 'No tienes permiso sobre este contrato.', status: 403 };
+    }
+    if (!SENDABLE_STATUSES.includes(contract.status)) {
+        return { error: 'El contrato debe estar aprobado por un administrador antes de enviarse al cliente.', status: 400 };
+    }
+    return { contract };
+}
+
+// Genera el shareToken si no existe y marca el contrato como SENT.
+async function markSent(contract) {
+    const shareToken = contract.shareToken || crypto.randomBytes(24).toString('hex');
+    return prisma.contract.update({
+        where: { id: contract.id },
+        data: { shareToken, status: 'SENT', sentAt: new Date() },
+        include: includeRefs,
+    });
+}
+
+// POST /api/contracts/:id/share — devuelve el link público (para WhatsApp)
+export const shareContract = async (req, res) => {
+    try {
+        const { contract, error, status } = await loadSendable(req);
+        if (error) return res.status(status).json({ error });
+        const updated = await markSent(contract);
+        res.json({
+            ...serialize(updated),
+            publicUrl: `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`,
+        });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// POST /api/contracts/:id/email — envía el PDF adjunto al correo del cliente
+export const emailContract = async (req, res) => {
+    try {
+        const { contract, error, status } = await loadSendable(req);
+        if (error) return res.status(status).json({ error });
+
+        const parsed = serialize(contract);
+        const to = clientEmailOf(parsed.data);
+        if (!to) {
+            return res.status(400).json({ error: 'El contrato no tiene correo del cliente. Edítalo y agrega el correo antes de enviarlo.' });
+        }
+
+        const updated = await markSent(contract);
+        const parsedSent = serialize(updated);
+        const pdf = await generateContractPdf(parsedSent);
+        const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+
+        const label = getTemplate(contract.type)?.label || 'contrato';
+        const nombre = clientNameOf(parsed.data);
+        const publicUrl = `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`;
+        await sendEmailWithPdf({
+            to,
+            subject: `${label.charAt(0).toUpperCase()}${label.slice(1)} — TuLlave Inmobiliaria`,
+            text: [
+                nombre ? `Hola ${nombre},` : 'Hola,',
+                '',
+                `TuLlave Inmobiliaria le comparte su ${label} en el archivo adjunto.`,
+                `También puede descargarlo en: ${publicUrl}`,
+                '',
+                'Cualquier inquietud, con gusto la atendemos.',
+                '',
+                EMPRESA.razonSocial,
+                `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+            ].join('\n'),
+            pdfBuffer,
+            filename: contractFileName(parsedSent),
+        });
+
+        res.json({ ...parsedSent, emailedTo: to });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// GET /api/contracts/public/:token/pdf — SIN auth: el cliente final abre el
+// PDF desde el link de WhatsApp/correo. Solo contratos ya enviados.
+export const publicContractPdf = async (req, res) => {
+    try {
+        const token = String(req.params.token || '');
+        if (token.length < 32) return res.status(404).send('No encontrado');
+        const contract = await prisma.contract.findUnique({ where: { shareToken: token } });
+        if (!contract || contract.status !== 'SENT') return res.status(404).send('No encontrado');
+
+        const parsed = serialize(contract);
+        const pdf = await generateContractPdf(parsed);
+        const buffer = Buffer.from(pdf.output('arraybuffer'));
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${contractFileName(parsed)}"`);
+        res.send(buffer);
+    } catch {
+        res.status(500).send('Error generando el PDF');
     }
 };
 

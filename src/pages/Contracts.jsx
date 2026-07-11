@@ -11,9 +11,10 @@ import { downloadContractPdf } from '../utils/contractPdf';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, inputClass, cn,
 } from '../components/ui';
+import { buildWhatsAppUrl } from '../utils/phone';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
-    Undo2, ChevronLeft, ChevronRight, UserPlus, X,
+    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -30,6 +31,10 @@ const TYPE_OPTIONS = Object.entries(CONTRACT_TEMPLATES).map(([value, t]) => ({
 function clientOfContract(c) {
     return c.data?.propietarioNombre || c.data?.arrendatarioNombre || 'Sin nombre';
 }
+
+const clientPhoneOf = (c) => c.data?.propietarioTelefono || c.data?.arrendatarioCelular || '';
+const clientEmailOf = (c) => c.data?.propietarioEmail || c.data?.arrendatarioEmail || '';
+const isSendable = (c) => c.status === 'APPROVED' || c.status === 'SENT';
 
 function formatDateTime(iso) {
     try {
@@ -364,6 +369,48 @@ export default function Contracts() {
         }
     };
 
+    // Envío por WhatsApp: pide el link público tokenizado y abre wa.me con
+    // el mensaje pre-armado hacia el teléfono del cliente. La ventana se abre
+    // ANTES del await (los popup blockers solo permiten window.open dentro
+    // del gesto del usuario); luego se le asigna la URL.
+    const sendWhatsApp = async (contract) => {
+        setBusy(true);
+        const win = window.open('', '_blank');
+        try {
+            const res = await apiFetch(`/api/contracts/${contract.id}/share`, { method: 'POST' });
+            const label = getTemplate(contract.type)?.label || 'contrato';
+            const nombre = clientOfContract(contract);
+            const msg = `Hola ${nombre} 👋, TuLlave Inmobiliaria le comparte su ${label}. Puede consultarlo y descargarlo aquí: ${res.publicUrl}`;
+            const url = buildWhatsAppUrl(clientPhoneOf(contract), msg);
+            if (win) win.location.href = url;
+            else window.location.href = url; // WebView sin popups: navegar directo
+            toast.success('Contrato marcado como enviado');
+            setPreview(null);
+            fetchContracts(true);
+        } catch (err) {
+            if (win) win.close();
+            toast.error(friendlyError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // Envío por correo: el servidor genera el PDF y lo manda adjunto por
+    // Gmail (integración Google de Ajustes) al correo del cliente.
+    const sendEmail = async (contract) => {
+        setBusy(true);
+        try {
+            const res = await apiFetch(`/api/contracts/${contract.id}/email`, { method: 'POST' });
+            toast.success(`Correo enviado a ${res.emailedTo}`);
+            setPreview(null);
+            fetchContracts(true);
+        } catch (err) {
+            toast.error(friendlyError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const filtered = statusFilter ? contracts.filter((c) => c.status === statusFilter) : contracts;
     const pendingCount = contracts.filter((c) => c.status === 'PENDING_APPROVAL').length;
 
@@ -451,6 +498,7 @@ export default function Contracts() {
                                         <p className="text-xs text-gray-400 mt-1">
                                             {isAdmin && c.user?.name ? `${c.user.name} · ` : ''}
                                             Actualizado {formatDateTime(c.updatedAt)}
+                                            {c.status === 'SENT' && c.sentAt ? ` · Enviado ${formatDateTime(c.sentAt)}` : ''}
                                         </p>
                                         {c.status === 'REJECTED' && c.reviewNote && (
                                             <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1 mt-2">
@@ -467,10 +515,22 @@ export default function Contracts() {
                                                 Editar
                                             </Button>
                                         )}
-                                        {(c.status === 'APPROVED' || c.status === 'SENT') && (
-                                            <Button variant="ghost" size="sm" icon={Download} onClick={() => handleDownload(c)}>
-                                                PDF
-                                            </Button>
+                                        {isSendable(c) && (
+                                            <>
+                                                <Button variant="ghost" size="sm" icon={Download} onClick={() => handleDownload(c)}>
+                                                    PDF
+                                                </Button>
+                                                {clientPhoneOf(c) && (
+                                                    <Button variant="ghost" size="sm" icon={MessageCircle}
+                                                        className="text-emerald-600 hover:bg-emerald-50"
+                                                        onClick={() => sendWhatsApp(c)} aria-label="Enviar por WhatsApp" />
+                                                )}
+                                                {clientEmailOf(c) && (
+                                                    <Button variant="ghost" size="sm" icon={Mail}
+                                                        className="text-blue-600 hover:bg-blue-50"
+                                                        onClick={() => sendEmail(c)} aria-label="Enviar por correo" />
+                                                )}
+                                            </>
                                         )}
                                         {(editable || isAdmin) && (
                                             <Button variant="ghost" size="sm" icon={Trash2}
@@ -640,6 +700,20 @@ export default function Contracts() {
                             <Button variant="secondary" size="sm" icon={Download} onClick={() => handleDownload(preview)}>
                                 Descargar PDF
                             </Button>
+                            {isSendable(preview) && (
+                                <>
+                                    <Button variant="success" size="sm" icon={MessageCircle} loading={busy}
+                                        disabled={!clientPhoneOf(preview)}
+                                        onClick={() => sendWhatsApp(preview)}>
+                                        WhatsApp
+                                    </Button>
+                                    <Button size="sm" icon={Mail} loading={busy}
+                                        disabled={!clientEmailOf(preview)}
+                                        onClick={() => sendEmail(preview)}>
+                                        Enviar correo
+                                    </Button>
+                                </>
+                            )}
                             {EDITABLE_STATUSES.includes(preview.status) && (
                                 <>
                                     <Button variant="ghost" size="sm" icon={Pencil} onClick={() => { setPreview(null); openEdit(preview); }}>

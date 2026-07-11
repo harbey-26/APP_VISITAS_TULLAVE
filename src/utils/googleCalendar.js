@@ -9,6 +9,10 @@ const CAL_API   = 'https://www.googleapis.com/calendar/v3/calendars';
 export const GOOGLE_SCOPES = [
     'https://www.googleapis.com/auth/calendar.events',
     'https://www.googleapis.com/auth/userinfo.email',
+    // C2: envío de contratos por correo con adjunto (Gmail API). Si la
+    // integración se conectó antes de añadir este scope, hay que desconectar
+    // y volver a conectar Google en Ajustes para autorizarlo.
+    'https://www.googleapis.com/auth/gmail.send',
     'openid',
 ].join(' ');
 
@@ -112,17 +116,20 @@ export async function getStatus() {
     };
 }
 
-async function getValidAccessToken() {
+// Exportado también para el envío de correos (C2 — utils/gmail.js).
+// Devuelve además el scope y el correo de la cuenta conectada.
+export async function getValidAccessToken() {
     const row = await prisma.integrationToken.findUnique({ where: { kind: INTEGRATION_KIND } });
     if (!row) return null;
-    if (row.expiresAt.getTime() > Date.now() + 30_000) return { token: row.accessToken, calendarId: row.calendarId || 'primary' };
+    const meta = { calendarId: row.calendarId || 'primary', scope: row.scope || '', accountEmail: row.accountEmail || null };
+    if (row.expiresAt.getTime() > Date.now() + 30_000) return { token: row.accessToken, ...meta };
     const refreshed = await refreshAccessToken(row.refreshToken);
     const expiresAt = new Date(Date.now() + (refreshed.expires_in - 60) * 1000);
     await prisma.integrationToken.update({
         where: { kind: INTEGRATION_KIND },
         data: { accessToken: refreshed.access_token, expiresAt },
     });
-    return { token: refreshed.access_token, calendarId: row.calendarId || 'primary' };
+    return { token: refreshed.access_token, ...meta };
 }
 
 // Type ↔ etiqueta legible para el resumen del evento

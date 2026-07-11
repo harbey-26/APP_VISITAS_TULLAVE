@@ -147,6 +147,9 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
 | PATCH | `/api/contracts/:id` | JWT | Editar datos (solo DRAFT/REJECTED, dueño/admin) |
 | PATCH | `/api/contracts/:id/submit` | JWT | Enviar a revisión (valida formulario completo) |
 | PATCH | `/api/contracts/:id/review` | JWT+Admin | Aprobar o devolver (`{decision, note}`) |
+| POST | `/api/contracts/:id/share` | JWT | Genera shareToken, marca SENT, devuelve `publicUrl` (WhatsApp) |
+| POST | `/api/contracts/:id/email` | JWT | Envía el PDF adjunto al correo del cliente vía Gmail API |
+| GET | `/api/contracts/public/:token/pdf` | **No** | PDF público para el cliente final (solo contratos SENT) |
 | DELETE | `/api/contracts/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera) |
 
 ---
@@ -266,8 +269,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   frontend/backend, sin tocar la página)
 - Navegación: sidebar para todos; barra inferior móvil solo para agentes (la
   del admin ya está llena)
-- **Pendiente (fases 2-3):** envío por WhatsApp (link tokenizado con
-  `shareToken`) y correo; firma electrónica con **Autentic**
+- **Envío al cliente (fase 2):** solo contratos APPROVED/SENT. WhatsApp abre
+  `wa.me` con mensaje + link público tokenizado
+  (`/api/contracts/public/:shareToken/pdf`, sin auth, PDF generado
+  server-side con el mismo `contractPdf.js` — jspdf corre en Node). Correo:
+  Gmail API sobre la integración Google existente (`utils/gmail.js`, MIME
+  con adjunto, sin dependencias nuevas) — **requiere scope `gmail.send`**:
+  si Google se conectó antes de este cambio, desconectar y reconectar en
+  Ajustes. El popup de WhatsApp se abre ANTES del await (popup blockers)
+- **Pendiente (fase 3):** firma electrónica con **Autentic**
   (https://app.autenticsign.com — plataforma que ya usa el cliente)
 
 ### Otras páginas
