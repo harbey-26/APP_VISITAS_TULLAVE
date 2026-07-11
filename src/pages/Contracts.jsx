@@ -17,7 +17,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
-    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, RotateCcw,
+    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, RotateCcw, User,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -229,6 +229,7 @@ export default function Contracts() {
     const [contracts, setContracts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
+    const [agentFilter, setAgentFilter] = useState(''); // '' = todos (solo admin)
     const [busy, setBusy] = useState(false);
 
     // Modal de formulario (crear/editar)
@@ -460,7 +461,24 @@ export default function Contracts() {
         }
     };
 
-    const filtered = statusFilter ? contracts.filter((c) => c.status === statusFilter) : contracts;
+    // Agentes que tienen contratos (para el filtro del admin), ordenados por
+    // nombre. Se derivan de los contratos cargados — no hace falta otro fetch.
+    const agentOptions = useMemo(() => {
+        const map = new Map();
+        for (const c of contracts) {
+            if (c.user?.id) map.set(c.user.id, c.user.name || `Agente ${c.user.id}`);
+        }
+        return [...map.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [contracts]);
+
+    // Filtro por agente (solo admin) → luego por estado. Los conteos de los
+    // chips de estado reflejan el agente seleccionado.
+    const byAgent = (isAdmin && agentFilter)
+        ? contracts.filter((c) => String(c.user?.id) === agentFilter)
+        : contracts;
+    const filtered = statusFilter ? byAgent.filter((c) => c.status === statusFilter) : byAgent;
     const pendingCount = contracts.filter((c) => c.status === 'PENDING_APPROVAL').length;
 
     // Validación de la sección visible (solo requeridos, para avisar temprano).
@@ -489,6 +507,27 @@ export default function Contracts() {
                 <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>
             </PageHeader>
 
+            {/* Filtro por agente (solo admin) */}
+            {isAdmin && agentOptions.length > 1 && (
+                <div className="mb-3 sm:max-w-xs">
+                    <div className="relative">
+                        <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <Select
+                            value={agentFilter}
+                            onChange={(e) => setAgentFilter(e.target.value)}
+                            className="pl-10"
+                        >
+                            <option value="">Todos los agentes ({contracts.length})</option>
+                            {agentOptions.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                    {a.name} ({contracts.filter((c) => c.user?.id === a.id).length})
+                                </option>
+                            ))}
+                        </Select>
+                    </div>
+                </div>
+            )}
+
             {/* Filtros por estado */}
             <div className="flex gap-2 flex-wrap mb-5">
                 <button
@@ -496,10 +535,10 @@ export default function Contracts() {
                     className={cn('px-3 py-1.5 rounded-full text-xs font-bold transition',
                         !statusFilter ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50')}
                 >
-                    Todos ({contracts.length})
+                    Todos ({byAgent.length})
                 </button>
                 {Object.entries(CONTRACT_STATUS).map(([key, s]) => {
-                    const count = contracts.filter((c) => c.status === key).length;
+                    const count = byAgent.filter((c) => c.status === key).length;
                     if (count === 0) return null;
                     return (
                         <button
@@ -523,7 +562,7 @@ export default function Contracts() {
                 <EmptyState
                     icon={FileText}
                     title="Sin contratos"
-                    description={statusFilter ? 'No hay contratos en este estado.' : 'Crea el primer contrato con el botón "Nuevo contrato".'}
+                    description={(statusFilter || agentFilter) ? 'No hay contratos con los filtros seleccionados.' : 'Crea el primer contrato con el botón "Nuevo contrato".'}
                 />
             ) : (
                 <div className="space-y-3">
@@ -539,13 +578,18 @@ export default function Contracts() {
                                                 {getTemplate(c.type)?.shortLabel || c.type}
                                             </Badge>
                                             <Badge className={status.badge}>{status.label}</Badge>
+                                            {isAdmin && c.user?.name && (
+                                                <Badge className="bg-brand-50 text-brand-700 inline-flex items-center gap-1">
+                                                    <User className="w-3 h-3" />
+                                                    {c.user.name}
+                                                </Badge>
+                                            )}
                                         </div>
                                         <p className="font-bold text-gray-900 mt-2 truncate">{clientOfContract(c)}</p>
                                         <p className="text-sm text-gray-500 truncate">
                                             {c.data?.direccionInmueble || c.property?.address || 'Sin dirección'}
                                         </p>
                                         <p className="text-xs text-gray-400 mt-1">
-                                            {isAdmin && c.user?.name ? `${c.user.name} · ` : ''}
                                             Actualizado {formatDateTime(c.updatedAt)}
                                             {c.status === 'SENT' && c.sentAt ? ` · Enviado ${formatDateTime(c.sentAt)}` : ''}
                                         </p>
