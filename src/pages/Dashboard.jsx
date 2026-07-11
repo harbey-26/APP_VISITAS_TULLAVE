@@ -263,7 +263,9 @@ export default function Dashboard() {
                 }
             });
 
-            doc.save(`reporte_visitas_${dateRange.start}_al_${dateRange.end}.pdf`);
+            // No usar doc.save(): en Safari produce archivos vacíos.
+            const { downloadBlob } = await import('../utils/downloadBlob.js');
+            downloadBlob(doc.output('blob'), `reporte_visitas_${dateRange.start}_al_${dateRange.end}.pdf`);
         } catch (error) {
             toast.error('No se pudo generar el PDF. Intenta de nuevo.');
             console.error(error);

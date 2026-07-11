@@ -240,11 +240,16 @@ export function contractFileName(contract) {
     const nombre = (contract.data?.propietarioNombre || contract.data?.arrendatarioNombre || `id${contract.id}`)
         .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
-    const fecha = new Date().toISOString().slice(0, 10);
+    // Fecha local, no UTC (de noche en Bogotá toISOString ya va en mañana)
+    const d = new Date();
+    const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return `contrato_${tipo}_${nombre}_${fecha}.pdf`;
 }
 
 export async function downloadContractPdf(contract) {
     const pdf = await generateContractPdf(contract);
-    pdf.save(contractFileName(contract));
+    // No usar pdf.save(): en Safari produce archivos vacíos (revoca el
+    // object URL antes de que termine la escritura). Ver utils/downloadBlob.
+    const { downloadBlob } = await import('./downloadBlob.js');
+    downloadBlob(pdf.output('blob'), contractFileName(contract));
 }
