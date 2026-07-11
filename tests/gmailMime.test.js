@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMimeMessage } from '../src/utils/gmail.js';
+import { buildMimeMessage } from '../src/utils/gmailMime.js';
 
 // Mensaje MIME del envío de contratos por correo (Gmail API).
 describe('buildMimeMessage', () => {
