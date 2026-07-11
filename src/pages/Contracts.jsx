@@ -14,7 +14,7 @@ import {
 import { buildWhatsAppUrl } from '../utils/phone';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
-    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail,
+    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, Search,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -212,6 +212,8 @@ export default function Contracts() {
     const [formVisitId, setFormVisitId] = useState('');
     const [step, setStep] = useState(0);               // 0 = elegir tipo; 1..N = secciones
     const [visits, setVisits] = useState([]);
+    const [visitSearch, setVisitSearch] = useState(''); // buscador del pre-llenado
+    const [visitListOpen, setVisitListOpen] = useState(false);
 
     // Modal de vista previa / revisión
     const [preview, setPreview] = useState(null);      // contrato o null
@@ -232,7 +234,8 @@ export default function Contracts() {
 
     useEffect(() => { fetchContracts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Visitas recientes para pre-llenar (ventana ±30 días).
+    // Visitas para pre-llenar: últimos 60 días + próximos 30 (el buscador
+    // del modal permite encontrar al cliente aunque la lista sea larga).
     const fetchVisits = async () => {
         try {
             const fmt = (d) => {
@@ -240,7 +243,7 @@ export default function Contracts() {
                 const dd = String(d.getDate()).padStart(2, '0');
                 return `${d.getFullYear()}-${mm}-${dd}`;
             };
-            const from = new Date(); from.setDate(from.getDate() - 30);
+            const from = new Date(); from.setDate(from.getDate() - 60);
             const to = new Date(); to.setDate(to.getDate() + 30);
             const data = await apiFetch(`/api/visits?startDate=${fmt(from)}&endDate=${fmt(to)}`);
             setVisits((Array.isArray(data) ? data : []).filter((v) => v.clientName));
@@ -250,11 +253,28 @@ export default function Contracts() {
     const template = formType ? getTemplate(formType) : null;
     const totalSteps = template ? template.sections.length : 0;
 
+    // Búsqueda de visitas para el pre-llenado: por nombre del cliente o
+    // dirección del inmueble, sin distinguir tildes/mayúsculas.
+    const normalize = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const visitResults = useMemo(() => {
+        const q = normalize(visitSearch.trim());
+        const list = q
+            ? visits.filter((v) => normalize(v.clientName).includes(q) || normalize(v.property?.address).includes(q))
+            : visits;
+        return [...list]
+            .sort((a, b) => new Date(b.scheduledStart) - new Date(a.scheduledStart))
+            .slice(0, 8);
+    }, [visits, visitSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const selectedVisit = formVisitId ? visits.find((v) => v.id === parseInt(formVisitId)) : null;
+
     const openCreate = () => {
         setEditing(null);
         setFormType('');
         setFormData({});
         setFormVisitId('');
+        setVisitSearch('');
+        setVisitListOpen(false);
         setStep(0);
         setShowForm(true);
         fetchVisits();
@@ -555,15 +575,56 @@ export default function Contracts() {
                 <div className="max-h-[70vh] overflow-y-auto scrollbar-thin pr-1 -mr-1">
                     {step === 0 && (
                         <div className="space-y-4">
-                            <Field label="Pre-llenar desde una visita (opcional)" hint="Toma el cliente y el inmueble de una visita reciente">
-                                <Select value={formVisitId} onChange={(e) => setFormVisitId(e.target.value)}>
-                                    <option value="">-- Sin visita, diligenciar desde cero --</option>
-                                    {visits.map((v) => (
-                                        <option key={v.id} value={v.id}>
-                                            {v.clientName} — {v.property?.address || 'sin dirección'}
-                                        </option>
-                                    ))}
-                                </Select>
+                            <Field label="Pre-llenar desde una visita (opcional)" hint="Busca por nombre del cliente o por dirección del inmueble; deja vacío para diligenciar desde cero">
+                                {selectedVisit ? (
+                                    <div className="flex items-center justify-between gap-2 border border-brand-200 bg-brand-50/60 rounded-xl px-4 py-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-gray-900 truncate">{selectedVisit.clientName}</p>
+                                            <p className="text-xs text-gray-500 truncate">{selectedVisit.property?.address || 'sin dirección'}</p>
+                                        </div>
+                                        <button type="button" onClick={() => setFormVisitId('')}
+                                            className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0" aria-label="Quitar visita">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        <Input
+                                            value={visitSearch}
+                                            onChange={(e) => { setVisitSearch(e.target.value); setVisitListOpen(true); }}
+                                            onFocus={() => setVisitListOpen(true)}
+                                            onBlur={() => setTimeout(() => setVisitListOpen(false), 150)}
+                                            placeholder="Buscar cliente o dirección…"
+                                            className="pl-10"
+                                        />
+                                        {visitListOpen && (
+                                            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto scrollbar-thin">
+                                                {visitResults.length === 0 ? (
+                                                    <p className="px-4 py-3 text-sm text-gray-400">
+                                                        Sin coincidencias en las visitas recientes.
+                                                    </p>
+                                                ) : visitResults.map((v) => (
+                                                    <button
+                                                        key={v.id}
+                                                        type="button"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault(); // que no dispare el blur antes del click
+                                                            setFormVisitId(String(v.id));
+                                                            setVisitListOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2.5 hover:bg-brand-50 transition border-b border-gray-50 last:border-b-0"
+                                                    >
+                                                        <p className="text-sm font-semibold text-gray-900 truncate">{v.clientName}</p>
+                                                        <p className="text-xs text-gray-500 truncate">
+                                                            {v.property?.address || 'sin dirección'} · {formatDateTime(v.scheduledStart)}
+                                                        </p>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </Field>
                             <p className="text-sm font-semibold text-gray-700">Tipo de contrato</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
