@@ -112,7 +112,7 @@ Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
             confirmedAt lo marca el botón de WhatsApp "Confirmar cita"
 VisitImage — id, visitId, url
 Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
-            status (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/SENT),
+            status (DRAFT/REOPENED/PENDING_APPROVAL/APPROVED/REJECTED/SENT),
             data (String JSON — campos del formulario; SQLite no soporta Json
             en Prisma 5), userId (agente), visitId?, propertyId?,
             shareToken (link público, fase 2), reviewNote/reviewedBy/reviewedAt
@@ -147,6 +147,7 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
 | PATCH | `/api/contracts/:id` | JWT | Editar datos (solo DRAFT/REJECTED, dueño/admin) |
 | PATCH | `/api/contracts/:id/submit` | JWT | Enviar a revisión (valida formulario completo) |
 | PATCH | `/api/contracts/:id/review` | JWT+Admin | Aprobar o devolver (`{decision, note}`) |
+| PATCH | `/api/contracts/:id/reopen` | JWT | Reabrir un APROBADO para corregir → REOPENED (dueño/admin; SENT bloqueado) |
 | POST | `/api/contracts/:id/share` | JWT | Genera shareToken, marca SENT, devuelve `publicUrl` (WhatsApp) |
 | POST | `/api/contracts/:id/email` | JWT | Envía el PDF adjunto al correo del cliente vía Gmail API |
 | GET | `/api/contracts/public/:token/pdf` | **No** | PDF público para el cliente final (solo contratos SENT) |
@@ -254,6 +255,11 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Flujo de aprobación:** DRAFT → el agente lo envía (PENDING_APPROVAL) → el
   admin lo **aprueba** o lo **devuelve con nota** (REJECTED, vuelve a ser
   editable). Notificaciones FCM a admins al enviar y al agente al revisar
+- **Corregir un aprobado:** botón "Corregir" (endpoint `reopen`) en contratos
+  APPROVED → vuelve a REOPENED (editable), limpia la aprobación y debe pasar
+  de nuevo por revisión. Los ya ENVIADOS (SENT) NO se reabren por ahora. El
+  PDF de un REOPENED recupera la marca de agua BORRADOR automáticamente
+  (`contractPdf.js` marca BORRADOR todo lo que no sea APPROVED/SENT)
 - **Vista previa HTML** del contrato completo y **PDF con jspdf** (client-side,
   mismo patrón del export del Dashboard — cero deps nuevas). Los contratos no
   aprobados salen con marca de agua "BORRADOR"

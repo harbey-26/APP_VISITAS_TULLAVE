@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { validateContractData, EDITABLE_STATUSES, getTemplate, EMPRESA } from '../utils/contractTemplates.js';
+import { validateContractData, EDITABLE_STATUSES, REOPENABLE_STATUSES, getTemplate, EMPRESA } from '../utils/contractTemplates.js';
 import { sendPersonalNotification } from '../utils/notify.js';
 import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
@@ -200,6 +200,44 @@ export const reviewContract = async (req, res) => {
             ? '✅ Tu contrato fue aprobado. Ya puedes descargarlo y enviarlo al cliente.'
             : `↩️ Tu contrato fue devuelto: ${parsed.note}`;
         sendPersonalNotification(contract.userId, '📄 Revisión de contrato', msg).catch(() => {});
+        res.json(serialize(updated));
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// PATCH /api/contracts/:id/reopen — reabrir un contrato APROBADO para corregir
+// un error. Vuelve a REOPENED (editable) y limpia la aprobación previa, de modo
+// que debe pasar de nuevo por el visto bueno del admin. Los contratos ya
+// ENVIADOS al cliente no se reabren por ahora (conservan el link vigente).
+export const reopenContract = async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        const contract = await prisma.contract.findUnique({ where: { id } });
+        if (!contract) return res.status(404).json({ error: 'Contrato no encontrado' });
+        if (contract.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'No tienes permiso sobre este contrato.' });
+        }
+        if (contract.status === 'SENT') {
+            return res.status(400).json({ error: 'Este contrato ya fue enviado al cliente y no puede reabrirse.' });
+        }
+        if (!REOPENABLE_STATUSES.includes(contract.status)) {
+            return res.status(400).json({ error: 'Solo se pueden reabrir contratos aprobados.' });
+        }
+
+        const updated = await prisma.contract.update({
+            where: { id },
+            data: { status: 'REOPENED', reviewNote: null, reviewedBy: null, reviewedAt: null },
+            include: includeRefs,
+        });
+        // Si un admin reabre el contrato de un agente, avísale para que corrija
+        if (contract.userId !== req.user.id) {
+            sendPersonalNotification(
+                contract.userId,
+                '📄 Contrato reabierto',
+                'Un administrador reabrió tu contrato para corregir. Edítalo y envíalo de nuevo a revisión.',
+            ).catch(() => {});
+        }
         res.json(serialize(updated));
     } catch (error) {
         res.status(400).json({ error: error.message });

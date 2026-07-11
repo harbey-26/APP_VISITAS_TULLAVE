@@ -1,9 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import {
-    CONTRACT_TEMPLATES, emptyFormData, prefillFromVisit,
-    validateContractData, fieldApplies,
+    CONTRACT_TEMPLATES, CONTRACT_STATUS, EDITABLE_STATUSES, REOPENABLE_STATUSES,
+    emptyFormData, prefillFromVisit, validateContractData, fieldApplies,
 } from '../src/utils/contractTemplates.js';
 import { buildContractDocument } from '../src/utils/contractDocument.js';
+
+// Flujo de estados y reapertura (corregir un contrato aprobado).
+describe('estados del contrato', () => {
+    it('REOPENED existe, es editable y NO se puede compartir', () => {
+        expect(CONTRACT_STATUS.REOPENED).toBeTruthy();
+        expect(EDITABLE_STATUSES).toContain('REOPENED');
+    });
+
+    it('solo los aprobados son reabribles (los enviados no, por ahora)', () => {
+        expect(REOPENABLE_STATUSES).toEqual(['APPROVED']);
+        expect(REOPENABLE_STATUSES).not.toContain('SENT');
+    });
+});
 
 // Integridad de las definiciones de plantilla.
 describe('CONTRACT_TEMPLATES', () => {

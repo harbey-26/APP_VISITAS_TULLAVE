@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
     getContracts, getContract, createContract, updateContract,
-    submitContract, reviewContract, deleteContract,
+    submitContract, reviewContract, reopenContract, deleteContract,
     shareContract, emailContract, publicContractPdf,
 } from '../controllers/contract.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
@@ -20,6 +20,7 @@ router.get('/:id', getContract);
 router.patch('/:id', updateContract);
 router.patch('/:id/submit', submitContract);
 router.patch('/:id/review', requireAdmin, reviewContract);
+router.patch('/:id/reopen', reopenContract);
 router.post('/:id/share', shareContract);
 router.post('/:id/email', emailContract);
 router.delete('/:id', deleteContract);

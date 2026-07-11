@@ -30,8 +30,11 @@ export const EMPRESA = {
 // Estados del flujo: el agente diligencia (DRAFT), envía a revisión
 // (PENDING_APPROVAL), el admin aprueba (APPROVED) o devuelve (REJECTED,
 // vuelve a ser editable), y tras compartirse queda SENT (fase 2).
+// REOPENED = un contrato aprobado que se reabrió para corregir un error;
+// vuelve a ser editable y debe pasar de nuevo por aprobación del admin.
 export const CONTRACT_STATUS = {
     DRAFT: { label: 'Borrador', badge: 'bg-gray-100 text-gray-700' },
+    REOPENED: { label: 'En corrección', badge: 'bg-orange-100 text-orange-700' },
     PENDING_APPROVAL: { label: 'En revisión', badge: 'bg-amber-100 text-amber-700' },
     APPROVED: { label: 'Aprobado', badge: 'bg-emerald-100 text-emerald-700' },
     REJECTED: { label: 'Devuelto', badge: 'bg-red-100 text-red-700' },
@@ -39,7 +42,11 @@ export const CONTRACT_STATUS = {
 };
 
 // Estados en los que el agente puede editar/reenviar el contrato.
-export const EDITABLE_STATUSES = ['DRAFT', 'REJECTED'];
+export const EDITABLE_STATUSES = ['DRAFT', 'REJECTED', 'REOPENED'];
+
+// Estados desde los que un contrato aprobado puede reabrirse para corregir.
+// SENT queda fuera por ahora: el cliente ya tiene el link/PDF enviado.
+export const REOPENABLE_STATUSES = ['APPROVED'];
 
 const TIPOS_INMUEBLE = ['Apartamento', 'Casa', 'Local', 'Oficina', 'Bodega', 'Consultorio'];
 

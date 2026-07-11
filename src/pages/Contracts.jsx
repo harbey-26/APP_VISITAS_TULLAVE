@@ -17,7 +17,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
-    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail,
+    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, RotateCcw,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -38,6 +38,8 @@ function clientOfContract(c) {
 const clientPhoneOf = (c) => c.data?.propietarioTelefono || c.data?.arrendatarioCelular || '';
 const clientEmailOf = (c) => c.data?.propietarioEmail || c.data?.arrendatarioEmail || '';
 const isSendable = (c) => c.status === 'APPROVED' || c.status === 'SENT';
+// Reabrir para corregir: solo aprobados (los enviados quedan bloqueados por ahora)
+const isReopenable = (c) => c.status === 'APPROVED';
 
 function formatDateTime(iso) {
     try {
@@ -242,6 +244,7 @@ export default function Contracts() {
     const [preview, setPreview] = useState(null);      // contrato o null
     const [reviewNote, setReviewNote] = useState('');
     const [confirmDelete, setConfirmDelete] = useState(null);
+    const [confirmReopen, setConfirmReopen] = useState(null);
 
     const fetchContracts = async (silent = false) => {
         if (!silent) setLoading(true);
@@ -382,6 +385,24 @@ export default function Contracts() {
             toast.success('Contrato eliminado');
             setConfirmDelete(null);
             fetchContracts(true);
+        } catch (err) {
+            toast.error(friendlyError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // Reabrir un contrato aprobado para corregir: vuelve a ser editable y, al
+    // confirmar, se abre directamente el formulario para hacer la corrección.
+    const reopenAndEdit = async (contract) => {
+        setBusy(true);
+        try {
+            const updated = await apiFetch(`/api/contracts/${contract.id}/reopen`, { method: 'PATCH' });
+            toast.success('Contrato reabierto. Corrige y envíalo de nuevo a revisión.');
+            setConfirmReopen(null);
+            setPreview(null);
+            fetchContracts(true);
+            openEdit(updated);
         } catch (err) {
             toast.error(friendlyError(err));
         } finally {
@@ -541,6 +562,13 @@ export default function Contracts() {
                                         {editable && (
                                             <Button variant="ghost" size="sm" icon={Pencil} onClick={() => openEdit(c)}>
                                                 Editar
+                                            </Button>
+                                        )}
+                                        {isReopenable(c) && (
+                                            <Button variant="ghost" size="sm" icon={RotateCcw}
+                                                className="text-orange-600 hover:bg-orange-50"
+                                                onClick={() => setConfirmReopen(c)}>
+                                                Corregir
                                             </Button>
                                         )}
                                         {isSendable(c) && (
@@ -745,6 +773,13 @@ export default function Contracts() {
                                     </Button>
                                 </>
                             )}
+                            {isReopenable(preview) && (
+                                <Button variant="ghost" size="sm" icon={RotateCcw}
+                                    className="text-orange-600 hover:bg-orange-50"
+                                    onClick={() => setConfirmReopen(preview)}>
+                                    Corregir
+                                </Button>
+                            )}
                             {EDITABLE_STATUSES.includes(preview.status) && (
                                 <>
                                     <Button variant="ghost" size="sm" icon={Pencil} onClick={() => { setPreview(null); openEdit(preview); }}>
@@ -785,6 +820,24 @@ export default function Contracts() {
                             <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>Cancelar</Button>
                             <Button variant="danger" size="sm" loading={busy} onClick={() => removeContract(confirmDelete)}>
                                 Eliminar
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </Modal>
+
+            {/* ── Confirmación de reapertura (corregir un aprobado) ──────── */}
+            <Modal open={!!confirmReopen} onClose={() => !busy && setConfirmReopen(null)} title="Corregir contrato aprobado">
+                {confirmReopen && (
+                    <>
+                        <p className="text-sm text-gray-600">
+                            El contrato de <strong>{clientOfContract(confirmReopen)}</strong> perderá la aprobación y volverá a estado editable.
+                            Al corregirlo deberás enviarlo de nuevo a revisión del administrador antes de compartirlo con el cliente.
+                        </p>
+                        <div className="flex justify-end gap-2 pt-5">
+                            <Button variant="secondary" size="sm" onClick={() => setConfirmReopen(null)}>Cancelar</Button>
+                            <Button size="sm" icon={RotateCcw} loading={busy} onClick={() => reopenAndEdit(confirmReopen)}>
+                                Reabrir y corregir
                             </Button>
                         </div>
                     </>
