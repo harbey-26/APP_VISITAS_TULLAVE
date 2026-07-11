@@ -252,6 +252,11 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - El agente diligencia un contrato (**Administración** de inmueble o
   **Arrendamiento** de vivienda urbana) con un wizard por secciones, con
   pre-llenado opcional desde una visita (cliente + inmueble)
+- **Varios propietarios (Administración):** el primer propietario es fijo y
+  hay una lista opcional "Otro propietario" (`otrosPropietarios`, mismo
+  patrón que los deudores solidarios del arrendamiento). Si hay varios, el
+  cuadro resumen los numera ("Propietario 1/2/3 · Mandante") y se genera una
+  firma de MANDANTE por cada uno. Con un solo dueño el formato no cambia
 - **Flujo de aprobación:** DRAFT → el agente lo envía (PENDING_APPROVAL) → el
   admin lo **aprueba** o lo **devuelve con nota** (REJECTED, vuelve a ser
   editable). Notificaciones FCM a admins al enviar y al agente al revisar

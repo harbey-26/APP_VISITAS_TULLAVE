@@ -64,6 +64,17 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'propietarioDireccion', label: 'Dirección de notificación', type: 'address', required: true },
                     { key: 'propietarioTelefono', label: 'Teléfono', type: 'phone', required: true, prefill: 'clientPhone' },
                     { key: 'propietarioEmail', label: 'Correo electrónico', type: 'email', prefill: 'clientEmail' },
+                    {
+                        key: 'otrosPropietarios', label: 'Otro propietario', type: 'list', default: [],
+                        hint: 'Si el inmueble tiene más de un dueño, agrégalos aquí',
+                        itemFields: [
+                            { key: 'nombre', label: 'Nombre completo', type: 'text', required: true },
+                            { key: 'cedula', label: 'No. de identificación', type: 'text', required: true },
+                            { key: 'direccion', label: 'Dirección de notificación', type: 'address', required: true },
+                            { key: 'telefono', label: 'Teléfono', type: 'phone' },
+                            { key: 'email', label: 'Correo electrónico', type: 'email' },
+                        ],
+                    },
                 ],
             },
             {

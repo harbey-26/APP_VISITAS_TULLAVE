@@ -143,6 +143,39 @@ describe('buildContractDocument', () => {
         expect(textoCompleto(doc)).toContain('Ley 527 de 1999');
     });
 
+    it('administración: soporta varios propietarios (cuadro resumen + firmas)', () => {
+        const data = {
+            ...emptyFormData('ADMINISTRACION'),
+            propietarioNombre: 'IRMA VALENZUELA', propietarioCedula: '1016',
+            otrosPropietarios: [
+                { nombre: 'CARLOS PÉREZ', cedula: '79906', direccion: 'CL 1', telefono: '300', email: 'c@x.com' },
+                { nombre: 'ANA GÓMEZ', cedula: '52001', direccion: 'CL 2' },
+            ],
+        };
+        const doc = buildContractDocument('ADMINISTRACION', data);
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const flat = table.rows.map((r) => r.join(': ')).join('\n');
+        // numerados cuando hay varios dueños
+        expect(flat).toContain('Propietario 1/Mandante: IRMA VALENZUELA');
+        expect(flat).toContain('Propietario 2/Mandante: CARLOS PÉREZ');
+        expect(flat).toContain('Propietario 3/Mandante: ANA GÓMEZ');
+        // una firma de mandante por cada propietario + el administrador
+        const firmas = doc.blocks.filter((b) => b.kind === 'signature');
+        const roles = firmas.map((f) => f.role);
+        expect(roles).toEqual(['MANDANTE 1', 'MANDANTE 2', 'MANDANTE 3', 'ADMINISTRADOR']);
+    });
+
+    it('administración: un solo propietario mantiene el formato original', () => {
+        const data = { ...emptyFormData('ADMINISTRACION'), propietarioNombre: 'IRMA VALENZUELA' };
+        const doc = buildContractDocument('ADMINISTRACION', data);
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const flat = table.rows.map((r) => r.join(': ')).join('\n');
+        expect(flat).toContain('Propietario/Mandante: IRMA VALENZUELA');
+        expect(flat).not.toContain('Propietario 1/Mandante');
+        const firmas = doc.blocks.filter((b) => b.kind === 'signature');
+        expect(firmas.map((f) => f.role)).toEqual(['MANDANTE(S)', 'ADMINISTRADOR']);
+    });
+
     it('arrendamiento: TERCERA lleva el canon (no la suma) y la cuota aparte', () => {
         const data = {
             ...emptyFormData('ARRENDAMIENTO'),

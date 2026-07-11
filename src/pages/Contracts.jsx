@@ -128,7 +128,7 @@ function ListField({ field, items, onChange, mapsLoaded }) {
     return (
         <div className="space-y-4">
             {list.length === 0 && (
-                <p className="text-sm text-gray-400">Sin {field.label.toLowerCase()}s registrados (opcional).</p>
+                <p className="text-sm text-gray-400">Aún no has agregado ninguno (opcional).</p>
             )}
             {list.map((item, i) => (
                 <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-3 relative bg-gray-50/50">

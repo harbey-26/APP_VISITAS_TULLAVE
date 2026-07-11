@@ -66,17 +66,29 @@ function buildAdministracion(d) {
 
     const linderos = `OBRAN EN ESCRITURA PÚBLICA No. ${v(d.escrituraNumero)} DE FECHA ${fechaCaps(d.escrituraFecha)} EN LA ${v(d.escrituraNotaria).toUpperCase()}`;
 
+    // Copropietarios (además del primero). El texto legal ya está en plural.
+    const otrosPropietarios = Array.isArray(d.otrosPropietarios)
+        ? d.otrosPropietarios.filter((o) => o?.nombre)
+        : [];
+    const variosDuenos = otrosPropietarios.length > 0;
+
     blocks.push({ kind: 'kv', label: 'CIUDAD:', value: `${v(d.ciudadFirma)}   FECHA: ${fechaCaps(d.fechaFirma)}` });
     blocks.push({ kind: 'kv', label: 'ADMINISTRADOR:', value: `${EMPRESA.razonSocial} NIT ${EMPRESA.nit}` });
+
+    // Filas del cuadro resumen para cada propietario (numeradas si hay varios).
+    const filasPropietario = (nombre, cedula, direccion, telefono, email, n) => [
+        [n ? `Propietario ${n}/Mandante` : 'Propietario/Mandante', v(nombre)],
+        ['No. de Identificación', v(cedula)],
+        ['Dirección', v(direccion)],
+        ['Teléfono', v(telefono)],
+        ['Correo electrónico', v(email)],
+    ];
 
     blocks.push({
         kind: 'table',
         rows: [
-            ['Propietario/Mandante', v(d.propietarioNombre)],
-            ['No. de Identificación', v(d.propietarioCedula)],
-            ['Dirección', v(d.propietarioDireccion)],
-            ['Teléfono', v(d.propietarioTelefono)],
-            ['Correo electrónico', v(d.propietarioEmail)],
+            ...filasPropietario(d.propietarioNombre, d.propietarioCedula, d.propietarioDireccion, d.propietarioTelefono, d.propietarioEmail, variosDuenos ? 1 : null),
+            ...otrosPropietarios.flatMap((o, i) => filasPropietario(o.nombre, o.cedula, o.direccion, o.telefono, o.email, i + 2)),
             ['Tipo de Inmueble', v(d.tipoInmueble)],
             ['Ciudad de Ubicación', v(d.ciudadInmueble)],
             ['Dirección', v(d.direccionInmueble)],
@@ -180,16 +192,24 @@ function buildAdministracion(d) {
         text: `En señal de conformidad, los contratantes suscriben este documento en dos ejemplares del mismo tenor y valor, el día ${fechaEnLetras(d.fechaFirma) || BLANK}. Para efectos de recibir notificaciones judiciales y extrajudiciales, las partes a continuación y al suscribir este contrato proceden a indicar sus respectivas direcciones:`,
     });
 
-    blocks.push({
+    // Un bloque de firma por cada propietario (numerado si hay varios dueños).
+    const firmaMandante = (nombre, cedula, direccion, telefono, email, role) => ({
         kind: 'signature',
-        role: 'MANDANTE(S)',
+        role,
         lines: [
-            `NOMBRE: ${v(d.propietarioNombre)}`,
-            `CÉDULA: ${v(d.propietarioCedula)}`,
-            `DIRECCIÓN: ${v(d.propietarioDireccion)}`,
-            `TELÉFONO: ${v(d.propietarioTelefono)}`,
-            `EMAIL: ${v(d.propietarioEmail)}`,
+            `NOMBRE: ${v(nombre)}`,
+            `CÉDULA: ${v(cedula)}`,
+            `DIRECCIÓN: ${v(direccion)}`,
+            `TELÉFONO: ${v(telefono)}`,
+            `EMAIL: ${v(email)}`,
         ],
+    });
+    blocks.push(firmaMandante(
+        d.propietarioNombre, d.propietarioCedula, d.propietarioDireccion, d.propietarioTelefono, d.propietarioEmail,
+        variosDuenos ? 'MANDANTE 1' : 'MANDANTE(S)',
+    ));
+    otrosPropietarios.forEach((o, i) => {
+        blocks.push(firmaMandante(o.nombre, o.cedula, o.direccion, o.telefono, o.email, `MANDANTE ${i + 2}`));
     });
     blocks.push({
         kind: 'signature',
