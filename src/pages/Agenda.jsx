@@ -10,7 +10,7 @@ import { useJsApiLoader, GoogleMap } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import { Button, Modal, Select, Input } from '../components/ui';
+import { Button, Modal, Select, Input, SearchCombobox } from '../components/ui';
 import { visitMarkerIcon, agentMarkerIcon } from '../utils/mapMarkers';
 import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
 
@@ -1161,17 +1161,16 @@ export default function Agenda() {
                                         />
                                     </div>
                                 ) : (
-                                    <select
-                                        className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                                    <SearchCombobox
+                                        items={properties}
                                         value={formData.propertyId}
-                                        onChange={e => setFormData({ ...formData, propertyId: e.target.value })}
+                                        onChange={(id) => setFormData({ ...formData, propertyId: id })}
+                                        getPrimary={(p) => p.address}
+                                        getSecondary={(p) => (p.client && p.client !== 'Cliente General' ? p.client : '')}
+                                        placeholder="Buscar por dirección o conjunto…"
+                                        emptyText="Ningún inmueble coincide. Usa 'Registrar nuevo' si no existe."
                                         required={!isNewProperty}
-                                    >
-                                        <option value="">Selecciona un inmueble...</option>
-                                        {properties.map(p => (
-                                            <option key={p.id} value={p.id}>{p.address}</option>
-                                        ))}
-                                    </select>
+                                    />
                                 )}
                             </div>
 

@@ -3,7 +3,8 @@
 // Centraliza tarjetas, botones, badges, encabezados y estados de carga
 // para mantener radios, sombras y colores consistentes en toda la app.
 // ───────────────────────────────────────────────────────────────────
-import { Loader2, X } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, X, Search } from 'lucide-react';
 
 /** Une clases condicionalmente (sin dependencias). */
 export function cn(...classes) {
@@ -160,6 +161,106 @@ export function Select({ className = '', children, ...props }) {
         <select className={cn(inputClass, 'bg-white pr-8', className)} {...props}>
             {children}
         </select>
+    );
+}
+
+// ── SearchCombobox ──────────────────────────────────────────────────
+// Selector con buscador para listas largas (inmuebles, visitas, clientes):
+// filtra por los textos primario/secundario sin distinguir tildes ni
+// mayúsculas y deja la selección como chip removible. `required` añade un
+// input oculto para conservar la validación nativa del formulario.
+const normalizeSearch = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+export function SearchCombobox({
+    items = [],
+    value = '',
+    onChange,
+    getPrimary,
+    getSecondary = () => '',
+    placeholder = 'Buscar…',
+    emptyText = 'Sin coincidencias.',
+    maxResults = 8,
+    required = false,
+}) {
+    const [query, setQuery] = useState('');
+    const [open, setOpen] = useState(false);
+
+    const selected = value ? items.find((i) => String(i.id) === String(value)) : null;
+    const q = normalizeSearch(query.trim());
+    const results = (q
+        ? items.filter((i) => normalizeSearch(getPrimary(i)).includes(q) || normalizeSearch(getSecondary(i)).includes(q))
+        : items
+    ).slice(0, maxResults);
+
+    if (selected) {
+        return (
+            <div className="flex items-center justify-between gap-2 border border-brand-200 bg-brand-50/60 rounded-xl px-4 py-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{getPrimary(selected)}</p>
+                    {getSecondary(selected) && (
+                        <p className="text-xs text-gray-500 truncate">{getSecondary(selected)}</p>
+                    )}
+                </div>
+                <button
+                    type="button"
+                    onClick={() => { onChange(''); setQuery(''); }}
+                    className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0"
+                    aria-label="Quitar selección"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Input
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                onFocus={() => setOpen(true)}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                placeholder={placeholder}
+                className="pl-10"
+            />
+            {required && (
+                // Conserva la validación nativa: bloquea el submit si no hay selección
+                <input
+                    type="text"
+                    value={value}
+                    onChange={() => {}}
+                    required
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+                />
+            )}
+            {open && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto scrollbar-thin">
+                    {results.length === 0 ? (
+                        <p className="px-4 py-3 text-sm text-gray-400">{emptyText}</p>
+                    ) : results.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // que el blur no cierre antes del click
+                                onChange(String(item.id));
+                                setOpen(false);
+                                setQuery('');
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-brand-50 transition border-b border-gray-50 last:border-b-0"
+                        >
+                            <p className="text-sm font-semibold text-gray-900 truncate">{getPrimary(item)}</p>
+                            {getSecondary(item) && (
+                                <p className="text-xs text-gray-500 truncate">{getSecondary(item)}</p>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
