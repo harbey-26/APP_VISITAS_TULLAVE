@@ -5,6 +5,7 @@ import { Calendar, Clock, Download, TrendingUp, CheckCircle, ChevronLeft, Chevro
 import { API_URL } from '../config';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG } from '../utils/visitTypes';
 import { friendlyError } from '../utils/api';
+import { freshImport } from '../utils/freshImport';
 import { useToast } from '../context/ToastContext';
 import { DonutChart, TrendChart } from '../components/ui';
 
@@ -171,8 +172,9 @@ export default function Dashboard() {
                 toast.info(`Export limitado a ${EXPORT_LIMIT} registros. Ajusta el rango de fechas para ver todo.`);
             }
 
-            const { jsPDF } = await import('jspdf');
-            const { default: autoTable } = await import('jspdf-autotable');
+            // freshImport: recarga una vez si el chunk quedó viejo tras un deploy
+            const { jsPDF } = await freshImport(() => import('jspdf'));
+            const { default: autoTable } = await freshImport(() => import('jspdf-autotable'));
 
             const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 

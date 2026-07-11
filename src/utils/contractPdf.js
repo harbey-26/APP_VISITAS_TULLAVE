@@ -7,6 +7,8 @@
 
 import { buildContractDocument } from './contractDocument.js';
 import { CONTRACT_LOGO } from '../assets/contractLogo.js';
+import { freshImport } from './freshImport.js';
+import { downloadBlob } from './downloadBlob.js';
 
 const PAGE = { width: 210, height: 297 };       // A4 vertical, mm
 const MARGIN = { top: 40, bottom: 16, left: 19, right: 19 };
@@ -37,8 +39,8 @@ function tokenize(pdf, segments, size) {
 }
 
 export async function generateContractPdf(contract) {
-    const { jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    const { jsPDF } = await freshImport(() => import('jspdf'));
+    const { default: autoTable } = await freshImport(() => import('jspdf-autotable'));
 
     const docDef = buildContractDocument(contract.type, contract.data);
     if (!docDef) throw new Error('Tipo de contrato desconocido');
@@ -250,6 +252,5 @@ export async function downloadContractPdf(contract) {
     const pdf = await generateContractPdf(contract);
     // No usar pdf.save(): en Safari produce archivos vacíos (revoca el
     // object URL antes de que termine la escritura). Ver utils/downloadBlob.
-    const { downloadBlob } = await import('./downloadBlob.js');
     downloadBlob(pdf.output('blob'), contractFileName(contract));
 }

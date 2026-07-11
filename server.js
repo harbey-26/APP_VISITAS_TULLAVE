@@ -65,6 +65,14 @@ app.use('/api', apiRoutes);
 // Serve static files from the dist directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// Un asset con hash que ya no existe (sesión abierta durante un deploy) debe
+// dar 404, NUNCA el index.html: si se devuelve HTML, el import() dinámico del
+// navegador falla con "'text/html' is not a valid JavaScript MIME type" y el
+// cliente no puede distinguirlo para recargar.
+app.get('/assets/*', (req, res) => {
+  res.status(404).send('Not found');
+});
+
 // Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
