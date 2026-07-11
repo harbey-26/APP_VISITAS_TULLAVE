@@ -6,6 +6,7 @@ import userRoutes from './user.routes.js';
 import broadcastRoutes from './broadcast.routes.js';
 import integrationRoutes from './integration.routes.js';
 import appRoutes from './app.routes.js';
+import contractRoutes from './contract.routes.js';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use('/users', userRoutes);
 router.use('/broadcasts', broadcastRoutes);
 router.use('/integrations', integrationRoutes);
 router.use('/app', appRoutes);
+router.use('/contracts', contractRoutes);
 
 export default router;

@@ -20,7 +20,8 @@ import {
     X,
     Bell,
     LayoutDashboard,
-    Settings as SettingsIcon
+    Settings as SettingsIcon,
+    FileText
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationsContext';
 
@@ -272,8 +273,13 @@ export default function Layout() {
 
     const isAdmin = user?.role === 'ADMIN';
 
+    // El admin ya llena la barra inferior con 5 ítems; Contratos le queda en
+    // el sidebar. El agente sí lo tiene a un tap.
     const bottomNavItems = [
         { to: '/agenda',     icon: Calendar,        label: 'Agenda'    },
+        ...(!isAdmin ? [
+            { to: '/contracts', icon: FileText, label: 'Contratos' },
+        ] : []),
         ...(isAdmin ? [
             { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
             { to: '/properties', icon: MapPin,           label: 'Inmuebles' },
@@ -376,6 +382,7 @@ export default function Layout() {
                         Principal
                     </p>
                     <NavItem to="/agenda" icon={Calendar} label="Agenda" />
+                    <NavItem to="/contracts" icon={FileText} label="Contratos" />
                     <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
 
                     {isAdmin && (

@@ -111,6 +111,12 @@ Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
             de Google Calendar con sendUpdates=all → email de confirmación).
             confirmedAt lo marca el botón de WhatsApp "Confirmar cita"
 VisitImage — id, visitId, url
+Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
+            status (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/SENT),
+            data (String JSON — campos del formulario; SQLite no soporta Json
+            en Prisma 5), userId (agente), visitId?, propertyId?,
+            shareToken (link público, fase 2), reviewNote/reviewedBy/reviewedAt
+            (visto bueno del admin), sentAt
 ```
 
 ---
@@ -137,6 +143,11 @@ VisitImage — id, visitId, url
 | GET/POST | `/api/visits/:id/images` | JWT | Fotos de visita |
 | DELETE | `/api/visits/:id/images/:imgId` | JWT | Eliminar foto |
 | GET/POST | `/api/broadcasts` | JWT | Comunicados admin→agente |
+| GET/POST | `/api/contracts` | JWT | Contratos (agente ve los suyos; admin todos) |
+| PATCH | `/api/contracts/:id` | JWT | Editar datos (solo DRAFT/REJECTED, dueño/admin) |
+| PATCH | `/api/contracts/:id/submit` | JWT | Enviar a revisión (valida formulario completo) |
+| PATCH | `/api/contracts/:id/review` | JWT+Admin | Aprobar o devolver (`{decision, note}`) |
+| DELETE | `/api/contracts/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera) |
 
 ---
 
@@ -232,6 +243,32 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 ### Dashboard (`Dashboard.jsx`)
 - **Pestaña General:** 4 métricas (total, completadas, duración prom., conversión %), barras por tipo, tabla paginada, exportar CSV y PDF
 - **Pestaña Por Agente:** ranking de agentes con total, completadas (barra %), no atendidas, conversión (semáforo) y duración promedio; medallas 🥇🥈🥉
+
+### Contratos (`Contracts.jsx`) — módulo C1
+- El agente diligencia un contrato (**Administración** de inmueble o
+  **Arrendamiento** de vivienda urbana) con un wizard por secciones, con
+  pre-llenado opcional desde una visita (cliente + inmueble)
+- **Flujo de aprobación:** DRAFT → el agente lo envía (PENDING_APPROVAL) → el
+  admin lo **aprueba** o lo **devuelve con nota** (REJECTED, vuelve a ser
+  editable). Notificaciones FCM a admins al enviar y al agente al revisar
+- **Vista previa HTML** del contrato completo y **PDF con jspdf** (client-side,
+  mismo patrón del export del Dashboard — cero deps nuevas). Los contratos no
+  aprobados salen con marca de agua "BORRADOR"
+- Arquitectura: definición declarativa de campos en
+  `src/utils/contractTemplates.js` (renderiza el formulario Y valida en
+  backend); texto legal + interpolación en `src/utils/contractDocument.js`
+  (bloques que consumen la vista previa y el PDF `contractPdf.js`);
+  montos/fechas en letras en `numeroALetras.js` / `fechaLetras.js` (con tests).
+  Datos fijos de la empresa (NIT, cuenta Davivienda, rep. legal) en `EMPRESA`
+  de `contractTemplates.js`
+- Si el abogado cambia una cláusula → editar `contractDocument.js`; si cambia
+  un campo del formulario → `contractTemplates.js` (compartidos
+  frontend/backend, sin tocar la página)
+- Navegación: sidebar para todos; barra inferior móvil solo para agentes (la
+  del admin ya está llena)
+- **Pendiente (fases 2-3):** envío por WhatsApp (link tokenizado con
+  `shareToken`) y correo; firma electrónica con **Autentic**
+  (https://app.autenticsign.com — plataforma que ya usa el cliente)
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un botón "Registrar llamada" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

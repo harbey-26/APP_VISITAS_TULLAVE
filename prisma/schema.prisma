@@ -25,6 +25,7 @@ model User {
   broadcastReads BroadcastRead[]
   fcmTokens      UserFcmToken[]  // M6: soporte multi-dispositivo
   broadcasts     Broadcast[]     // M7: notificaciones dirigidas
+  contracts      Contract[]      // C1: contratos diligenciados
 }
 
 model UserFcmToken {
@@ -80,6 +81,7 @@ model Property {
   lng       Float?
   createdAt DateTime @default(now())
   visits    Visit[]
+  contracts Contract[] // C1
 }
 
 model Visit {
@@ -107,9 +109,10 @@ model Visit {
   deletedAt        DateTime?  // A2: Soft delete — null = activa, fecha = eliminada
   googleEventId    String?    // M8: id del evento sincronizado en Google Calendar
 
-  user     User     @relation(fields: [userId], references: [id])
-  property Property @relation(fields: [propertyId], references: [id])
-  images   VisitImage[]
+  user      User     @relation(fields: [userId], references: [id])
+  property  Property @relation(fields: [propertyId], references: [id])
+  images    VisitImage[]
+  contracts Contract[] // C1
 
   @@index([userId])
   @@index([propertyId])
@@ -133,6 +136,33 @@ model VisitImage {
   id      Int    @id @default(autoincrement())
   visitId Int
   url     String
-  
+
   visit Visit @relation(fields: [visitId], references: [id])
+}
+
+// C1: Contratos diligenciados por agentes (Administración / Arrendamiento).
+// data = JSON serializado con los campos del formulario (SQLite no soporta Json en Prisma 5).
+// El PDF no se almacena: se regenera bajo demanda desde data.
+model Contract {
+  id         Int       @id @default(autoincrement())
+  type       String    // ADMINISTRACION, ARRENDAMIENTO
+  status     String    @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, SENT
+  data       String    // JSON con los campos del formulario
+  userId     Int       // agente que lo diligenció
+  visitId    Int?      // visita de origen (pre-llenado), opcional
+  propertyId Int?      // inmueble asociado, opcional
+  shareToken String?   @unique // token del link público de descarga (fase 2)
+  reviewNote String?   // comentario del admin al aprobar/rechazar
+  reviewedBy Int?      // id del admin que revisó
+  reviewedAt DateTime?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  visit    Visit?    @relation(fields: [visitId], references: [id])
+  property Property? @relation(fields: [propertyId], references: [id])
+
+  @@index([userId])
+  @@index([status])
 }
