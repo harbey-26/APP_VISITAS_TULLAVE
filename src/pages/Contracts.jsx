@@ -528,8 +528,9 @@ export default function Contracts() {
                 <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>
             </PageHeader>
 
-            {/* Filtro por agente (solo admin) */}
-            {isAdmin && agentOptions.length > 1 && (
+            {/* Filtro por agente (solo admin) — visible desde el primer agente
+                con contratos, para que el admin siempre sepa que existe */}
+            {isAdmin && agentOptions.length > 0 && (
                 <div className="mb-3 sm:max-w-xs">
                     <div className="relative">
                         <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
