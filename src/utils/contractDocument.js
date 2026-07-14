@@ -59,6 +59,16 @@ function direccionCiudad(dir, ciudad) {
 // Quita el punto final para poder cerrar la frase sin duplicarlo.
 const sinPuntoFinal = (s) => String(s).replace(/\.+$/, '');
 
+// Compone la dirección completa uniendo la calle base con Torre/Apto/Conjunto
+// (los que tengan dato), separados por coma. El agente escribe cada parte con
+// su palabra ("Torre 2", "Apto 706"), así que no anteponemos etiquetas (#20/#21/#26).
+function componerDireccion(base, ...extras) {
+    const partes = [base, ...extras]
+        .map((x) => (x == null ? '' : String(x).trim()))
+        .filter(Boolean);
+    return partes.length ? partes.join(', ') : BLANK;
+}
+
 // ─────────────────────────── ADMINISTRACIÓN ───────────────────────────
 
 function buildAdministracion(d) {
@@ -84,14 +94,19 @@ function buildAdministracion(d) {
         ['Correo electrónico', v(email)],
     ];
 
+    // Dirección de notificación del primer propietario, con Torre/Apto/Conjunto (#26)
+    const dirPropietario = componerDireccion(d.propietarioDireccion, d.propietarioTorre, d.propietarioApto, d.propietarioConjunto);
+    // Dirección del inmueble con Torre/Apto (el Conjunto va en su propia fila) (#20/#21)
+    const dirInmueble = componerDireccion(d.direccionInmueble, d.torreInmueble, d.aptoInmueble);
+
     blocks.push({
         kind: 'table',
         rows: [
-            ...filasPropietario(d.propietarioNombre, d.propietarioCedula, d.propietarioDireccion, d.propietarioTelefono, d.propietarioEmail, variosDuenos ? 1 : null),
+            ...filasPropietario(d.propietarioNombre, d.propietarioCedula, dirPropietario, d.propietarioTelefono, d.propietarioEmail, variosDuenos ? 1 : null),
             ...otrosPropietarios.flatMap((o, i) => filasPropietario(o.nombre, o.cedula, o.direccion, o.telefono, o.email, i + 2)),
             ['Tipo de Inmueble', v(d.tipoInmueble)],
             ['Ciudad de Ubicación', v(d.ciudadInmueble)],
-            ['Dirección', v(d.direccionInmueble)],
+            ['Dirección', dirInmueble],
             ['Matrícula Inmobiliaria', v(d.matriculaInmobiliaria)],
             ['Estrato', v(d.estrato)],
             ['Cédula Catastral', v(d.cedulaCatastral)],
@@ -205,7 +220,7 @@ function buildAdministracion(d) {
         ],
     });
     blocks.push(firmaMandante(
-        d.propietarioNombre, d.propietarioCedula, d.propietarioDireccion, d.propietarioTelefono, d.propietarioEmail,
+        d.propietarioNombre, d.propietarioCedula, dirPropietario, d.propietarioTelefono, d.propietarioEmail,
         variosDuenos ? 'MANDANTE 1' : 'MANDANTE(S)',
     ));
     otrosPropietarios.forEach((o, i) => {
@@ -244,7 +259,11 @@ function nombresDeudores(deudores) {
 function buildArrendamiento(d) {
     const blocks = [];
     const deudores = Array.isArray(d.deudores) ? d.deudores.filter((x) => x?.nombre) : [];
-    const inmueble = direccionCiudad(d.direccionInmueble, d.ciudadInmueble);
+    // Dirección completa del inmueble (calle + Torre/Apto/Conjunto) + ciudad (#20/#21)
+    const dirInmueble = componerDireccion(d.direccionInmueble, d.torreInmueble, d.aptoInmueble, d.conjuntoInmueble);
+    const inmueble = direccionCiudad(dirInmueble, d.ciudadInmueble);
+    // Dirección de notificación del arrendatario, independiente del inmueble (#26)
+    const dirNotifArrendatario = componerDireccion(d.arrendatarioDireccion, d.arrendatarioTorre, d.arrendatarioApto, d.arrendatarioConjunto);
     const tieneAdmin = Number(d.cuotaAdministracion || 0) > 0;
 
     // Encabezado tipo proforma: líneas etiqueta/valor en negrita (sin tabla)
@@ -367,7 +386,7 @@ function buildArrendamiento(d) {
         lines: [
             `NOMBRE: ${v(d.arrendatarioNombre)}`,
             `C.C. No. ${v(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}`,
-            `Dir. Notificación: ${v(d.arrendatarioDireccion)}`,
+            `Dir. Notificación: ${dirNotifArrendatario}`,
             `Ciudad: ${v(d.arrendatarioCiudad)}`,
             `Celular: ${v(d.arrendatarioCelular)}`,
             `E-MAIL: ${v(d.arrendatarioEmail)}`,

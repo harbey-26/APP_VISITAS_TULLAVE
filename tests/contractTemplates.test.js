@@ -226,6 +226,40 @@ describe('buildContractDocument', () => {
         expect(texto).not.toContain('Jose daniel');
     });
 
+    it('cláusula SEGUNDA compone Torre/Apto/Conjunto del inmueble (#20/#21)', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            direccionInmueble: 'Cra 98 #2-44', torreInmueble: 'Torre 2',
+            aptoInmueble: 'Apto 706', conjuntoInmueble: 'Conjunto Parque Central',
+            ciudadInmueble: 'Bogotá D.C.',
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
+        expect(segunda.text).toContain('CRA 98 #2-44, TORRE 2, APTO 706, CONJUNTO PARQUE CENTRAL');
+    });
+
+    it('omite Torre/Apto/Conjunto vacíos en la dirección (ej.: casas)', () => {
+        const data = { ...emptyFormData('ARRENDAMIENTO'), direccionInmueble: 'Cl 50 #10-20', ciudadInmueble: 'Bogotá D.C.' };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
+        expect(segunda.text).toContain('CL 50 #10-20');
+        expect(segunda.text).not.toMatch(/,\s*,/); // sin comas dobles por campos vacíos
+    });
+
+    it('dirección de notificación del arrendatario es independiente y con Torre/Apto (#26)', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            arrendatarioNombre: 'MARIA', arrendatarioDireccion: 'Cra 11 #90-07',
+            arrendatarioTorre: 'Torre 3', arrendatarioApto: 'OF 406',
+            direccionInmueble: 'Otra dirección del inmueble', ciudadInmueble: 'Bogotá D.C.',
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const firmaArr = doc.blocks.find((b) => b.kind === 'signature' && b.role === 'EL ARRENDATARIO');
+        const dir = firmaArr.lines.find((l) => l.startsWith('Dir. Notificación'));
+        expect(dir).toContain('CRA 11 #90-07, TORRE 3, OF 406');
+        expect(dir).not.toContain('OTRA DIRECCIÓN'); // independiente del inmueble
+    });
+
     it('encabezado usa líneas etiqueta/valor (kv), no tabla, como la proforma', () => {
         const doc = buildContractDocument('ARRENDAMIENTO', emptyFormData('ARRENDAMIENTO'));
         expect(doc.blocks.some((b) => b.kind === 'kv' && b.label === 'ARRENDADOR (ES):')).toBe(true);

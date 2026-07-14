@@ -63,7 +63,10 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     { key: 'propietarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'propietarioCedula', label: 'No. de identificación', type: 'text', required: true },
-                    { key: 'propietarioDireccion', label: 'Dirección de notificación', type: 'address', required: true },
+                    { key: 'propietarioDireccion', label: 'Dirección de notificación (calle)', type: 'address', required: true },
+                    { key: 'propietarioTorre', label: 'Torre / Bloque de notificación', type: 'text', hint: 'Opcional' },
+                    { key: 'propietarioApto', label: 'Apartamento / Oficina de notificación', type: 'text', hint: 'Opcional' },
+                    { key: 'propietarioConjunto', label: 'Conjunto / Edificio de notificación', type: 'text', hint: 'Opcional' },
                     { key: 'propietarioTelefono', label: 'Teléfono', type: 'phone', required: true, prefill: 'clientPhone' },
                     { key: 'propietarioEmail', label: 'Correo electrónico', type: 'email', prefill: 'clientEmail' },
                     {
@@ -84,7 +87,9 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     { key: 'tipoInmueble', label: 'Tipo de inmueble', type: 'select', required: true, options: TIPOS_INMUEBLE },
                     { key: 'ciudadInmueble', label: 'Ciudad de ubicación', type: 'text', required: true, default: 'Bogotá D.C.' },
-                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'address', required: true, prefill: 'address' },
+                    { key: 'direccionInmueble', label: 'Dirección del inmueble (calle)', type: 'address', required: true, prefill: 'address' },
+                    { key: 'torreInmueble', label: 'Torre / Bloque', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
+                    { key: 'aptoInmueble', label: 'Apartamento / Interior', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
                     { key: 'conjunto', label: 'Conjunto / Edificio (si aplica)', type: 'text', prefill: 'conjunto' },
                     { key: 'matriculaInmobiliaria', label: 'Matrícula inmobiliaria', type: 'text', required: true },
                     { key: 'estrato', label: 'Estrato', type: 'select', options: ['1', '2', '3', '4', '5', '6'] },
@@ -145,7 +150,10 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'arrendatarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'arrendatarioCedula', label: 'C.C. No.', type: 'text', required: true },
                     { key: 'arrendatarioLugarExpedicion', label: 'Lugar de expedición', type: 'text', required: true, default: 'Bogotá D.C.' },
-                    { key: 'arrendatarioDireccion', label: 'Dirección de notificación', type: 'address', required: true, hint: 'Normalmente la del inmueble arrendado', prefill: 'address' },
+                    { key: 'arrendatarioDireccion', label: 'Dirección de notificación (calle)', type: 'address', required: true, hint: 'Independiente de la del inmueble; puede ser otra' },
+                    { key: 'arrendatarioTorre', label: 'Torre / Bloque de notificación', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
+                    { key: 'arrendatarioApto', label: 'Apartamento / Oficina de notificación', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
+                    { key: 'arrendatarioConjunto', label: 'Conjunto / Edificio de notificación', type: 'text', hint: 'Opcional' },
                     { key: 'arrendatarioCiudad', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'arrendatarioCelular', label: 'Celular', type: 'phone', required: true, prefill: 'clientPhone' },
                     { key: 'arrendatarioEmail', label: 'Correo electrónico', type: 'email', prefill: 'clientEmail' },
@@ -171,7 +179,10 @@ export const CONTRACT_TEMPLATES = {
             {
                 title: 'Inmueble y condiciones',
                 fields: [
-                    { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'address', required: true, prefill: 'address' },
+                    { key: 'direccionInmueble', label: 'Dirección del inmueble (calle)', type: 'address', required: true, prefill: 'address' },
+                    { key: 'torreInmueble', label: 'Torre / Bloque', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
+                    { key: 'aptoInmueble', label: 'Apartamento / Interior', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
+                    { key: 'conjuntoInmueble', label: 'Conjunto / Edificio', type: 'text', hint: 'Opcional. Como aparece en el certificado de libertad', prefill: 'conjunto' },
                     { key: 'ciudadInmueble', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'fechaInicio', label: 'Fecha de iniciación', type: 'date', required: true },
                     { key: 'duracionMeses', label: 'Vigencia (meses)', type: 'number', required: true, default: 12 },
