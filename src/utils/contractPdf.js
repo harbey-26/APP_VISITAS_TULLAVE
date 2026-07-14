@@ -164,8 +164,11 @@ export async function generateContractPdf(contract) {
         } else if (block.kind === 'subtitle') {
             pdf.setFont('helvetica', 'bold');
             pdf.setFontSize(11);
-            ensureSpace(10);
-            y += 2;
+            // Separación clara entre el encabezado de datos y CONDICIONES
+            // GENERALES / CLÁUSULAS (issue #24). Si no cabe el título + su
+            // aire, pasa de página en vez de quedar pegado al borde.
+            ensureSpace(18);
+            y += 9;
             pdf.text(block.text, PAGE.width / 2, y, { align: 'center' });
             y += 7;
         } else if (block.kind === 'kv') {
