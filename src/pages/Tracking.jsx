@@ -5,7 +5,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
-import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History } from 'lucide-react';
+import { Radio, MapPin, Clock, AlertCircle, CheckCircle2, XCircle, Megaphone, Send, X, History, BellOff } from 'lucide-react';
 import { Button, Modal, Input, inputClass } from '../components/ui';
 import { agentMarkerIcon } from '../utils/mapMarkers';
 
@@ -465,8 +465,17 @@ export default function Tracking() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-gray-900 truncate">{agent.name}</p>
-                                        <div className="mt-0.5">
+                                        <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                                             <StatusBadge agent={agent} />
+                                            {agent.notifDevices === 0 && (
+                                                <span
+                                                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium"
+                                                    title="Sin dispositivos con notificaciones: no recibe push ni recordatorios de ubicación. Debe abrir el APK y conceder el permiso de notificaciones."
+                                                >
+                                                    <BellOff className="w-3 h-3" />
+                                                    Sin notif.
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     {agent.lastLat && (

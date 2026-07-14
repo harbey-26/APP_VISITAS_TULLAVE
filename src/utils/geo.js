@@ -2,9 +2,20 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 /**
  * Obtiene la posición actual del dispositivo.
- * Usa navigator.geolocation en todos los entornos (web y APK).
+ * APK: intenta primero el plugin nativo (funciona en background con el permiso
+ * "todo el tiempo"; el geolocation del WebView puede fallar minimizado).
+ * Web / fallback: navigator.geolocation.
  */
 export async function getCurrentPosition() {
+    if (Capacitor.isNativePlatform()) {
+        try {
+            const Geolocation = registerPlugin('Geolocation');
+            const { coords } = await Geolocation.getCurrentPosition({
+                enableHighAccuracy: true, timeout: 10000, maximumAge: 30000,
+            });
+            return { lat: coords.latitude, lng: coords.longitude };
+        } catch { /* cae al geolocation del WebView */ }
+    }
     return new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
             ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),

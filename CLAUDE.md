@@ -157,10 +157,35 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
 
 ## GPS y rastreo
 
-- **Web (Chrome Android):** `setInterval` cada 60 s + Wake Lock API + `visibilitychange`
+- **Web (Chrome Android):** `setInterval` cada 30 s + Wake Lock API + `visibilitychange`
 - **APK nativo:** `@capacitor-community/background-geolocation` con Android Foreground Service
-- La detección se hace en runtime con `Capacitor.isNativePlatform()` en `src/utils/geo.js`
+  (dispara al moverse ≥20 m) + heartbeat 2 min (solo primer plano — Android congela
+  timers JS al minimizar) + ping al reabrir (resume)
+- La detección se hace en runtime con `Capacitor.isNativePlatform()` en `src/utils/geo.js`;
+  `getCurrentPosition` usa el plugin nativo primero en APK (funciona en background)
 - El campo `connectedSince` se actualiza en cada login; `lastSeenAt` en cada ping GPS
+- **Check-in horario** (`LocationLog`, máx. 1/hora): garantizado por el cron
+  `locationReminders.js` (esquema de 2 niveles, lógica pura en `reminderPolicy.js`
+  con tests): silencio ≥50 min → **ping FCM data-only** (la app auto-reporta sin
+  molestar, si el proceso vive); ≥75 min → **notificación visible** con sonido
+  (máx. 1/hora). Solo horario laboral (L-V 9-18, Sáb 9-13, hora Bogotá)
+
+## Notificaciones push (FCM)
+
+- Tokens por dispositivo en tabla `UserFcmToken` (multi-dispositivo, poda de inválidos)
+- Envíos del backend: broadcasts (admin), personales (`utils/notify.js` — contratos,
+  reasignaciones) y recordatorios de ubicación. **Todos** los mensajes visibles usan
+  `androidAlertConfig()` de `src/utils/fcmConfig.js`: canal `visittrack_alerts`
+  (alta importancia → banner heads-up + sonido + vibración)
+- El canal lo crea el APK desde JS al registrar FCM (`FirebaseMessaging.createChannel`
+  en Layout.jsx) — **no requiere recompilar APK**. Si el dispositivo no lo tiene aún,
+  FCM cae a su canal por defecto (no se pierde la notificación)
+- El listener `notificationReceived` auto-reporta ubicación cuando llega
+  `location_ping`/`location_reminder`; el tap (`notificationActionPerformed`)
+  navega a la agenda y también reporta
+- `/api/users/locations` devuelve `notifDevices` (tokens por agente) — Tracking
+  muestra badge "Sin notif." para agentes sin push registrado
+- Requiere `FIREBASE_SERVICE_ACCOUNT` en Railway (si falta, FCM se desactiva con warning)
 
 ---
 

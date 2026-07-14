@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { messaging } from '../utils/firebase.js';
+import { androidAlertConfig } from '../utils/fcmConfig.js';
 
 const broadcastSchema = z.object({
     title: z.string().min(1).max(100),
@@ -26,7 +27,7 @@ export const createBroadcast = async (req, res) => {
                 messaging.sendEachForMulticast({
                     tokens,
                     notification: { title: `📢 ${title}`, body },
-                    android: { priority: 'high' },
+                    android: androidAlertConfig(),
                 }).then(r => {
                     // M6: Podar tokens inválidos o desregistrados
                     const staleTokens = r.responses

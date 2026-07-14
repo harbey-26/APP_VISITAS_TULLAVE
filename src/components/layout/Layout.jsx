@@ -8,6 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } from '../../utils/geo';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
+import { ALERT_CHANNEL_ID, ALERT_CHANNEL_NAME } from '../../utils/fcmConfig';
 import PermissionsOnboarding, { ONBOARDING_KEY } from '../PermissionsOnboarding';
 import UpdateBanner from '../UpdateBanner';
 import {
@@ -121,9 +122,32 @@ export default function Layout() {
     // FCM: registrar token del dispositivo en el servidor (solo APK)
     useEffect(() => {
         if (!token || !Capacitor.isNativePlatform()) return;
+
+        // Reporta la ubicación al servidor de inmediato (sin UI). Lo usan el
+        // ping silencioso del servidor y el tap sobre una notificación.
+        const reportLocationNow = () => getCurrentPosition()
+            .then(pos => fetch(`${API_URL}/api/users/location`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+            }))
+            .catch(() => {});
+
         const registerFcm = async () => {
             try {
                 await FirebaseMessaging.requestPermissions();
+                // Canal de ALTA importancia: banner heads-up + sonido + vibración.
+                // Crearlo es idempotente; el backend envía channelId apuntando aquí.
+                // (Solo Android; si falla, FCM cae a su canal por defecto.)
+                await FirebaseMessaging.createChannel({
+                    id: ALERT_CHANNEL_ID,
+                    name: ALERT_CHANNEL_NAME,
+                    description: 'Recordatorios de ubicación y comunicados del equipo',
+                    importance: 4, // IMPORTANCE_HIGH → heads-up
+                    visibility: 1, // pública (visible en pantalla de bloqueo)
+                    vibration: true,
+                    lights: true,
+                }).catch(() => {});
                 const { token: fcmToken } = await FirebaseMessaging.getToken();
                 await fetch(`${API_URL}/api/users/fcm-token`, {
                     method: 'PATCH',
@@ -134,22 +158,22 @@ export default function Layout() {
         };
         registerFcm();
 
-        // FCM en primer plano: refrescar la bandeja de notificaciones (que deduplica y
-        // dispara el toast una sola vez). El polling/toast vive en NotificationsContext.
-        const recvSub = FirebaseMessaging.addListener('notificationReceived', () => {
-            refreshNotifications();
+        // Mensajes FCM entregados a la app (primer plano, o background si el proceso
+        // vive — el Foreground Service del GPS lo mantiene). El ping data-only
+        // 'location_ping' del servidor auto-reporta la ubicación SIN molestar al agente;
+        // el resto refresca la bandeja (que deduplica y dispara el toast una vez).
+        const recvSub = FirebaseMessaging.addListener('notificationReceived', (event) => {
+            const type = event?.notification?.data?.type;
+            if (type === 'location_ping' || type === 'location_reminder') {
+                reportLocationNow();
+            }
+            if (type !== 'location_ping') refreshNotifications();
         });
         // Al tocar el push (recordatorio de ubicación o comunicado) → ir a la agenda y
         // registrar la ubicación al instante (cubre arranque en frío, donde no hay resume-ping).
         const tapSub = FirebaseMessaging.addListener('notificationActionPerformed', () => {
             navigate('/agenda');
-            getCurrentPosition()
-                .then(pos => fetch(`${API_URL}/api/users/location`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
-                }))
-                .catch(() => {});
+            reportLocationNow();
         });
         return () => {
             recvSub.then(l => l.remove()).catch(() => {});

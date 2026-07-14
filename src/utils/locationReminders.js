@@ -1,74 +1,85 @@
 import prisma from './prisma.js';
 import { messaging } from './firebase.js';
+import { androidAlertConfig } from './fcmConfig.js';
+import {
+    PING_AFTER_MS, ACTIVE_WINDOW_MS,
+    isWorkingNow, bogotaParts, reminderActionFor,
+} from './reminderPolicy.js';
 
-// Recordatorio "por silencio": en horario laboral, si un agente que estuvo activo
-// hoy lleva un rato sin reportar ubicación, se le envía UN push puntual. Reemplaza
-// las 10 notificaciones locales fijas (menos fatiga, solo cuando falta el dato).
+// Check-in horario de ubicación — esquema de dos niveles (la lógica de tiempos
+// vive en reminderPolicy.js, que tiene tests):
+//   1. Silencio ≥ 50 min → PING data-only (invisible): si el proceso del APK
+//      está vivo, la app reporta la ubicación sola, sin molestar al agente.
+//   2. Silencio ≥ 75 min → NOTIFICACIÓN visible con sonido/vibración (canal de
+//      alta importancia): el ping no bastó, se necesita que el agente abra.
+// Solo en horario laboral (L-V 9-18, Sáb 9-13) y para agentes activos hoy.
 
-const CHECK_INTERVAL_MS   = 15 * 60 * 1000;      // revisar cada 15 min
-const SILENCE_MIN_MS      = 2  * 60 * 60 * 1000; // sin reportar > 2h → recordar
-const SILENCE_MAX_MS      = 12 * 60 * 60 * 1000; // pero activo en las últimas 12h (evita cuentas inactivas/día libre)
-const REMINDER_THROTTLE_MS = 2 * 60 * 60 * 1000; // máximo un recordatorio cada 2h por agente
-// Horario laboral TuLlave: L-V 9am–6pm, Sábado 9am–1pm, Domingo cerrado
-const WORK_START_HOUR     = 9;   // 9am Bogotá (todos los días laborales)
-const WORK_END_HOUR_WEEK  = 18;  // L-V: hasta las 5:59pm
-const WORK_END_HOUR_SAT   = 13;  // Sábado: hasta las 12:59pm
+const CHECK_INTERVAL_MS = 10 * 60 * 1000; // revisar cada 10 min
 
-function isWorkingNow(hour, day) {
-    if (day === 0) return false;                  // domingo
-    if (day === 6) return hour >= WORK_START_HOUR && hour < WORK_END_HOUR_SAT;
-    return hour >= WORK_START_HOUR && hour < WORK_END_HOUR_WEEK;
-}
+// Throttle en memoria: userId -> timestamp del último aviso VISIBLE
+const lastNotifiedAt = new Map();
 
-// Throttle en memoria: userId -> timestamp del último recordatorio
-const lastRemindedAt = new Map();
-
-// Hora y día en Bogotá (UTC-5, Colombia no tiene horario de verano). day: 0=domingo
-function bogotaParts(date = new Date()) {
-    const shifted = new Date(date.getTime() - 5 * 60 * 60 * 1000);
-    return { hour: shifted.getUTCHours(), day: shifted.getUTCDay() };
+// Poda tokens inválidos/desregistrados según la respuesta de FCM
+function pruneStaleTokens(tokens, responses) {
+    const stale = responses
+        .map((resp, i) => (!resp.success && /registration|invalid/.test(resp.error?.code || '')) ? tokens[i] : null)
+        .filter(Boolean);
+    if (stale.length) {
+        prisma.userFcmToken.deleteMany({ where: { token: { in: stale } } }).catch(() => {});
+    }
 }
 
 async function checkSilentAgents() {
     const { hour, day } = bogotaParts();
-    if (!isWorkingNow(hour, day)) return; // fuera de horario laboral (L-V 9-18, Sáb 9-13)
+    if (!isWorkingNow(hour, day)) return;
 
     const now = Date.now();
     const agents = await prisma.user.findMany({
         where: {
             role: 'AGENT',
             fcmTokens: { some: {} },
-            // Reportó dentro de las últimas 12h pero no en las últimas 2h → activo hoy y en silencio
-            lastSeenAt: { lt: new Date(now - SILENCE_MIN_MS), gt: new Date(now - SILENCE_MAX_MS) },
+            // Silencio ≥ 50 min pero activo en las últimas 12h (excluye día libre)
+            lastSeenAt: { lt: new Date(now - PING_AFTER_MS), gt: new Date(now - ACTIVE_WINDOW_MS) },
         },
-        select: { id: true, name: true, fcmTokens: { select: { token: true } } },
+        select: { id: true, name: true, lastSeenAt: true, fcmTokens: { select: { token: true } } },
     });
 
     for (const agent of agents) {
-        if (now - (lastRemindedAt.get(agent.id) || 0) < REMINDER_THROTTLE_MS) continue;
         const tokens = agent.fcmTokens.map(t => t.token);
         if (tokens.length === 0) continue;
 
-        try {
-            const r = await messaging.sendEachForMulticast({
-                tokens,
-                notification: {
-                    title: 'VisitTrack — Confirma tu ubicación',
-                    body: 'Llevas un rato sin reportar. Abre la app para registrar tu posición.',
-                },
-                data: { type: 'location_reminder' },
-                android: { priority: 'high' },
-            });
-            lastRemindedAt.set(agent.id, now);
+        const msSilent = now - new Date(agent.lastSeenAt).getTime();
+        const msSinceNotify = now - (lastNotifiedAt.get(agent.id) || 0);
+        const action = reminderActionFor(msSilent, msSinceNotify);
+        if (!action) continue;
 
-            // Podar tokens inválidos / desregistrados
-            const stale = r.responses
-                .map((resp, i) => (!resp.success && /registration|invalid/.test(resp.error?.code || '')) ? tokens[i] : null)
-                .filter(Boolean);
-            if (stale.length) {
-                prisma.userFcmToken.deleteMany({ where: { token: { in: stale } } }).catch(() => {});
+        try {
+            if (action === 'notify') {
+                // Aviso visible: sonido + vibración + banner (canal de alta importancia)
+                const r = await messaging.sendEachForMulticast({
+                    tokens,
+                    notification: {
+                        title: 'VisitTrack — Confirma tu ubicación',
+                        body: 'Llevas más de una hora sin reportar. Toca aquí para registrar tu posición.',
+                    },
+                    data: { type: 'location_reminder' },
+                    android: androidAlertConfig(),
+                });
+                lastNotifiedAt.set(agent.id, now);
+                pruneStaleTokens(tokens, r.responses);
+                console.log(`[LocationReminder] Aviso visible a ${agent.name} (${r.successCount}/${tokens.length}, ${Math.round(msSilent / 60000)} min de silencio)`);
+            } else {
+                // Ping invisible (data-only): despierta la app para auto-reportar.
+                // Sin `notification` para que Android entregue el mensaje al proceso
+                // incluso en background (con notification iría a la bandeja del SO).
+                const r = await messaging.sendEachForMulticast({
+                    tokens,
+                    data: { type: 'location_ping' },
+                    android: { priority: 'high' },
+                });
+                pruneStaleTokens(tokens, r.responses);
+                console.log(`[LocationReminder] Ping silencioso a ${agent.name} (${r.successCount}/${tokens.length})`);
             }
-            console.log(`[LocationReminder] Recordatorio enviado a ${agent.name} (${r.successCount}/${tokens.length})`);
         } catch (e) {
             console.warn('[LocationReminder]', e.message);
         }
@@ -83,5 +94,5 @@ export function startLocationReminderCron() {
     setInterval(() => {
         checkSilentAgents().catch(e => console.warn('[LocationReminder]', e.message));
     }, CHECK_INTERVAL_MS);
-    console.log('[LocationReminder] Cron de recordatorios por silencio activo');
+    console.log('[LocationReminder] Cron de check-in horario activo (ping 50 min / aviso 75 min)');
 }

@@ -133,9 +133,13 @@ export const getAgentLocations = async (req, res) => {
     try {
         const agents = await prisma.user.findMany({
             where: { role: 'AGENT' },
-            select: { id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true, connectedSince: true }
+            select: {
+                id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true, connectedSince: true,
+                // Dispositivos con push registrado — 0 = ese agente NO recibe notificaciones
+                _count: { select: { fcmTokens: true } },
+            }
         });
-        res.json(agents);
+        res.json(agents.map(({ _count, ...a }) => ({ ...a, notifDevices: _count.fcmTokens })));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

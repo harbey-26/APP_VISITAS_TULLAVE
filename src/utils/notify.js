@@ -1,6 +1,7 @@
 // M7: Helper para crear notificaciones dirigidas a un agente (in-app + FCM)
 import prisma from './prisma.js';
 import { messaging } from './firebase.js';
+import { androidAlertConfig } from './fcmConfig.js';
 
 export async function sendPersonalNotification(userId, title, body) {
     if (!userId) return null;
@@ -20,7 +21,7 @@ export async function sendPersonalNotification(userId, title, body) {
                 messaging.sendEachForMulticast({
                     tokens,
                     notification: { title, body },
-                    android: { priority: 'high' },
+                    android: androidAlertConfig(),
                 }).then(r => {
                     const stale = r.responses
                         .map((resp, i) => {
