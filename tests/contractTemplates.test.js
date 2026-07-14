@@ -278,6 +278,32 @@ describe('buildContractDocument', () => {
         expect(primera.text).not.toContain('una cuota de administración');
     });
 
+    it('administración: la notaría se escribe como número y sale en letras con "NOTARÍA"', () => {
+        const doc = buildContractDocument('ADMINISTRACION', { ...emptyFormData('ADMINISTRACION'), escrituraNotaria: '13' });
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const linderos = clean(table.rows.find((r) => /Linderos/i.test(clean(r[0])))[1]);
+        expect(linderos).toContain('EN LA NOTARÍA TRECE (13)');
+        expect(linderos).not.toMatch(/EN LA 13\b/); // ya no queda el número pelado
+    });
+
+    it('administración: respeta texto libre de notaría en borradores viejos', () => {
+        const doc = buildContractDocument('ADMINISTRACION', { ...emptyFormData('ADMINISTRACION'), escrituraNotaria: 'Notaría 5 de Bogotá' });
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const linderos = clean(table.rows.find((r) => /Linderos/i.test(clean(r[0])))[1]);
+        expect(linderos).toContain('NOTARÍA 5 DE BOGOTÁ');
+    });
+
+    it('arrendamiento: la dirección del deudor solidario compone Torre/Apto/Conjunto', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            deudores: [{ nombre: 'RAMÓN', cedula: '79', direccion: 'Cl 10 #5-20', torre: 'Torre 3', apto: 'Apto 502', conjunto: 'Los Pinos' }],
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const firma = doc.blocks.find((b) => b.kind === 'signature' && /DEUDOR/.test(b.role));
+        const dir = firma.lines.find((l) => l.startsWith('Dir. Notificación'));
+        expect(clean(dir)).toContain('CL 10 #5-20, TORRE 3, APTO 502, LOS PINOS');
+    });
+
     it('devuelve null para tipo desconocido', () => {
         expect(buildContractDocument('OTRO', {})).toBeNull();
     });

@@ -57,6 +57,20 @@ const fechaCaps = (x) => b(fechaCortaCaps(x) || BLANK);
 const fechaLetrasB = (x) => b(fechaEnLetras(x) || BLANK); // fecha en letras, en negrilla
 const siNo = (x) => b(x ? 'SÍ' : 'NO');
 
+// Notaría: el usuario escribe solo el número (p. ej. 13) y el sistema lo pone
+// en letras con la palabra "NOTARÍA" antepuesta → "NOTARÍA TRECE (13)". Así se
+// evitan errores de escritura. Retrocompatible: si en un borrador viejo quedó
+// texto libre, lo respeta y solo antepone "NOTARÍA" si falta.
+const notaria = (x) => {
+    const raw = x == null ? '' : String(x).trim();
+    if (raw === '') return b(BLANK);
+    if (/^\d+$/.test(raw) && Number(raw) > 0) {
+        return b(`NOTARÍA ${numeroALetras(raw).toUpperCase()} (${Number(raw)})`);
+    }
+    const up = raw.toUpperCase();
+    return b(up.includes('NOTAR') ? up : `NOTARÍA ${up}`);
+};
+
 function mesesEnLetras(n) {
     const num = Number(n);
     if (!num || isNaN(num)) return b(BLANK);
@@ -96,7 +110,7 @@ function componerDireccion(base, ...extras) {
 function buildAdministracion(d) {
     const blocks = [];
 
-    const linderos = `OBRAN EN ESCRITURA PÚBLICA No. ${v(d.escrituraNumero)} DE FECHA ${fechaCaps(d.escrituraFecha)} EN LA ${v(d.escrituraNotaria).toUpperCase()}`;
+    const linderos = `OBRAN EN ESCRITURA PÚBLICA No. ${v(d.escrituraNumero)} DE FECHA ${fechaCaps(d.escrituraFecha)} EN LA ${notaria(d.escrituraNotaria)}`;
 
     // Copropietarios (además del primero). El texto legal ya está en plural.
     const otrosPropietarios = Array.isArray(d.otrosPropietarios)
@@ -111,7 +125,7 @@ function buildAdministracion(d) {
     const filasPropietario = (nombre, cedula, direccion, telefono, email, n) => [
         [n ? `Propietario ${n}/Mandante` : 'Propietario/Mandante', v(nombre)],
         ['No. de Identificación', v(cedula)],
-        ['Dirección', v(direccion)],
+        ['Dirección de notificación', v(direccion)],
         ['Teléfono', v(telefono)],
         ['Correo electrónico', v(email)],
     ];
@@ -421,7 +435,7 @@ function buildArrendamiento(d) {
             lines: [
                 `NOMBRE: ${v(x.nombre)}`,
                 `C.C. No. ${v(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}`,
-                `Dir. Notificación: ${v(x.direccion)}`,
+                `Dir. Notificación: ${v(componerDireccion(x.direccion, x.torre, x.apto, x.conjunto))}`,
                 `Ciudad: ${v(x.ciudad)}`,
                 `Celular: ${v(x.celular)}`,
                 `E-MAIL: ${v(x.email)}`,
