@@ -9,6 +9,7 @@ import {
 import { buildContractDocument, splitMarks, stripMarks } from '../utils/contractDocument';
 import { downloadContractPdf } from '../utils/contractPdf';
 import { sumarMeses } from '../utils/fechaLetras';
+import { formatoCifra } from '../utils/numeroALetras';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, SearchCombobox, inputClass, cn,
 } from '../components/ui';
@@ -79,6 +80,17 @@ function DynamicField({ field, value, onChange, mapsLoaded }) {
         case 'date':
             return <Input type="date" {...common} />;
         case 'money':
+            // Separador de miles en vivo ("1.200.000"), sin decimales. En el
+            // estado se guardan solo los dígitos — la validación y el PDF no cambian.
+            return (
+                <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={value != null && String(value) !== '' ? formatoCifra(value) : ''}
+                    onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+                />
+            );
         case 'number':
             return <Input type="number" min="0" inputMode="numeric" {...common} />;
         case 'email':

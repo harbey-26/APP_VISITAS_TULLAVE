@@ -57,15 +57,19 @@ const fechaCaps = (x) => b(fechaCortaCaps(x) || BLANK);
 const fechaLetrasB = (x) => b(fechaEnLetras(x) || BLANK); // fecha en letras, en negrilla
 const siNo = (x) => b(x ? 'SÍ' : 'NO');
 
-// Notaría: el usuario escribe solo el número (p. ej. 13) y el sistema lo pone
-// en letras con la palabra "NOTARÍA" antepuesta → "NOTARÍA TRECE (13)". Así se
-// evitan errores de escritura. Retrocompatible: si en un borrador viejo quedó
-// texto libre, lo respeta y solo antepone "NOTARÍA" si falta.
-const notaria = (x) => {
+// Notaría: el usuario escribe solo el número (p. ej. 13) y la ciudad aparte;
+// el sistema compone "NOTARÍA TRECE (13) DE BOGOTÁ D.C.". Así se evitan
+// errores de escritura. Retrocompatible: si en un borrador viejo quedó texto
+// libre, lo respeta tal cual (sin anexar la ciudad, para no duplicar
+// "de Bogotá") y solo antepone "NOTARÍA" si falta.
+const notaria = (x, ciudad) => {
     const raw = x == null ? '' : String(x).trim();
     if (raw === '') return b(BLANK);
     if (/^\d+$/.test(raw) && Number(raw) > 0) {
-        return b(`NOTARÍA ${numeroALetras(raw).toUpperCase()} (${Number(raw)})`);
+        const ciudadTxt = ciudad != null && String(ciudad).trim() !== ''
+            ? ` DE ${String(ciudad).trim().toUpperCase()}`
+            : '';
+        return b(`NOTARÍA ${numeroALetras(raw).toUpperCase()} (${Number(raw)})${ciudadTxt}`);
     }
     const up = raw.toUpperCase();
     return b(up.includes('NOTAR') ? up : `NOTARÍA ${up}`);
@@ -110,7 +114,7 @@ function componerDireccion(base, ...extras) {
 function buildAdministracion(d) {
     const blocks = [];
 
-    const linderos = `OBRAN EN ESCRITURA PÚBLICA No. ${v(d.escrituraNumero)} DE FECHA ${fechaCaps(d.escrituraFecha)} EN LA ${notaria(d.escrituraNotaria)}`;
+    const linderos = `OBRAN EN ESCRITURA PÚBLICA No. ${v(d.escrituraNumero)} DE FECHA ${fechaCaps(d.escrituraFecha)} EN LA ${notaria(d.escrituraNotaria, d.escrituraNotariaCiudad)}`;
 
     // Copropietarios (además del primero). El texto legal ya está en plural.
     const otrosPropietarios = Array.isArray(d.otrosPropietarios)

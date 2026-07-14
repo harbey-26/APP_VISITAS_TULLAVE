@@ -102,6 +102,7 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'escrituraNumero', label: 'Escritura pública No. (linderos)', type: 'text', required: true },
                     { key: 'escrituraFecha', label: 'Fecha de la escritura', type: 'date', required: true },
                     { key: 'escrituraNotaria', label: 'Notaría No.', type: 'number', required: true, hint: 'Solo el número. Ej.: 13 → “NOTARÍA TRECE”' },
+                    { key: 'escrituraNotariaCiudad', label: 'Ciudad de la notaría', type: 'text', required: true, default: 'Bogotá D.C.', hint: 'Acompaña al número: “NOTARÍA TRECE (13) DE BOGOTÁ D.C.”' },
                     { key: 'garajes', label: 'Tiene garaje(s)', type: 'checkbox', default: false },
                     { key: 'numeroGarajes', label: 'Número de garaje(s)', type: 'text', showIf: { key: 'garajes', equals: true } },
                     { key: 'deposito', label: 'Tiene depósito', type: 'checkbox', default: false },

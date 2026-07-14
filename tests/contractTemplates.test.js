@@ -278,12 +278,24 @@ describe('buildContractDocument', () => {
         expect(primera.text).not.toContain('una cuota de administración');
     });
 
-    it('administración: la notaría se escribe como número y sale en letras con "NOTARÍA"', () => {
-        const doc = buildContractDocument('ADMINISTRACION', { ...emptyFormData('ADMINISTRACION'), escrituraNotaria: '13' });
+    it('administración: la notaría se escribe como número y sale en letras con "NOTARÍA" y su ciudad', () => {
+        const doc = buildContractDocument('ADMINISTRACION', {
+            ...emptyFormData('ADMINISTRACION'), escrituraNotaria: '53', escrituraNotariaCiudad: 'Bogotá D.C.',
+        });
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const linderos = clean(table.rows.find((r) => /Linderos/i.test(clean(r[0])))[1]);
+        expect(linderos).toContain('EN LA NOTARÍA CINCUENTA Y TRES (53) DE BOGOTÁ D.C.');
+        expect(linderos).not.toMatch(/EN LA 53\b/); // ya no queda el número pelado
+    });
+
+    it('administración: sin ciudad de notaría no queda un "DE" colgando', () => {
+        const data = { ...emptyFormData('ADMINISTRACION'), escrituraNotaria: '13' };
+        data.escrituraNotariaCiudad = ''; // borrador viejo sin el campo
+        const doc = buildContractDocument('ADMINISTRACION', data);
         const table = doc.blocks.find((b) => b.kind === 'table');
         const linderos = clean(table.rows.find((r) => /Linderos/i.test(clean(r[0])))[1]);
         expect(linderos).toContain('EN LA NOTARÍA TRECE (13)');
-        expect(linderos).not.toMatch(/EN LA 13\b/); // ya no queda el número pelado
+        expect(linderos).not.toMatch(/\(13\) DE\s*$/);
     });
 
     it('administración: respeta texto libre de notaría en borradores viejos', () => {
