@@ -22,6 +22,21 @@ export function partesFecha(fecha) {
     return { year: fecha.getFullYear(), month: fecha.getMonth() + 1, day: fecha.getDate() };
 }
 
+// Suma meses a una fecha "YYYY-MM-DD" y devuelve otra "YYYY-MM-DD" (#23).
+// Ej.: sumarMeses('2026-07-13', 12) → '2027-07-13'. Si el día no existe en el
+// mes destino (ej.: 31 → febrero) se ajusta al último día del mes.
+export function sumarMeses(fecha, meses) {
+    const p = partesFecha(fecha);
+    const n = Number(meses);
+    if (!p || !n || isNaN(n)) return '';
+    const base = new Date(p.year, p.month - 1 + n, 1);
+    const ultimoDia = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+    base.setDate(Math.min(p.day, ultimoDia));
+    const mm = String(base.getMonth() + 1).padStart(2, '0');
+    const dd = String(base.getDate()).padStart(2, '0');
+    return `${base.getFullYear()}-${mm}-${dd}`;
+}
+
 // "2026-08-01" → "01 de agosto de 2026"
 export function fechaCorta(fecha) {
     const p = partesFecha(fecha);

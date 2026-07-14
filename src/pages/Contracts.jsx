@@ -8,6 +8,7 @@ import {
 } from '../utils/contractTemplates';
 import { buildContractDocument } from '../utils/contractDocument';
 import { downloadContractPdf } from '../utils/contractPdf';
+import { sumarMeses } from '../utils/fechaLetras';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, SearchCombobox, inputClass, cn,
 } from '../components/ui';
@@ -308,6 +309,20 @@ export default function Contracts() {
         if (visit) data = { ...data, ...prefillFromVisit(type, visit) };
         setFormData(data);
         setStep(1);
+    };
+
+    // Cambia un campo del formulario. Si la plantilla define autoEndDate y se
+    // tocó la fecha de inicio o la vigencia, recalcula la fecha final (#23).
+    const setField = (key, value) => {
+        setFormData((prev) => {
+            const next = { ...prev, [key]: value };
+            const ae = template?.autoEndDate;
+            if (ae && (key === ae.start || key === ae.months)) {
+                const end = sumarMeses(next[ae.start], next[ae.months]);
+                if (end) next[ae.end] = end;
+            }
+            return next;
+        });
     };
 
     const saveContract = async ({ thenSubmit = false } = {}) => {
@@ -723,7 +738,7 @@ export default function Contracts() {
                                     return (
                                         <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.hint}>
                                             <DynamicField field={f} value={formData[f.key]}
-                                                onChange={(v) => setFormData({ ...formData, [f.key]: v })}
+                                                onChange={(v) => setField(f.key, v)}
                                                 mapsLoaded={mapsLoaded} />
                                         </Field>
                                     );

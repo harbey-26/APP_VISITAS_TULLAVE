@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { fechaCorta, fechaEnLetras, partesFecha } from '../src/utils/fechaLetras.js';
+import { fechaCorta, fechaEnLetras, partesFecha, sumarMeses } from '../src/utils/fechaLetras.js';
+
+// Cálculo automático de la fecha de vencimiento (#23).
+describe('sumarMeses', () => {
+    it('suma meses a una fecha (aniversario)', () => {
+        expect(sumarMeses('2026-07-13', 12)).toBe('2027-07-13');
+        expect(sumarMeses('2026-08-01', 12)).toBe('2027-08-01');
+        expect(sumarMeses('2026-01-15', 6)).toBe('2026-07-15');
+    });
+
+    it('ajusta al último día si el día no existe en el mes destino', () => {
+        expect(sumarMeses('2026-01-31', 1)).toBe('2026-02-28'); // no hay 31 de feb
+    });
+
+    it('devuelve vacío con datos incompletos', () => {
+        expect(sumarMeses('', 12)).toBe('');
+        expect(sumarMeses('2026-07-13', 0)).toBe('');
+        expect(sumarMeses('2026-07-13', '')).toBe('');
+    });
+});
 
 // Fechas en letras para los contratos.
 describe('partesFecha', () => {

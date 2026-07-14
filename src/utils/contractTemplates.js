@@ -55,6 +55,8 @@ export const CONTRACT_TEMPLATES = {
         label: 'Contrato de administración de inmueble',
         shortLabel: 'Administración',
         description: 'El propietario entrega el inmueble a TuLlave para administrarlo y arrendarlo.',
+        // #23: la fecha final se calcula sola a partir de inicio + vigencia
+        autoEndDate: { start: 'fechaInicio', months: 'duracionMeses', end: 'fechaTerminacion' },
         sections: [
             {
                 title: 'Propietario / Mandante',
@@ -107,8 +109,8 @@ export const CONTRACT_TEMPLATES = {
                 title: 'Condiciones del contrato',
                 fields: [
                     { key: 'fechaInicio', label: 'Fecha de inicio', type: 'date', required: true },
-                    { key: 'fechaTerminacion', label: 'Fecha de terminación', type: 'date', required: true },
                     { key: 'duracionMeses', label: 'Duración (meses)', type: 'number', required: true, default: 12 },
+                    { key: 'fechaTerminacion', label: 'Fecha de terminación', type: 'date', required: true, hint: 'Se calcula sola con inicio + duración; puedes ajustarla' },
                     { key: 'canon', label: 'Canon de arrendamiento ($)', type: 'money', required: true },
                     { key: 'aplicaIva', label: 'El canon genera IVA', type: 'checkbox', default: false },
                     { key: 'reajuste', label: 'Reajuste', type: 'text', default: 'IPC' },
@@ -134,6 +136,8 @@ export const CONTRACT_TEMPLATES = {
         label: 'Contrato de arrendamiento para inmueble de vivienda urbana',
         shortLabel: 'Arrendamiento',
         description: 'Contrato entre TuLlave (arrendador) y el inquilino, con deudores solidarios.',
+        // #23: la fecha final se calcula sola a partir de inicio + vigencia
+        autoEndDate: { start: 'fechaInicio', months: 'duracionMeses', end: 'fechaVencimiento' },
         sections: [
             {
                 title: 'Arrendatario',
@@ -170,8 +174,8 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'direccionInmueble', label: 'Dirección del inmueble', type: 'address', required: true, prefill: 'address' },
                     { key: 'ciudadInmueble', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'fechaInicio', label: 'Fecha de iniciación', type: 'date', required: true },
-                    { key: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date', required: true },
                     { key: 'duracionMeses', label: 'Vigencia (meses)', type: 'number', required: true, default: 12 },
+                    { key: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date', required: true, hint: 'Se calcula sola con iniciación + vigencia; puedes ajustarla' },
                     { key: 'canon', label: 'Canon de arrendamiento mensual ($)', type: 'money', required: true },
                     { key: 'cuotaAdministracion', label: 'Cuota de administración mensual ($)', type: 'money', hint: 'Dejar vacío si no aplica' },
                 ],
