@@ -61,6 +61,8 @@ export const CONTRACT_TEMPLATES = {
             {
                 title: 'Propietario / Mandante',
                 fields: [
+                    // Identificador del contrato en Wasi (CRM) — es también el nombre del PDF
+                    { key: 'codigoWasi', label: 'Código Wasi', type: 'text', required: true, hint: 'Identificador del contrato. Será el nombre del archivo PDF' },
                     { key: 'propietarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'propietarioCedula', label: 'No. de identificación', type: 'text', required: true },
                     { key: 'propietarioDireccion', label: 'Dirección de notificación (calle)', type: 'address', required: true },
@@ -147,6 +149,8 @@ export const CONTRACT_TEMPLATES = {
             {
                 title: 'Arrendatario',
                 fields: [
+                    // Identificador del contrato en Wasi (CRM) — es también el nombre del PDF
+                    { key: 'codigoWasi', label: 'Código Wasi', type: 'text', required: true, hint: 'Identificador del contrato. Será el nombre del archivo PDF' },
                     { key: 'arrendatarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
                     { key: 'arrendatarioCedula', label: 'C.C. No.', type: 'text', required: true },
                     { key: 'arrendatarioLugarExpedicion', label: 'Lugar de expedición', type: 'text', required: true, default: 'Bogotá D.C.' },

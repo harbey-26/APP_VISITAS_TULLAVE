@@ -599,6 +599,11 @@ export default function Contracts() {
                                                 {getTemplate(c.type)?.shortLabel || c.type}
                                             </Badge>
                                             <Badge className={status.badge}>{status.label}</Badge>
+                                            {c.data?.codigoWasi && (
+                                                <Badge className="bg-indigo-50 text-indigo-700">
+                                                    Wasi {c.data.codigoWasi}
+                                                </Badge>
+                                            )}
                                             {isAdmin && c.user?.name && (
                                                 <Badge className="bg-brand-50 text-brand-700 inline-flex items-center gap-1">
                                                     <User className="w-3 h-3" />

@@ -245,8 +245,16 @@ export async function generateContractPdf(contract) {
     return pdf;
 }
 
-// Nombre de archivo: contrato_arrendamiento_maria-rivera_2026-07-10.pdf
+// Nombre de archivo: el Código Wasi (identificador del contrato) si existe —
+// p. ej. "840-123.pdf" — o el esquema descriptivo anterior como respaldo para
+// contratos creados antes del campo.
 export function contractFileName(contract) {
+    const wasi = String(contract.data?.codigoWasi || '').trim();
+    if (wasi) {
+        const limpio = wasi.normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+        if (limpio) return `${limpio}.pdf`;
+    }
     const tipo = contract.type === 'ADMINISTRACION' ? 'administracion' : 'arrendamiento';
     const nombre = (contract.data?.propietarioNombre || contract.data?.arrendatarioNombre || `id${contract.id}`)
         .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
