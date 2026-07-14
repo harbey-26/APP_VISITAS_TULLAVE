@@ -6,7 +6,7 @@ import {
     CONTRACT_TEMPLATES, CONTRACT_STATUS, EDITABLE_STATUSES,
     getTemplate, emptyFormData, prefillFromVisit, validateContractData, fieldApplies,
 } from '../utils/contractTemplates';
-import { buildContractDocument } from '../utils/contractDocument';
+import { buildContractDocument, splitMarks, stripMarks } from '../utils/contractDocument';
 import { downloadContractPdf } from '../utils/contractPdf';
 import { sumarMeses } from '../utils/fechaLetras';
 import {
@@ -162,6 +162,12 @@ function ListField({ field, items, onChange, mapsLoaded }) {
 
 // ─── Vista previa del contrato (bloques → HTML) ───────────────────────
 
+// Renderiza una cadena con marcas de negrilla (#22): los segmentos marcados
+// van en <strong>, el resto normal.
+function Marked({ text }) {
+    return splitMarks(text).map((s, k) => (s.bold ? <strong key={k}>{s.text}</strong> : <span key={k}>{s.text}</span>));
+}
+
 function ContractPreview({ type, data }) {
     const doc = useMemo(() => buildContractDocument(type, data), [type, data]);
     if (!doc) return null;
@@ -177,7 +183,7 @@ function ContractPreview({ type, data }) {
                     return (
                         <div key={i} className="flex gap-2 font-bold">
                             <span className="w-44 flex-shrink-0">{b.label}</span>
-                            <span className="whitespace-pre-wrap">{b.value}</span>
+                            <span className="whitespace-pre-wrap">{stripMarks(b.value)}</span>
                         </div>
                     );
                 }
@@ -187,8 +193,8 @@ function ContractPreview({ type, data }) {
                             <tbody>
                                 {b.rows.map((r, j) => (
                                     <tr key={j} className="border-b border-gray-300 last:border-b-0">
-                                        <td className="border-r border-gray-300 font-bold px-2 py-1 w-[32%] align-top">{r[0]}</td>
-                                        <td className="px-2 py-1 align-top whitespace-pre-wrap">{r[1]}</td>
+                                        <td className="border-r border-gray-300 px-2 py-1 w-[32%] align-top">{stripMarks(r[0])}</td>
+                                        <td className="px-2 py-1 align-top whitespace-pre-wrap font-bold">{stripMarks(r[1])}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -198,7 +204,7 @@ function ContractPreview({ type, data }) {
                 if (b.kind === 'clause') {
                     return (
                         <p key={i} className="text-justify">
-                            <strong>{b.lead}</strong> {b.text}
+                            <strong>{b.lead}</strong> <Marked text={b.text} />
                         </p>
                     );
                 }
@@ -207,11 +213,11 @@ function ContractPreview({ type, data }) {
                         <div key={i} className="pt-6">
                             <div className="border-t border-gray-500 w-56 mb-1" />
                             <p className="font-bold">{b.role}</p>
-                            {b.lines.map((l, j) => <p key={j}>{l}</p>)}
+                            {b.lines.map((l, j) => <p key={j}><Marked text={l} /></p>)}
                         </div>
                     );
                 }
-                return <p key={i} className="text-justify">{b.text}</p>;
+                return <p key={i} className="text-justify"><Marked text={b.text} /></p>;
             })}
         </div>
     );

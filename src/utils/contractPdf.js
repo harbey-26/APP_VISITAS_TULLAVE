@@ -5,7 +5,7 @@
 // negrita y cláusulas justificadas con el título de la cláusula en negrita
 // inline. Si el contrato no está aprobado, imprime marca de agua "BORRADOR".
 
-import { buildContractDocument } from './contractDocument.js';
+import { buildContractDocument, splitMarks, stripMarks, VALUE_MARK } from './contractDocument.js';
 import { CONTRACT_LOGO } from '../assets/contractLogo.js';
 import { freshImport } from './freshImport.js';
 import { downloadBlob } from './downloadBlob.js';
@@ -22,19 +22,29 @@ const KV_LABEL_WIDTH = 52;                       // columna de etiquetas del enc
 // el título de la cláusula puede rozar la palabra siguiente.
 const BOLD_WIDTH_CUSHION = 1.01;
 
-// Divide un texto con estilo en palabras medibles.
-function tokenize(pdf, segments, size) {
+// Convierte una cadena con marcas de negrilla (#22) en "palabras". Cada palabra
+// es una lista de runs { text, bold, width }, de modo que un valor dinámico
+// pegado a texto fijo sin espacio (ej.: "3%", "(2027).") se mantiene junto y
+// solo la parte dinámica va en negrilla. Las palabras se separan por espacios.
+function wordsFromMarked(pdf, marked, size) {
     const words = [];
-    for (const seg of segments) {
-        if (!seg.text) continue;
-        pdf.setFont('helvetica', seg.bold ? 'bold' : 'normal');
-        pdf.setFontSize(size);
-        for (const w of seg.text.split(/\s+/)) {
-            if (!w) continue;
-            const width = pdf.getTextWidth(w) * (seg.bold ? BOLD_WIDTH_CUSHION : 1);
-            words.push({ text: w, bold: seg.bold, width });
+    let cur = null;
+    for (const seg of splitMarks(marked)) {
+        for (const piece of seg.text.split(/(\s+)/)) {
+            if (piece === '') continue;
+            if (/^\s+$/.test(piece)) {
+                if (cur) { words.push(cur); cur = null; }
+                continue;
+            }
+            pdf.setFont('helvetica', seg.bold ? 'bold' : 'normal');
+            pdf.setFontSize(size);
+            const width = pdf.getTextWidth(piece) * (seg.bold ? BOLD_WIDTH_CUSHION : 1);
+            if (!cur) cur = { runs: [], width: 0 };
+            cur.runs.push({ text: piece, bold: seg.bold, width });
+            cur.width += width;
         }
     }
+    if (cur) words.push(cur);
     return words;
 }
 
@@ -91,68 +101,51 @@ export async function generateContractPdf(contract) {
         if (y + needed > PAGE.height - MARGIN.bottom) newPage();
     };
 
-    // Párrafo justificado con soporte de negrita inline (lead de cláusula).
-    // La justificación se hace con el operador PDF `Tw` (word spacing): el
-    // visor estira los espacios de la cadena completa, así que no dependemos
-    // de que nuestras métricas coincidan al posicionar palabra por palabra
-    // (posicionar cada palabra por separado hacía que se pegaran entre sí en
-    // visores cuya Helvetica difiere de las métricas de jspdf).
-    const setWordSpacing = (mm) => {
-        pdf.internal.write(`${(mm * pdf.internal.scaleFactor).toFixed(3)} Tw`);
-    };
-
-    const drawRichParagraph = (segments) => {
-        const words = tokenize(pdf, segments, BODY_SIZE);
-        if (words.length === 0) return;
-        pdf.setFontSize(BODY_SIZE);
+    // Dibuja un texto (con marcas de negrilla) que se ajusta al ancho. Cada
+    // palabra se dibuja run por run en su x exacto — sin `Tw` — para poder
+    // mezclar normal/negrilla dentro de una palabra. `justify` reparte el
+    // sobrante entre palabras (última línea nunca se justifica).
+    const drawMarkedText = (marked, { justify = true, startX = MARGIN.left } = {}) => {
         pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(BODY_SIZE);
         const spaceW = pdf.getTextWidth(' ');
+        const maxW = PAGE.width - MARGIN.right - startX;
 
-        // 1) partir en líneas con nuestras métricas
+        const words = wordsFromMarked(pdf, marked, BODY_SIZE);
+        if (words.length === 0) return;
+
+        // partir en líneas
         const lines = [];
         let line = [];
         let lineW = 0;
         for (const w of words) {
             const extra = line.length > 0 ? spaceW : 0;
-            if (lineW + extra + w.width > CONTENT_WIDTH && line.length > 0) {
-                lines.push(line);
+            if (lineW + extra + w.width > maxW && line.length > 0) {
+                lines.push({ words: line, w: lineW });
                 line = [];
                 lineW = 0;
             }
             line.push(w);
             lineW += (line.length > 1 ? spaceW : 0) + w.width;
         }
-        if (line.length > 0) lines.push(line);
+        if (line.length > 0) lines.push({ words: line, w: lineW });
 
-        // 2) dibujar cada línea como corridas de un mismo estilo
-        lines.forEach((ws, li) => {
+        lines.forEach((ln, li) => {
             ensureSpace(LINE_HEIGHT);
             const isLast = li === lines.length - 1;
-            const gaps = ws.length - 1;
-            const contentW = ws.reduce((s, w) => s + w.width, 0) + gaps * spaceW;
-            const tw = (!isLast && gaps > 0) ? Math.max(0, (CONTENT_WIDTH - contentW) / gaps) : 0;
-            setWordSpacing(tw);
-
-            // corridas consecutivas del mismo estilo → una sola cadena
-            let x = MARGIN.left;
-            let run = [];
-            const flushRun = () => {
-                if (run.length === 0) return;
-                pdf.setFont('helvetica', run[0].bold ? 'bold' : 'normal');
-                pdf.text(run.map((w) => w.text).join(' '), x, y);
-                const runW = run.reduce((s, w) => s + w.width, 0) + (run.length - 1) * (spaceW + tw);
-                x += runW + spaceW + tw; // espacio entre corridas
-                run = [];
-            };
-            for (const w of ws) {
-                if (run.length > 0 && run[0].bold !== w.bold) flushRun();
-                run.push(w);
-            }
-            flushRun();
+            const gaps = ln.words.length - 1;
+            const extraGap = (justify && !isLast && gaps > 0) ? Math.max(0, (maxW - ln.w) / gaps) : 0;
+            let x = startX;
+            ln.words.forEach((word, wi) => {
+                for (const run of word.runs) {
+                    pdf.setFont('helvetica', run.bold ? 'bold' : 'normal');
+                    pdf.text(run.text, x, y);
+                    x += run.width;
+                }
+                if (wi < ln.words.length - 1) x += spaceW + extraGap;
+            });
             y += LINE_HEIGHT;
         });
-        setWordSpacing(0);
-        y += 2.2;
     };
 
     drawPageHeader();
@@ -172,35 +165,42 @@ export async function generateContractPdf(contract) {
             pdf.text(block.text, PAGE.width / 2, y, { align: 'center' });
             y += 7;
         } else if (block.kind === 'kv') {
+            // Encabezado del arrendamiento: etiqueta y valor en negrilla (como la
+            // proforma). Las marcas se quitan aquí porque ya va todo en negrilla.
             pdf.setFontSize(BODY_SIZE);
             pdf.setFont('helvetica', 'bold');
-            const valueLines = pdf.splitTextToSize(block.value, CONTENT_WIDTH - KV_LABEL_WIDTH);
+            const valueLines = pdf.splitTextToSize(stripMarks(block.value), CONTENT_WIDTH - KV_LABEL_WIDTH);
             ensureSpace(valueLines.length * LINE_HEIGHT + 1);
             pdf.text(block.label, MARGIN.left, y);
             pdf.text(valueLines, MARGIN.left + KV_LABEL_WIDTH, y);
             y += valueLines.length * LINE_HEIGHT + 1.2;
         } else if (block.kind === 'table') {
+            // Cuadro resumen: etiqueta (fija) normal, valor (dinámico) en
+            // negrilla (#22). autoTable no admite negrilla parcial, así que se
+            // quitan las marcas y se pone toda la columna de valores en negrilla.
+            const rows = block.rows.map(([label, value]) => [stripMarks(label), stripMarks(value)]);
             autoTable(pdf, {
                 startY: y,
                 margin: { left: MARGIN.left, right: MARGIN.right, top: MARGIN.top },
                 head: [],
-                body: block.rows,
+                body: rows,
                 theme: 'grid',
                 styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.5, lineColor: [90, 90, 90], lineWidth: 0.15, textColor: [15, 15, 15] },
                 columnStyles: {
-                    0: { cellWidth: 52, fontStyle: 'bold' },
-                    1: { cellWidth: CONTENT_WIDTH - 52 },
+                    0: { cellWidth: 52 },
+                    1: { cellWidth: CONTENT_WIDTH - 52, fontStyle: 'bold' },
                 },
                 didAddPage: () => { drawPageHeader(); },
             });
             y = pdf.lastAutoTable.finalY + 5;
         } else if (block.kind === 'clause') {
-            drawRichParagraph([
-                { text: block.lead, bold: true },
-                { text: block.text, bold: false },
-            ]);
+            // Título de la cláusula en negrilla + texto con valores dinámicos
+            // en negrilla. El lead se marca envolviéndolo en el centinela.
+            drawMarkedText(`${VALUE_MARK}${block.lead}${VALUE_MARK} ${block.text}`);
+            y += 2.2;
         } else if (block.kind === 'paragraph') {
-            drawRichParagraph([{ text: block.text, bold: false }]);
+            drawMarkedText(block.text);
+            y += 2.2;
         } else if (block.kind === 'signature') {
             const height = 16 + block.lines.length * LINE_HEIGHT;
             ensureSpace(height + 4);
@@ -214,14 +214,9 @@ export async function generateContractPdf(contract) {
             pdf.setFont('helvetica', 'bold');
             pdf.text(block.role, MARGIN.left, y);
             y += LINE_HEIGHT + 0.5;
-            pdf.setFont('helvetica', 'normal');
+            // Cada línea (NOMBRE: valor) con el valor en negrilla; envuelve si es larga
             for (const line of block.lines) {
-                // Direcciones/correos largos: envolver, nunca salirse del margen
-                for (const wrapped of pdf.splitTextToSize(line, CONTENT_WIDTH)) {
-                    ensureSpace(LINE_HEIGHT);
-                    pdf.text(wrapped, MARGIN.left, y);
-                    y += LINE_HEIGHT;
-                }
+                drawMarkedText(line, { justify: false });
             }
         }
     }

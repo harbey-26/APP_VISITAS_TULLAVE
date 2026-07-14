@@ -24,29 +24,51 @@ import { EMPRESA, getTemplate } from './contractTemplates.js';
 import { montoEnLetras, numeroALetras, formatoCifra } from './numeroALetras.js';
 import { fechaCorta, fechaCortaCaps, fechaEnLetras } from './fechaLetras.js';
 
+// #22: los valores dinámicos (los que diligencia el usuario) se envuelven en
+// una marca para que el PDF y la vista previa los rendericen en NEGRILLA,
+// distinguiéndolos del texto fijo de la plantilla. Los datos fijos de la
+// empresa (EMPRESA.*) NO se marcan a propósito: no son datos dinámicos.
+export const VALUE_MARK = String.fromCharCode(1); // centinela invisible
+const b = (s) => (s === '' || s == null ? '' : `${VALUE_MARK}${s}${VALUE_MARK}`);
+
+// Divide una cadena con marcas en segmentos [{ text, bold }].
+export function splitMarks(str) {
+    return String(str).split(VALUE_MARK)
+        .map((text, i) => ({ text, bold: i % 2 === 1 }))
+        .filter((s) => s.text !== '');
+}
+
+// Quita las marcas (para contextos de estilo uniforme, p. ej. encabezado).
+export function stripMarks(str) {
+    return String(str).split(VALUE_MARK).join('');
+}
+
 // Valor o raya para dejar el espacio visible en borradores incompletos.
 const BLANK = '________';
-const v = (x) => (x != null && String(x).trim() !== '' ? String(x).trim() : BLANK);
+const v = (x) => b(x != null && String(x).trim() !== '' ? String(x).trim() : BLANK);
 const money = (x) => (x != null && String(x).trim() !== '' && !isNaN(Number(x))
-    ? `${montoEnLetras(x)} moneda corriente`
-    : BLANK);
-const cifra = (x) => (x != null && String(x).trim() !== '' && !isNaN(Number(x))
+    ? `${b(montoEnLetras(x))} moneda corriente`
+    : b(BLANK));
+const cifra = (x) => b(x != null && String(x).trim() !== '' && !isNaN(Number(x))
     ? `$${formatoCifra(x)}`
     : BLANK);
-const fecha = (x) => fechaCorta(x) || BLANK;
-const fechaCaps = (x) => fechaCortaCaps(x) || BLANK;
-const siNo = (x) => (x ? 'SÍ' : 'NO');
+const fecha = (x) => b(fechaCorta(x) || BLANK);
+const fechaCaps = (x) => b(fechaCortaCaps(x) || BLANK);
+const fechaLetrasB = (x) => b(fechaEnLetras(x) || BLANK); // fecha en letras, en negrilla
+const siNo = (x) => b(x ? 'SÍ' : 'NO');
 
 function mesesEnLetras(n) {
     const num = Number(n);
-    if (!num || isNaN(num)) return BLANK;
-    return `${numeroALetras(num).toUpperCase()} (${num}) MESES`;
+    if (!num || isNaN(num)) return b(BLANK);
+    return b(`${numeroALetras(num).toUpperCase()} (${num}) MESES`);
 }
 
 // Une dirección y ciudad evitando duplicarla: las direcciones de Google
 // Places ya suelen traer "..., Bogotá, Colombia".
+// Devuelve texto PLANO (sin marcas); quien lo use decide si va en negrilla,
+// para no chocar con sinPuntoFinal ni con el render de tablas.
 function direccionCiudad(dir, ciudad) {
-    const d = v(dir);
+    const d = String(dir || '').trim() || BLANK;
     const c = String(ciudad || '').trim();
     if (!c) return d;
     const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -106,7 +128,7 @@ function buildAdministracion(d) {
             ...otrosPropietarios.flatMap((o, i) => filasPropietario(o.nombre, o.cedula, o.direccion, o.telefono, o.email, i + 2)),
             ['Tipo de Inmueble', v(d.tipoInmueble)],
             ['Ciudad de Ubicación', v(d.ciudadInmueble)],
-            ['Dirección', dirInmueble],
+            ['Dirección', v(dirInmueble)],
             ['Matrícula Inmobiliaria', v(d.matriculaInmobiliaria)],
             ['Estrato', v(d.estrato)],
             ['Cédula Catastral', v(d.cedulaCatastral)],
@@ -204,7 +226,7 @@ function buildAdministracion(d) {
 
     blocks.push({
         kind: 'paragraph',
-        text: `En señal de conformidad, los contratantes suscriben este documento en dos ejemplares del mismo tenor y valor, el día ${fechaEnLetras(d.fechaFirma) || BLANK}. Para efectos de recibir notificaciones judiciales y extrajudiciales, las partes a continuación y al suscribir este contrato proceden a indicar sus respectivas direcciones:`,
+        text: `En señal de conformidad, los contratantes suscriben este documento en dos ejemplares del mismo tenor y valor, el día ${fechaLetrasB(d.fechaFirma)}. Para efectos de recibir notificaciones judiciales y extrajudiciales, las partes a continuación y al suscribir este contrato proceden a indicar sus respectivas direcciones:`,
     });
 
     // Un bloque de firma por cada propietario (numerado si hay varios dueños).
@@ -290,7 +312,7 @@ function buildArrendamiento(d) {
             `Mediante el presente contrato EL ARRENDADOR concede al ARRENDATARIO el uso y goce del inmueble que más adelante se identifica, obligándose éste a pagar a aquél una renta de arrendamiento${tieneAdmin ? ', una cuota de administración' : ''} y a destinarlo exclusivamente para VIVIENDA URBANA de él y su familia. El presente contrato se regirá en todas sus partes por las cláusulas aquí consignadas, así como por los términos de la LEY 820 DE 2003 (Ley de arrendamiento de vivienda urbana), el Código Civil y demás normas concordantes vigentes.`],
 
         ['SEGUNDA: IDENTIFICACIÓN DEL INMUEBLE:',
-            `El presente contrato recae sobre el siguiente inmueble: ${sinPuntoFinal(inmueble)}.`],
+            `El presente contrato recae sobre el siguiente inmueble: ${v(sinPuntoFinal(inmueble))}.`],
 
         ['TERCERA: PRECIO Y FORMA DE PAGO:',
             `El valor mensual del contrato por concepto de arrendamiento es la suma de ${money(d.canon)}${tieneAdmin ? `, y ${money(d.cuotaAdministracion)} corresponden a cuotas ordinarias de administración` : ''}, que EL ARRENDATARIO se obliga a pagar al ARRENDADOR en su totalidad, anticipadamente, dentro de los cinco (5) primeros días de cada período, a su orden por escrito o a quien éste autorice o delegue previamente y por escrito para recibir dicha renta. PARÁGRAFO PRIMERO: La mera tolerancia del ARRENDADOR en aceptar el pago del precio del arrendamiento${tieneAdmin ? ' y su cuota de administración' : ''} con posterioridad a su vencimiento no se entenderá como ánimo de novación o de modificación del término establecido para el pago en este contrato. PARÁGRAFO SEGUNDO: En caso de mora o retardo en el pago del precio mensual del contrato, de acuerdo con lo previsto en la presente cláusula, EL ARRENDADOR podrá dar por terminado unilateralmente con justa causa el presente contrato y exigir la entrega inmediata del inmueble, para lo cual el ARRENDATARIO renuncia expresamente a los requerimientos privados y judiciales previstos en la ley (artículos 1594 y 2007 del Código Civil). PARÁGRAFO — FORMA DE PAGO: El arrendatario pagará el precio del arrendamiento en las oficinas del arrendador, hoy ${EMPRESA.direccion} de la ciudad de ${sinPuntoFinal(EMPRESA.ciudad)}, o mediante consignación en la ${EMPRESA.cuentaRecaudo} del ${EMPRESA.bancoRecaudo} a nombre de ${EMPRESA.razonSocial}.`],
@@ -304,7 +326,7 @@ function buildArrendamiento(d) {
                 : `No aplica para el presente contrato. En caso de que el inmueble llegue a estar sometido al régimen de propiedad horizontal, EL ARRENDATARIO se compromete a cumplir y a respetar cabalmente las normas establecidas por el reglamento de propiedad horizontal y su cuerpo normativo.`],
 
         ['SEXTA: VIGENCIA DEL CONTRATO:',
-            `${mesesEnLetras(d.duracionMeses)}, que comienzan a contarse el ${fechaEnLetras(d.fechaInicio) || BLANK}.`],
+            `${mesesEnLetras(d.duracionMeses)}, que comienzan a contarse el ${fechaLetrasB(d.fechaInicio)}.`],
 
         ['SÉPTIMA: PRÓRROGAS:',
             `Si a la fecha del vencimiento del término inicial o de cualquiera de sus prórrogas ninguna de las partes ha dado aviso a la otra, con antelación no menor a tres (3) meses a la fecha de vencimiento, de su intención de darlo por terminado, el presente contrato de arrendamiento se entenderá prorrogado en iguales condiciones y por el mismo término indicado en la cláusula anterior, siempre y cuando cada una de las partes haya cumplido con las obligaciones a su cargo y el ARRENDATARIO se avenga a los reajustes autorizados por la Ley.`],
@@ -364,7 +386,7 @@ function buildArrendamiento(d) {
 
     blocks.push({
         kind: 'paragraph',
-        text: `Para constancia se firma por las partes el ${fechaEnLetras(d.fechaFirma) || BLANK}, y declaran que han recibido copia del presente contrato. Para efectos de recibir notificaciones judiciales y extrajudiciales, las partes, en cumplimiento del Art. 12 de la Ley 820 de 2003, a continuación y al suscribir este contrato proceden a indicar sus respectivas direcciones:`,
+        text: `Para constancia se firma por las partes el ${fechaLetrasB(d.fechaFirma)}, y declaran que han recibido copia del presente contrato. Para efectos de recibir notificaciones judiciales y extrajudiciales, las partes, en cumplimiento del Art. 12 de la Ley 820 de 2003, a continuación y al suscribir este contrato proceden a indicar sus respectivas direcciones:`,
     });
 
     blocks.push({
@@ -386,7 +408,7 @@ function buildArrendamiento(d) {
         lines: [
             `NOMBRE: ${v(d.arrendatarioNombre)}`,
             `C.C. No. ${v(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}`,
-            `Dir. Notificación: ${dirNotifArrendatario}`,
+            `Dir. Notificación: ${v(dirNotifArrendatario)}`,
             `Ciudad: ${v(d.arrendatarioCiudad)}`,
             `Celular: ${v(d.arrendatarioCelular)}`,
             `E-MAIL: ${v(d.arrendatarioEmail)}`,

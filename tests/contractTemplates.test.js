@@ -117,9 +117,12 @@ describe('validateContractData', () => {
 });
 
 describe('buildContractDocument', () => {
-    const textoCompleto = (doc) => doc.blocks
+    // #22: los valores dinámicos llevan un centinela invisible (negrilla); se
+    // quita para poder comparar el texto plano.
+    const clean = (s) => String(s).split(String.fromCharCode(1)).join('');
+    const textoCompleto = (doc) => clean(doc.blocks
         .map((b) => [b.lead, b.text, b.label, b.value].filter(Boolean).join(' '))
-        .join('\n');
+        .join('\n'));
 
     it('administración: interpola datos en cuadro resumen y cláusulas', () => {
         const data = {
@@ -135,7 +138,7 @@ describe('buildContractDocument', () => {
         expect(doc.title).toBe('CONTRATO DE ADMINISTRACIÓN DE INMUEBLES'); // plural, como la proforma
         expect(doc.pageHeader.title).toBe('CONTRATO DE ADMINISTRACIÓN DE INMUEBLES');
         const table = doc.blocks.find((b) => b.kind === 'table');
-        const flat = table.rows.map((r) => r.join(': ')).join('\n');
+        const flat = clean(table.rows.map((r) => r.join(': ')).join('\n'));
         expect(flat).toContain('IRMA LUCÍA VALENZUELA');
         expect(flat).toContain('UN MILLÓN CUARENTA Y SIETE MIL CIEN PESOS ($1.047.100)');
         const leads = doc.blocks.filter((b) => b.kind === 'clause').map((b) => b.lead).join('\n');
@@ -154,7 +157,7 @@ describe('buildContractDocument', () => {
         };
         const doc = buildContractDocument('ADMINISTRACION', data);
         const table = doc.blocks.find((b) => b.kind === 'table');
-        const flat = table.rows.map((r) => r.join(': ')).join('\n');
+        const flat = clean(table.rows.map((r) => r.join(': ')).join('\n'));
         // numerados cuando hay varios dueños
         expect(flat).toContain('Propietario 1/Mandante: IRMA VALENZUELA');
         expect(flat).toContain('Propietario 2/Mandante: CARLOS PÉREZ');
@@ -169,7 +172,7 @@ describe('buildContractDocument', () => {
         const data = { ...emptyFormData('ADMINISTRACION'), propietarioNombre: 'IRMA VALENZUELA' };
         const doc = buildContractDocument('ADMINISTRACION', data);
         const table = doc.blocks.find((b) => b.kind === 'table');
-        const flat = table.rows.map((r) => r.join(': ')).join('\n');
+        const flat = clean(table.rows.map((r) => r.join(': ')).join('\n'));
         expect(flat).toContain('Propietario/Mandante: IRMA VALENZUELA');
         expect(flat).not.toContain('Propietario 1/Mandante');
         const firmas = doc.blocks.filter((b) => b.kind === 'signature');
@@ -187,9 +190,9 @@ describe('buildContractDocument', () => {
         };
         const doc = buildContractDocument('ARRENDAMIENTO', data);
         const tercera = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('TERCERA'));
-        expect(tercera.text).toContain('arrendamiento es la suma de UN MILLÓN CUARENTA Y SIETE MIL CIEN PESOS ($1.047.100)');
-        expect(tercera.text).toContain('CIENTO CINCUENTA Y DOS MIL NOVECIENTOS PESOS ($152.900)');
-        expect(tercera.text).not.toContain('$1.200.000'); // nunca la suma
+        expect(clean(tercera.text)).toContain('arrendamiento es la suma de UN MILLÓN CUARENTA Y SIETE MIL CIEN PESOS ($1.047.100)');
+        expect(clean(tercera.text)).toContain('CIENTO CINCUENTA Y DOS MIL NOVECIENTOS PESOS ($152.900)');
+        expect(clean(tercera.text)).not.toContain('$1.200.000'); // nunca la suma
         const texto = textoCompleto(doc);
         expect(texto).toContain('RAMÓN MARTÍNEZ');
         expect(texto).toContain('primero (01) de agosto de dos mil veintiséis (2026)');
@@ -206,9 +209,9 @@ describe('buildContractDocument', () => {
         };
         const doc = buildContractDocument('ARRENDAMIENTO', data);
         const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
-        expect(segunda.text).toContain('CL. 17D #111A-35, BOGOTÁ, COLOMBIA.');
-        expect(segunda.text).not.toContain('COLOMBIA, BOGOTÁ D.C.');
-        expect(segunda.text).not.toMatch(/\.\./); // sin doble punto final
+        expect(clean(segunda.text)).toContain('CL. 17D #111A-35, BOGOTÁ, COLOMBIA.');
+        expect(clean(segunda.text)).not.toContain('COLOMBIA, BOGOTÁ D.C.');
+        expect(clean(segunda.text)).not.toMatch(/\.\./); // sin doble punto final
     });
 
     it('imprime en MAYÚSCULAS los datos guardados en minúsculas (correos intactos)', () => {
@@ -235,15 +238,15 @@ describe('buildContractDocument', () => {
         };
         const doc = buildContractDocument('ARRENDAMIENTO', data);
         const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
-        expect(segunda.text).toContain('CRA 98 #2-44, TORRE 2, APTO 706, CONJUNTO PARQUE CENTRAL');
+        expect(clean(segunda.text)).toContain('CRA 98 #2-44, TORRE 2, APTO 706, CONJUNTO PARQUE CENTRAL');
     });
 
     it('omite Torre/Apto/Conjunto vacíos en la dirección (ej.: casas)', () => {
         const data = { ...emptyFormData('ARRENDAMIENTO'), direccionInmueble: 'Cl 50 #10-20', ciudadInmueble: 'Bogotá D.C.' };
         const doc = buildContractDocument('ARRENDAMIENTO', data);
         const segunda = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA'));
-        expect(segunda.text).toContain('CL 50 #10-20');
-        expect(segunda.text).not.toMatch(/,\s*,/); // sin comas dobles por campos vacíos
+        expect(clean(segunda.text)).toContain('CL 50 #10-20');
+        expect(clean(segunda.text)).not.toMatch(/,\s*,/); // sin comas dobles por campos vacíos
     });
 
     it('dirección de notificación del arrendatario es independiente y con Torre/Apto (#26)', () => {
