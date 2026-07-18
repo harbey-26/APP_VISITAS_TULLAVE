@@ -21,7 +21,7 @@
 // Si el abogado cambia una cláusula, se edita aquí.
 
 import { EMPRESA, getTemplate } from './contractTemplates.js';
-import { montoEnLetras, numeroALetras, formatoCifra } from './numeroALetras.js';
+import { montoEnLetras, numeroALetras, formatoCifra, formatoIdentificacion } from './numeroALetras.js';
 import { fechaCorta, fechaCortaCaps, fechaEnLetras } from './fechaLetras.js';
 
 // #22: los valores dinámicos (los que diligencia el usuario) se envuelven en
@@ -46,6 +46,12 @@ export function stripMarks(str) {
 // Valor o raya para dejar el espacio visible en borradores incompletos.
 const BLANK = '________';
 const v = (x) => b(x != null && String(x).trim() !== '' ? String(x).trim() : BLANK);
+// #27: toda identificación (C.C./NIT) se muestra con separador de miles, sin
+// importar el rol ni la sección. El formato se aplica al renderizar, no al
+// guardar: en la BD el número queda tal cual lo tecleó el agente.
+const ident = (x) => (x != null && String(x).trim() !== ''
+    ? b(formatoIdentificacion(x))
+    : b(BLANK));
 const money = (x) => (x != null && String(x).trim() !== '' && !isNaN(Number(x))
     ? `${b(montoEnLetras(x))} moneda corriente`
     : b(BLANK));
@@ -128,7 +134,7 @@ function buildAdministracion(d) {
     // Filas del cuadro resumen para cada propietario (numeradas si hay varios).
     const filasPropietario = (nombre, cedula, direccion, telefono, email, n) => [
         [n ? `Propietario ${n}/Mandante` : 'Propietario/Mandante', v(nombre)],
-        ['No. de Identificación', v(cedula)],
+        ['No. de Identificación', ident(cedula)],
         ['Dirección de notificación', v(direccion)],
         ['Teléfono', v(telefono)],
         ['Correo electrónico', v(email)],
@@ -253,7 +259,7 @@ function buildAdministracion(d) {
         role,
         lines: [
             `NOMBRE: ${v(nombre)}`,
-            `CÉDULA: ${v(cedula)}`,
+            `CÉDULA: ${ident(cedula)}`,
             `DIRECCIÓN: ${v(direccion)}`,
             `TELÉFONO: ${v(telefono)}`,
             `EMAIL: ${v(email)}`,
@@ -292,7 +298,7 @@ function nombresDeudores(deudores) {
     const list = Array.isArray(deudores) ? deudores.filter((x) => x?.nombre) : [];
     if (list.length === 0) return BLANK;
     return list
-        .map((x) => `${v(x.nombre)}, identificado(a) con C.C. No. ${v(x.cedula)} de ${v(x.lugarExpedicion)}`)
+        .map((x) => `${v(x.nombre)}, identificado(a) con C.C. No. ${ident(x.cedula)} de ${v(x.lugarExpedicion)}`)
         .join('; ');
 }
 
@@ -311,11 +317,11 @@ function buildArrendamiento(d) {
     blocks.push({ kind: 'kv', label: 'ARRENDADOR (ES):', value: EMPRESA.razonSocial });
     blocks.push({ kind: 'kv', label: 'NIT:', value: EMPRESA.nit });
     blocks.push({ kind: 'kv', label: 'ARRENDATARIO (S):', value: v(d.arrendatarioNombre) });
-    blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${v(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}` });
+    blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${ident(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}` });
     if (deudores.length > 0) {
         deudores.forEach((x, i) => {
             blocks.push({ kind: 'kv', label: i === 0 ? 'DEUDOR(ES) SOLIDARIOS:' : ' ', value: v(x.nombre).toUpperCase() });
-            blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${v(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}` });
+            blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}` });
         });
     } else {
         blocks.push({ kind: 'kv', label: 'DEUDOR(ES) SOLIDARIOS:', value: BLANK });
@@ -425,7 +431,7 @@ function buildArrendamiento(d) {
         role: 'EL ARRENDATARIO',
         lines: [
             `NOMBRE: ${v(d.arrendatarioNombre)}`,
-            `C.C. No. ${v(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}`,
+            `C.C. No. ${ident(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}`,
             `Dir. Notificación: ${v(dirNotifArrendatario)}`,
             `Ciudad: ${v(d.arrendatarioCiudad)}`,
             `Celular: ${v(d.arrendatarioCelular)}`,
@@ -438,7 +444,7 @@ function buildArrendamiento(d) {
             role: deudores.length > 1 ? `DEUDOR SOLIDARIO ${i + 1}` : 'EL DEUDOR SOLIDARIO',
             lines: [
                 `NOMBRE: ${v(x.nombre)}`,
-                `C.C. No. ${v(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}`,
+                `C.C. No. ${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}`,
                 `Dir. Notificación: ${v(componerDireccion(x.direccion, x.torre, x.apto, x.conjunto))}`,
                 `Ciudad: ${v(x.ciudad)}`,
                 `Celular: ${v(x.celular)}`,

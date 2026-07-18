@@ -82,6 +82,24 @@ export function formatoCifra(n) {
     return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+// Formatea un número de identificación (C.C./NIT) con separador de miles
+// colombiano: "1041980003" → "1.041.980.003". El agente puede teclearlo con o
+// sin puntos (en la BD se guarda tal cual), por eso primero se normaliza.
+// Los NIT con dígito de verificación conservan el sufijo: "9010904441-1" →
+// "901.090.444-1". Si el valor trae letras u otro formato, se devuelve intacto
+// para no corromper el dato.
+export function formatoIdentificacion(id) {
+    const raw = id == null ? '' : String(id).trim();
+    const m = /^([\d.\s]+?)(-\s*(\w))?$/.exec(raw);
+    if (!m) return raw;
+    const digitos = m[1].replace(/\D/g, '');
+    if (digitos === '') return raw;
+    // Agrupación sobre la cadena de dígitos (no sobre Number) para no perder
+    // precisión ni ceros a la izquierda.
+    const agrupado = digitos.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return m[3] ? `${agrupado}-${m[3]}` : agrupado;
+}
+
 // Monto en el formato de los contratos:
 // 1047100 → "UN MILLÓN CUARENTA Y SIETE MIL CIEN PESOS ($1.047.100)".
 export function montoEnLetras(n) {
