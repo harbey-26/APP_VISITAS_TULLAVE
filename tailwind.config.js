@@ -39,11 +39,28 @@ export default {
                 shimmer: {
                     '100%': { transform: 'translateX(100%)' },
                 },
+                // SlideToConfirm — pista de "desliza para confirmar"
+                nudge: {
+                    '0%, 100%': { transform: 'translateX(0)' },
+                    '50%':      { transform: 'translateX(4px)' },
+                },
+                pop: {
+                    '0%':   { transform: 'scale(0.5)', opacity: '0' },
+                    '60%':  { transform: 'scale(1.12)', opacity: '1' },
+                    '100%': { transform: 'scale(1)', opacity: '1' },
+                },
+                ripple: {
+                    '0%':   { transform: 'scale(1)', opacity: '0.5' },
+                    '100%': { transform: 'scale(2.4)', opacity: '0' },
+                },
             },
             animation: {
                 'slide-up': 'slide-up 0.2s ease-out',
                 'fade-in':  'fade-in 0.25s ease-out',
                 shimmer:    'shimmer 1.6s infinite',
+                nudge:      'nudge 1.8s ease-in-out infinite',
+                pop:        'pop 0.35s cubic-bezier(0.34,1.56,0.64,1) both',
+                ripple:     'ripple 0.7s ease-out forwards',
             },
         },
     },

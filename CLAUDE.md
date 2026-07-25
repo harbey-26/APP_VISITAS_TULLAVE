@@ -35,7 +35,8 @@ APP_VISITAS_TULLAVE/
 │   │   └── VisitExecution.jsx  # Ejecución de visita (agente)
 │   ├── components/
 │   │   ├── layout/Layout.jsx       # Sidebar + nav móvil + GPS + WakeLock
-│   │   └── AddressAutocomplete.jsx # Input de dirección con Google Places (compartido)
+│   │   ├── AddressAutocomplete.jsx # Input de dirección con Google Places (compartido)
+│   │   └── SlideToConfirm.jsx      # "Desliza para confirmar" (acciones irreversibles)
 │   ├── controllers/            # Lógica de negocio Express
 │   ├── routes/                 # Endpoints de la API
 │   ├── context/
@@ -317,7 +318,14 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   (https://app.autenticsign.com — plataforma que ya usa el cliente)
 
 ### Otras páginas
-- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un botón "Registrar llamada" que cierra la visita en un paso (`complete-call`), sin pedir ubicación
+- `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación
+- **Acciones con `SlideToConfirm`** (iniciar / finalizar / registrar llamada): el
+  gesto de arrastre ES la confirmación, por eso ya **no hay modal** de "¿confirmas?".
+  El control anima la estela de color, hace vibrar el dispositivo y muestra check +
+  onda al completar; si la acción falla (GPS, geofencing, red) vuelve solo a la
+  posición inicial para reintentar — esa recuperación depende de que el padre pase
+  `loading` y lo baje a `false` en el error. Se **bloquea** (`disabled`) mientras
+  falte el resultado de la visita, en vez de validar después del gesto
 - `Tracking.jsx` — mapa en tiempo real de agentes con clustering y comunicados; tabla "Check-in horario" muestra el nombre completo del agente
 - `Users.jsx` / `Properties.jsx` — CRUD completo. Inmuebles usa `AddressAutocomplete` (Places) + picker de mapa manual como ajuste fino
 

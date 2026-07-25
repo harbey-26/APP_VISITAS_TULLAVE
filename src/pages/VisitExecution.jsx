@@ -10,7 +10,8 @@ import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
-import { Button, Modal, Select } from '../components/ui';
+import { Button, Select } from '../components/ui';
+import SlideToConfirm from '../components/SlideToConfirm';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -65,8 +66,6 @@ function VisitExecutionContent() {
     const [errorMsg, setErrorMsg] = useState(null);
     const [openVisitId, setOpenVisitId] = useState(null); // otra visita IN_PROGRESS que bloquea el check-in
     const [outcome, setOutcome] = useState('');
-    const [showFinishModal, setShowFinishModal] = useState(false);
-    const [showCallModal, setShowCallModal] = useState(false);
 
     // Captación por llamada: sin GPS, sin geofencing; se registra en un solo paso.
     const isPhone = visit?.modality === 'PHONE';
@@ -778,103 +777,62 @@ function VisitExecutionContent() {
                 </div>
             )}
 
-            {/* Action buttons */}
+            {/* Acciones — control deslizante: el gesto es la confirmación
+                (evita toques accidentales en una acción irreversible). */}
             {visit.status === 'PENDING' && !isPhone && (
-                <button
-                    onClick={handleStart}
-                    disabled={loading}
-                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg, #e31c25 0%, #b91c1c 100%)', boxShadow: '0 8px 24px rgba(227,28,37,0.35)' }}
-                >
-                    {loading ? (
-                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
-                    ) : (
-                        <Play className="w-6 h-6" />
-                    )}
-                    {loading ? 'Obteniendo ubicación...' : 'Iniciar Visita'}
-                </button>
+                <SlideToConfirm
+                    variant="brand"
+                    icon={Play}
+                    label="Desliza para iniciar"
+                    successLabel="Iniciando visita..."
+                    loadingLabel="Obteniendo ubicación..."
+                    loading={loading}
+                    onConfirm={handleStart}
+                />
             )}
 
             {/* Visita por llamada: registro en un solo paso, sin GPS */}
             {visit.status === 'PENDING' && isPhone && (
-                <button
-                    onClick={() => { if (!outcome) { setErrorMsg('Debes seleccionar un resultado para registrar la llamada.'); return; } setShowCallModal(true); }}
-                    disabled={loading}
-                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', boxShadow: '0 8px 24px rgba(22,163,74,0.35)' }}
-                >
-                    {loading ? (
-                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
-                    ) : (
-                        <Phone className="w-6 h-6" />
-                    )}
-                    {loading ? 'Guardando...' : 'Registrar llamada'}
-                </button>
+                <div className="space-y-2">
+                    <SlideToConfirm
+                        variant="indigo"
+                        icon={Phone}
+                        label="Desliza para registrar"
+                        disabledLabel="Selecciona un resultado"
+                        successLabel="Registrando llamada..."
+                        loadingLabel="Guardando..."
+                        loading={loading}
+                        disabled={!outcome}
+                        onConfirm={handleCompleteCall}
+                    />
+                    <p className="text-xs text-gray-400 text-center px-4">
+                        Se registrará como captación por llamada (sin ubicación). Esta acción no se puede deshacer.
+                    </p>
+                </div>
             )}
 
             {visit.status === 'IN_PROGRESS' && (
-                <button
-                    onClick={() => setShowFinishModal(true)}
-                    disabled={loading}
-                    className="w-full text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', boxShadow: '0 8px 24px rgba(22,163,74,0.35)' }}
-                >
-                    {loading ? (
-                        <div className="w-6 h-6 border-[3px] border-white/40 border-t-white rounded-full animate-spin" />
-                    ) : (
-                        <CheckCircle className="w-6 h-6" />
-                    )}
-                    {loading ? 'Guardando...' : pendingRetry ? 'Reintentar envío' : 'Finalizar Visita'}
-                </button>
-            )}
-            <Modal open={showFinishModal} onClose={() => setShowFinishModal(false)} maxWidth="max-w-sm">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle className="w-6 h-6 text-green-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Finalizar Visita</h3>
-                <p className="text-gray-500 mb-5 text-sm text-center">¿Confirmas que deseas finalizar la visita? Esta acción no se puede deshacer.</p>
-                {isAdmin && (
-                    <p className="text-xs text-brand-600 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 mb-4 text-center font-medium">
-                        Como administrador puedes finalizar sin estar en la ubicación del inmueble.
+                <div className="space-y-2">
+                    <SlideToConfirm
+                        variant="success"
+                        icon={CheckCircle}
+                        label={pendingRetry ? 'Desliza para reintentar' : 'Desliza para finalizar'}
+                        disabledLabel="Selecciona un resultado"
+                        successLabel="Finalizando visita..."
+                        loadingLabel="Guardando..."
+                        loading={loading}
+                        disabled={!outcome}
+                        onConfirm={handleFinish}
+                    />
+                    <p className="text-xs text-gray-400 text-center px-4">
+                        {!outcome
+                            ? 'Selecciona el resultado de la visita para poder finalizarla.'
+                            : isAdmin
+                                ? 'Como administrador puedes finalizar sin estar en la ubicación del inmueble.'
+                                : 'Esta acción no se puede deshacer.'}
                     </p>
-                )}
-                {outcome && (
-                    <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
-                        <p className="text-gray-800 font-medium">{outcome}</p>
-                    </div>
-                )}
-                <div className="flex gap-3">
-                    <Button variant="secondary" className="flex-1" onClick={() => setShowFinishModal(false)}>
-                        Cancelar
-                    </Button>
-                    <Button variant="success" className="flex-1" loading={loading} onClick={() => { setShowFinishModal(false); handleFinish(); }}>
-                        Confirmar
-                    </Button>
                 </div>
-            </Modal>
-
-            <Modal open={showCallModal} onClose={() => setShowCallModal(false)} maxWidth="max-w-sm">
-                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Phone className="w-6 h-6 text-indigo-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Registrar llamada</h3>
-                <p className="text-gray-500 mb-5 text-sm text-center">Esta captación se registrará como realizada por llamada (sin ubicación). Esta acción no se puede deshacer.</p>
-                {outcome && (
-                    <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Resultado registrado</p>
-                        <p className="text-gray-800 font-medium">{outcome}</p>
-                    </div>
-                )}
-                <div className="flex gap-3">
-                    <Button variant="secondary" className="flex-1" onClick={() => setShowCallModal(false)}>
-                        Cancelar
-                    </Button>
-                    <Button variant="success" className="flex-1" loading={loading} onClick={() => { setShowCallModal(false); handleCompleteCall(); }}>
-                        Confirmar
-                    </Button>
-                </div>
-            </Modal>
+            )}
         </div>
     );
 }
