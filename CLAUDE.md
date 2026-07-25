@@ -339,6 +339,10 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   el workflow de CI usa `npm ci --ignore-scripts` para evitarlo
 - Los paquetes `@capacitor/geolocation` y `@capacitor-community/background-geolocation`
   están marcados como `external` en `vite.config.js` — el runtime nativo los resuelve
+- La dependencia `firebase` (SDK cliente) **parece muerta pero NO lo es**: ningún
+  archivo propio la importa, pero `@capacitor-firebase/messaging` la usa como peer
+  dependency opcional (`firebase/messaging` en su implementación web) y Vite la
+  necesita en build-time — quitarla rompe `npm run build` con `MISSING_EXPORT`
 - La label del step en el workflow dice "Setup Java 17" pero usa Java 21 (Capacitor v8 lo requiere)
 - **Google Maps — loader centralizado:** todos los `useJsApiLoader` deben importar y pasar `MAPS_LOADER_OPTIONS` desde `src/utils/mapsLoader.js` (mismo `id: 'google-map-script'` y mismas `libraries: ['places']`). Si un componente carga el script con opciones distintas, Google lanza "Loader must not be called again with different options" y, al navegar entre páginas con mapa, el ErrorBoundary lo captura como "error inesperado". Lo usan: Agenda, Tracking, VisitExecution, Properties
 - **Direcciones:** se capturan con `AddressAutocomplete` (Google Places) que entrega `lat/lng` exactos desde el navegador. El geocoding del servidor (`property.controller.js`, `process.env.GOOGLE_MAPS_API_KEY`) es solo respaldo y **falla en producción** si la key está restringida por referrer (las llamadas de servidor no llevan referrer) — por eso Places es el camino principal
