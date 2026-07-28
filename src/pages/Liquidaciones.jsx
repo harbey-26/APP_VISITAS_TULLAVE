@@ -136,6 +136,7 @@ export default function Liquidaciones() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
     const [agentFilter, setAgentFilter] = useState('');
+    const [wasiFilter, setWasiFilter] = useState(''); // filtro por código Wasi (admin)
     const [soloConSaldo, setSoloConSaldo] = useState(false);
     const [busy, setBusy] = useState(false);
 
@@ -446,9 +447,13 @@ export default function Liquidaciones() {
     const byAgent = (isAdmin && agentFilter)
         ? liquidaciones.filter((l) => String(l.user?.id) === agentFilter)
         : liquidaciones;
-    const bySaldo = soloConSaldo
-        ? byAgent.filter((l) => l.status === 'APPROVED' && (l.calc?.saldo ?? 0) > 0)
+    const byWasi = (isAdmin && wasiFilter.trim())
+        ? byAgent.filter((l) => String(l.data?.origen?.codigoWasi || '')
+            .toLowerCase().includes(wasiFilter.trim().toLowerCase()))
         : byAgent;
+    const bySaldo = soloConSaldo
+        ? byWasi.filter((l) => l.status === 'APPROVED' && (l.calc?.saldo ?? 0) > 0)
+        : byWasi;
     const filtered = statusFilter ? bySaldo.filter((l) => l.status === statusFilter) : bySaldo;
     const pendingCount = liquidaciones.filter((l) => l.status === 'PENDING_APPROVAL').length;
     const totalPorCobrar = liquidaciones
@@ -532,6 +537,17 @@ export default function Liquidaciones() {
                         </Select>
                     </div>
                 )}
+                {isAdmin && (
+                    <div className="relative w-full sm:w-44">
+                        <Receipt className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <Input
+                            className="pl-10"
+                            placeholder="Código Wasi"
+                            value={wasiFilter}
+                            onChange={(e) => setWasiFilter(e.target.value)}
+                        />
+                    </div>
+                )}
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                         type="checkbox"
@@ -577,7 +593,7 @@ export default function Liquidaciones() {
                 <EmptyState
                     icon={Receipt}
                     title="Sin liquidaciones"
-                    description={(statusFilter || agentFilter || soloConSaldo)
+                    description={(statusFilter || agentFilter || wasiFilter || soloConSaldo)
                         ? 'No hay liquidaciones con los filtros seleccionados.'
                         : 'Crea la primera desde un contrato de arrendamiento aprobado: botón "Liquidación" en la página de Contratos.'}
                 />
