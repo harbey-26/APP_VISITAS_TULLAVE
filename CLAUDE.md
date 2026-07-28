@@ -28,6 +28,7 @@ APP_VISITAS_TULLAVE/
 │   ├── pages/
 │   │   ├── Agenda.jsx          # Vista de agenda para agentes
 │   │   ├── Dashboard.jsx       # Panel de estadísticas (admin)
+│   │   ├── Liquidaciones.jsx   # Liquidación inicial + cuenta por cobrar (L1)
 │   │   ├── Login.jsx           # Autenticación
 │   │   ├── Properties.jsx      # CRUD inmuebles (admin)
 │   │   ├── Tracking.jsx        # Rastreo de agentes en tiempo real (admin)
@@ -119,6 +120,14 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
             en Prisma 5), userId (agente), visitId?, propertyId?,
             shareToken (link público, fase 2), reviewNote/reviewedBy/reviewedAt
             (visto bueno del admin), sentAt
+Liquidacion — id, status (DRAFT/REOPENED/PENDING_APPROVAL/APPROVED/REJECTED/PAID),
+            data (String JSON: { origen, config, totales }), contractId (@unique —
+            1:1 con el contrato ARRENDAMIENTO), userId, shareToken, reviewNote/
+            reviewedBy/reviewedAt, sentAt (compartir NO es estado, solo flag),
+            paidAt. `origen` = snapshot del contrato (bloqueado en UI); `totales`
+            se congela al aprobar (fuente del PDF definitivo)
+LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
+            registradoPor (auditoría) — tabla propia, no JSON
 ```
 
 ---
@@ -155,6 +164,18 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
 | POST | `/api/contracts/:id/email` | JWT | Envía el PDF adjunto al correo del cliente vía Gmail API |
 | GET | `/api/contracts/public/:token/pdf` | **No** | PDF público para el cliente final (solo contratos SENT) |
 | DELETE | `/api/contracts/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera) |
+| GET/POST | `/api/liquidaciones` | JWT | Liquidaciones (agente las suyas; admin todas). POST crea DRAFT desde `{contractId}` (ARRENDAMIENTO aprobado, 409 si ya existe) |
+| PATCH | `/api/liquidaciones/:id` | JWT | Editar SOLO `config` (estados editables). `origen` nunca se acepta del cliente |
+| POST | `/api/liquidaciones/:id/sync-contrato` | JWT | Re-importar el snapshot del contrato (solo editable) |
+| PATCH | `/api/liquidaciones/:id/submit` | JWT | Enviar a revisión (valida config) → notifica admins |
+| PATCH | `/api/liquidaciones/:id/review` | JWT+Admin | Aprobar (congela `data.totales`) o devolver con nota |
+| PATCH | `/api/liquidaciones/:id/reopen` | JWT | Reabrir APROBADA (solo sin pagos y sin enviar) |
+| POST | `/api/liquidaciones/:id/pagos` | JWT | Registrar pago (solo APPROVED); saldo $0 → PAID. Notifica a la contraparte |
+| DELETE | `/api/liquidaciones/:id/pagos/:pagoId` | JWT+Admin | Corregir un pago; si revive el saldo, PAID → APPROVED |
+| POST | `/api/liquidaciones/:id/share` | JWT | Link público (WhatsApp); marca `sentAt` sin cambiar status |
+| POST | `/api/liquidaciones/:id/email` | JWT | PDF adjunto al correo del arrendatario (Gmail API) |
+| GET | `/api/liquidaciones/public/:token/pdf` | **No** | PDF público para el arrendatario (solo compartidas) |
+| DELETE | `/api/liquidaciones/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera; cascade borra pagos) |
 
 ---
 
@@ -327,6 +348,39 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   Ajustes. El popup de WhatsApp se abre ANTES del await (popup blockers)
 - **Pendiente (fase 3):** firma electrónica con **Autentic**
   (https://app.autenticsign.com — plataforma que ya usa el cliente)
+
+### Liquidaciones (`Liquidaciones.jsx`) — módulo L1
+- Reemplaza el Excel "LIQUIDACION INICIO CONTRATO": prorrateo del primer mes,
+  derechos de contrato y firma digital (% de canon+admón, 15% por defecto),
+  estudio aseguradora, póliza, otros cargos/descuentos, IVA 19% por concepto,
+  abonos y saldo con monto en letras y datos de consignación (Davivienda)
+- Se crea **desde un contrato ARRENDAMIENTO aprobado** (botón "Liquidación" en
+  la card de Contratos → `/liquidaciones?contractId=N`, que abre la existente o
+  crea el borrador). 1:1 por contrato (`contractId @unique`)
+- **Sección A bloqueada**: los datos del contrato son un snapshot (`data.origen`)
+  que solo se refresca con "Re-importar" (`/sync-contrato`) — nunca se editan en
+  la liquidación para no generar inconsistencias. Link "Editar contrato de origen"
+- **Sección B**: fechas del cobro (recalculan días automáticamente, ajustables),
+  modo admón (proporcional/completa/no cobrar), % derechos, estudio, póliza,
+  abonos previos, otros cargos/descuentos — cada servicio con toggle IVA
+- **Sección C**: resumen en vivo con `calcularLiquidacion` de
+  `src/utils/liquidacionCalc.js` — **misma lógica pura en frontend, backend y
+  PDF** (tests en `tests/liquidacionCalc.test.js`, con paridad verificada contra
+  casos reales del Excel). Prorrateo: canon ÷ días reales del mes × días; admón
+  siempre ÷ 30 (como el Excel)
+- **Flujo igual a contratos**: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED
+  (editable de nuevo) — al aprobar el server congela `data.totales`. Reabrir solo
+  sin pagos y sin enviar. Notificaciones FCM en cada transición
+- **Cuenta por cobrar**: la liquidación APROBADA es la CxC. "Registrar pago"
+  (agente dueño o admin) agrega `LiquidacionPago` con auditoría; al llegar el
+  saldo a $0 pasa a **PAID** automáticamente. El admin puede eliminar un pago
+  (si revive el saldo vuelve a APPROVED). Filtro "Solo con saldo pendiente" y
+  total por cobrar en el header (admin)
+- **Envío al cliente**: igual que contratos — WhatsApp con link público
+  tokenizado (`/api/liquidaciones/public/:token/pdf`), correo con PDF adjunto
+  (Gmail API). Compartir marca `sentAt` pero NO cambia el estado (el ciclo
+  termina en PAID, no en SENT). PDF de una página con `liquidacionPdf.js`
+  (jspdf isomorfo, marca de agua BORRADOR si no está aprobada)
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

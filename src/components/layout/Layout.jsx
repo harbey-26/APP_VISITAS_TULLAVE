@@ -22,7 +22,8 @@ import {
     Bell,
     LayoutDashboard,
     Settings as SettingsIcon,
-    FileText
+    FileText,
+    Receipt
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationsContext';
 
@@ -303,6 +304,7 @@ export default function Layout() {
         { to: '/agenda',     icon: Calendar,        label: 'Agenda'    },
         ...(!isAdmin ? [
             { to: '/contracts', icon: FileText, label: 'Contratos' },
+            { to: '/liquidaciones', icon: Receipt, label: 'Liquidaciones' },
         ] : []),
         ...(isAdmin ? [
             { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
@@ -407,6 +409,7 @@ export default function Layout() {
                     </p>
                     <NavItem to="/agenda" icon={Calendar} label="Agenda" />
                     <NavItem to="/contracts" icon={FileText} label="Contratos" />
+                    <NavItem to="/liquidaciones" icon={Receipt} label="Liquidaciones" />
                     <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
 
                     {isAdmin && (

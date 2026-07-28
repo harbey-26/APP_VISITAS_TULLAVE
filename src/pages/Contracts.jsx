@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch, friendlyError } from '../utils/api';
@@ -19,7 +20,7 @@ import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import {
     FileText, Plus, Pencil, Eye, Send, Download, Trash2, CheckCircle,
-    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, RotateCcw, User,
+    Undo2, ChevronLeft, ChevronRight, UserPlus, X, MessageCircle, Mail, RotateCcw, User, Receipt,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ function ContractPreview({ type, data }) {
 
 export default function Contracts() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
     // Google Places para los campos de dirección (opciones únicas del loader
@@ -652,6 +654,15 @@ export default function Contracts() {
                                                 className="text-orange-600 hover:bg-orange-50"
                                                 onClick={() => setConfirmReopen(c)}>
                                                 Corregir
+                                            </Button>
+                                        )}
+                                        {/* L1: la liquidación inicial se crea desde el contrato de
+                                            arrendamiento aprobado; la página destino la abre o crea */}
+                                        {c.type === 'ARRENDAMIENTO' && isSendable(c) && (
+                                            <Button variant="ghost" size="sm" icon={Receipt}
+                                                className="text-brand-700 hover:bg-brand-50"
+                                                onClick={() => navigate(`/liquidaciones?contractId=${c.id}`)}>
+                                                Liquidación
                                             </Button>
                                         )}
                                         {isSendable(c) && (

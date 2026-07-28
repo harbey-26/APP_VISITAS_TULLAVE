@@ -34,6 +34,7 @@ const Tracking = lazyPage(() => import('./pages/Tracking'));
 const Notifications = lazyPage(() => import('./pages/Notifications'));
 const Settings = lazyPage(() => import('./pages/Settings'));
 const Contracts = lazyPage(() => import('./pages/Contracts'));
+const Liquidaciones = lazyPage(() => import('./pages/Liquidaciones'));
 
 const LoadingScreen = () => (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -79,6 +80,7 @@ function App() {
                         <Route path="notifications" element={<Notifications />} />
                         <Route path="visit/:id" element={<VisitExecution />} />
                         <Route path="contracts" element={<Contracts />} />
+                        <Route path="liquidaciones" element={<Liquidaciones />} />
                         <Route path="dashboard" element={
                             <AdminRoute>
                                 <Dashboard />
