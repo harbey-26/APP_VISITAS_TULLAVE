@@ -55,7 +55,9 @@ function parseId(raw) {
 }
 
 const includeRefs = {
-    user: { select: { id: true, name: true } },
+    // role: el PDF firma la ENTREGA con el agente que la elaboró, o con el
+    // representante legal si la hizo un admin
+    user: { select: { id: true, name: true, role: true } },
     contract: { select: { id: true, type: true, status: true } },
     pagos: {
         include: { registrador: { select: { id: true, name: true } } },

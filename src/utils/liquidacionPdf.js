@@ -199,7 +199,12 @@ export async function generateLiquidacionPdf(liq) {
     y += 4;
 
     // ── Firmas Entrega / Recibe ──
-    ensureSpace(34);
+    // ENTREGA firma con quien elaboró la liquidación: el agente, o el
+    // representante legal cuando la hizo un administrador (pedido del cliente)
+    const entregaNombre = (!liq.user?.name || liq.user?.role === 'ADMIN')
+        ? EMPRESA.representanteLegal
+        : liq.user.name;
+    ensureSpace(38);
     y += 14;
     const colW = (CONTENT_WIDTH - 14) / 2;
     const x2 = MARGIN.left + colW + 14;
@@ -222,6 +227,8 @@ export async function generateLiquidacionPdf(liq) {
     if (origen.arrendatarioCedula) {
         pdf.text(`C.C. ${formatoIdentificacion(origen.arrendatarioCedula)}`, x2, y);
     }
+    y += LINE_HEIGHT;
+    pdf.text(entregaNombre.toUpperCase(), MARGIN.left, y);
 
     // ── Pie + marca de agua ──
     // Pie de página con los datos de la inmobiliaria (pedido del cliente):
