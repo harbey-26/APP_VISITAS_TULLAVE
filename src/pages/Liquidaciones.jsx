@@ -634,8 +634,13 @@ export default function Liquidaciones() {
             >
                 {editing && (
                     <>
+                        {/* Un solo contenedor de scroll para A+B+C: en móvil las
+                            secciones se apilan y con scrolls internos separados el
+                            modal desbordaba la pantalla dejando los botones del
+                            pie (y la X) inalcanzables */}
+                        <div className="max-h-[60vh] overflow-y-auto scrollbar-thin pr-1 -mr-1">
                         <div className="grid grid-cols-1 lg:grid-cols-[1fr,290px] gap-5">
-                            <div className="max-h-[62vh] overflow-y-auto scrollbar-thin pr-1 -mr-1 space-y-5">
+                            <div className="space-y-5">
                                 {/* A. Datos del contrato (bloqueados) */}
                                 <section>
                                     <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -735,12 +740,14 @@ export default function Liquidaciones() {
                                             <p className="text-sm font-semibold text-gray-700 mb-2">Abonos previos (reserva, arras…)</p>
                                             <div className="space-y-2">
                                                 {(config.abonosPrevios || []).map((a, i) => (
-                                                    <div key={i} className="grid grid-cols-[130px,1fr,1fr,auto] gap-2 items-center">
-                                                        <Input type="date" disabled={!editableNow} value={a.fecha || ''}
+                                                    <div key={i} className="flex flex-wrap gap-2 items-center">
+                                                        <Input type="date" className="w-[140px] flex-none" disabled={!editableNow} value={a.fecha || ''}
                                                             onChange={(e) => setCfg('abonosPrevios', config.abonosPrevios.map((x, j) => j === i ? { ...x, fecha: e.target.value } : x))} />
-                                                        <MoneyInput disabled={!editableNow} value={a.valor}
-                                                            onChange={(v) => setCfg('abonosPrevios', config.abonosPrevios.map((x, j) => j === i ? { ...x, valor: v } : x))} />
-                                                        <Input placeholder="Nota" disabled={!editableNow} value={a.nota || ''}
+                                                        <div className="flex-1 min-w-[110px]">
+                                                            <MoneyInput disabled={!editableNow} value={a.valor}
+                                                                onChange={(v) => setCfg('abonosPrevios', config.abonosPrevios.map((x, j) => j === i ? { ...x, valor: v } : x))} />
+                                                        </div>
+                                                        <Input placeholder="Nota" className="flex-1 min-w-[140px]" disabled={!editableNow} value={a.nota || ''}
                                                             onChange={(e) => setCfg('abonosPrevios', config.abonosPrevios.map((x, j) => j === i ? { ...x, nota: e.target.value } : x))} />
                                                         {editableNow && (
                                                             <button type="button" className="text-red-400 hover:text-red-600 p-1"
@@ -765,20 +772,22 @@ export default function Liquidaciones() {
                                             <p className="text-sm font-semibold text-gray-700 mb-2">Otros cargos o descuentos</p>
                                             <div className="space-y-2">
                                                 {(config.otros || []).map((o, i) => (
-                                                    <div key={i} className="grid grid-cols-[1fr,130px,110px,auto,auto] gap-2 items-center">
-                                                        <Input placeholder="Concepto" disabled={!editableNow} value={o.concepto || ''}
+                                                    <div key={i} className="flex flex-wrap gap-2 items-center">
+                                                        <Input placeholder="Concepto" className="w-full sm:w-auto sm:flex-1 sm:min-w-[140px]" disabled={!editableNow} value={o.concepto || ''}
                                                             onChange={(e) => setCfg('otros', config.otros.map((x, j) => j === i ? { ...x, concepto: e.target.value } : x))} />
-                                                        <MoneyInput disabled={!editableNow} value={o.valor}
-                                                            onChange={(v) => setCfg('otros', config.otros.map((x, j) => j === i ? { ...x, valor: v } : x))} />
-                                                        <select className={inputClass} disabled={!editableNow} value={o.tipo || 'CARGO'}
+                                                        <div className="flex-1 min-w-[110px]">
+                                                            <MoneyInput disabled={!editableNow} value={o.valor}
+                                                                onChange={(v) => setCfg('otros', config.otros.map((x, j) => j === i ? { ...x, valor: v } : x))} />
+                                                        </div>
+                                                        <select className={cn(inputClass, 'w-[130px] flex-none')} disabled={!editableNow} value={o.tipo || 'CARGO'}
                                                             onChange={(e) => setCfg('otros', config.otros.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}>
                                                             <option value="CARGO">Cargo</option>
                                                             <option value="DESCUENTO">Descuento</option>
                                                         </select>
-                                                        {o.tipo !== 'DESCUENTO' ? (
+                                                        {o.tipo !== 'DESCUENTO' && (
                                                             <IvaCheckbox checked={o.aplicaIva} disabled={!editableNow}
                                                                 onChange={(v) => setCfg('otros', config.otros.map((x, j) => j === i ? { ...x, aplicaIva: v } : x))} />
-                                                        ) : <span />}
+                                                        )}
                                                         {editableNow && (
                                                             <button type="button" className="text-red-400 hover:text-red-600 p-1"
                                                                 onClick={() => setCfg('otros', config.otros.filter((_, j) => j !== i))}
@@ -802,11 +811,12 @@ export default function Liquidaciones() {
 
                             {/* C. Resumen en vivo */}
                             <aside className="lg:border-l lg:border-gray-100 lg:pl-5">
-                                <h4 className="font-bold text-gray-900 text-sm mb-3">C. Resumen</h4>
-                                <div className="lg:sticky lg:top-0 max-h-[62vh] overflow-y-auto scrollbar-thin">
+                                <div className="lg:sticky lg:top-0">
+                                    <h4 className="font-bold text-gray-900 text-sm mb-3">C. Resumen</h4>
                                     {liveCalc && <Resumen calc={liveCalc} compact />}
                                 </div>
                             </aside>
+                        </div>
                         </div>
 
                         {configErrors.length > 0 && (

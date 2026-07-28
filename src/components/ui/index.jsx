@@ -272,8 +272,11 @@ export function Modal({ open, onClose, title, maxWidth = 'max-w-md', children })
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in"
             onClick={onClose}
         >
+            {/* max-h + overflow: si el contenido excede la pantalla (móvil), el
+                card entero hace scroll — sin esto los botones del pie y la X de
+                cerrar quedan recortados fuera de la vista y el modal "atrapa" */}
             <div
-                className={cn('bg-white w-full rounded-2xl p-6 shadow-2xl animate-slide-up', maxWidth)}
+                className={cn('bg-white w-full rounded-2xl p-6 shadow-2xl animate-slide-up max-h-[calc(100dvh-2rem)] overflow-y-auto scrollbar-thin', maxWidth)}
                 onClick={(e) => e.stopPropagation()}
             >
                 {title && (
