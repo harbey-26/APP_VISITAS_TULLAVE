@@ -83,4 +83,5 @@ export const STATUS_CONFIG = {
     IN_PROGRESS: { label: 'En Curso',     bg: 'bg-blue-100',   text: 'text-blue-800',   pulse: true  },
     COMPLETED:   { label: 'Completada',   bg: 'bg-green-100',  text: 'text-green-800',  pulse: false },
     MISSED:      { label: 'No Realizada', bg: 'bg-red-100',    text: 'text-red-800',    pulse: false },
+    CANCELLED:   { label: 'Cancelada',    bg: 'bg-gray-200',   text: 'text-gray-700',   pulse: false },
 };

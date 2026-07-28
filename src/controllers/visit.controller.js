@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import { comparePassword, hashPassword } from '../utils/auth.js';
-import { sendPersonalNotification } from '../utils/notify.js';
+import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { upsertVisitEvent, deleteVisitEvent } from '../utils/googleCalendar.js';
 import { getDistanceInMeters } from '../utils/distance.js';
 import { hasScheduleConflict } from '../utils/scheduleConflict.js';
@@ -211,7 +211,7 @@ export const createVisit = async (req, res) => {
         const potentialOverlaps = await prisma.visit.findMany({
             where: {
                 userId: targetUserId,
-                status: { notIn: ['MISSED'] },
+                status: { notIn: ['MISSED', 'CANCELLED'] },
                 deletedAt: null,
                 scheduledStart: { gte: dayStart, lte: dayEnd }
             }
@@ -317,7 +317,7 @@ export const updateVisit = async (req, res) => {
                 where: {
                     userId: targetUserId,
                     id: { not: visitId },
-                    status: { notIn: ['MISSED'] },
+                    status: { notIn: ['MISSED', 'CANCELLED'] },
                     deletedAt: null,
                     scheduledStart: { gte: dayStart, lte: dayEnd },
                 },
@@ -415,6 +415,27 @@ export const startVisit = async (req, res) => {
             return res.status(409).json({
                 error: `Tienes una visita en curso en ${openVisit.property?.address || 'otro inmueble'}. Finalízala antes de iniciar una nueva.`,
                 openVisitId: openVisit.id
+            });
+        }
+
+        // Tampoco puede iniciar si arrastra visitas pendientes programadas ANTES
+        // de esta: debe realizarlas primero, o marcarlas como no atendidas o
+        // canceladas. Evita que queden visitas viejas abandonadas en "pendiente".
+        const earlierPending = await prisma.visit.findFirst({
+            where: {
+                userId: visit.userId,
+                status: 'PENDING',
+                deletedAt: null,
+                id: { not: visit.id },
+                scheduledStart: { lt: visit.scheduledStart }
+            },
+            orderBy: { scheduledStart: 'asc' },
+            include: { property: { select: { address: true } } }
+        });
+        if (earlierPending) {
+            return res.status(409).json({
+                error: `Tienes una visita pendiente anterior en ${earlierPending.property?.address || 'otro inmueble'} (${formatScheduledForNotify(earlierPending.scheduledStart)}). Realízala, o márcala como no atendida o cancelada, antes de iniciar esta.`,
+                blockingVisitId: earlierPending.id
             });
         }
 
@@ -697,7 +718,10 @@ export const markMissed = async (req, res) => {
         return res.status(400).json({ error: 'ID de visita inválido' });
     }
     try {
-        const visit = await prisma.visit.findUnique({ where: { id: visitId } });
+        const visit = await prisma.visit.findUnique({
+            where: { id: visitId },
+            include: { property: { select: { address: true } }, user: { select: { name: true } } }
+        });
         if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
         if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Sin permiso para modificar esta visita.' });
@@ -706,6 +730,72 @@ export const markMissed = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden marcar como no atendidas las visitas pendientes.' });
         }
         const updated = await prisma.visit.update({ where: { id: visitId }, data: { status: 'MISSED' } });
+
+        // Novedad para el administrador: un agente reportó una visita no atendida
+        if (req.user.role !== 'ADMIN') {
+            notifyAdmins(
+                '⚠️ Visita no atendida',
+                `${visit.user?.name || 'Un agente'} marcó como no atendida la visita en ${visit.property?.address || ''} · ${formatScheduledForNotify(visit.scheduledStart)}`
+            );
+        }
+
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// Cancelar una visita pendiente con motivo obligatorio. Es la salida que tiene
+// el agente cuando el sistema le bloquea el check-in por visitas anteriores sin
+// resolver. El administrador recibe la novedad por notificación; si es el admin
+// quien cancela una visita ajena, se avisa al agente dueño.
+const cancelVisitSchema = z.object({
+    reason: z.string().trim().min(3, 'Indica el motivo de la cancelación')
+});
+
+export const cancelVisit = async (req, res) => {
+    let visitId;
+    try { visitId = parseId(req.params.id); } catch {
+        return res.status(400).json({ error: 'ID de visita inválido' });
+    }
+    try {
+        const { reason } = cancelVisitSchema.parse(req.body ?? {});
+        const visit = await prisma.visit.findUnique({
+            where: { id: visitId },
+            include: { property: { select: { address: true } }, user: { select: { name: true } } }
+        });
+        if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
+        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sin permiso para modificar esta visita.' });
+        }
+        if (visit.status !== 'PENDING') {
+            return res.status(400).json({ error: 'Solo se pueden cancelar visitas pendientes.' });
+        }
+
+        // La cita ya no ocurrirá: retirar el evento de Google Calendar (best-effort)
+        if (visit.googleEventId) {
+            deleteVisitEvent(visit).catch(e => console.warn('[Calendar delete]', e.message));
+        }
+
+        const updated = await prisma.visit.update({
+            where: { id: visitId },
+            data: { status: 'CANCELLED', cancelReason: reason, googleEventId: null }
+        });
+
+        const detail = `${visit.property?.address || ''} · ${formatScheduledForNotify(visit.scheduledStart)}`;
+        if (req.user.role !== 'ADMIN') {
+            notifyAdmins(
+                '🚫 Visita cancelada',
+                `${visit.user?.name || 'Un agente'} canceló la visita en ${detail}. Motivo: ${reason}`
+            );
+        } else if (visit.userId !== req.user.id) {
+            sendPersonalNotification(
+                visit.userId,
+                '🚫 Visita cancelada',
+                `Se canceló tu visita en ${detail}. Motivo: ${reason}`
+            ).catch(() => {});
+        }
+
         res.json(updated);
     } catch (error) {
         res.status(400).json({ error: error.message });

@@ -2,7 +2,7 @@ import prisma from '../utils/prisma.js';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { validateContractData, EDITABLE_STATUSES, REOPENABLE_STATUSES, getTemplate, EMPRESA } from '../utils/contractTemplates.js';
-import { sendPersonalNotification } from '../utils/notify.js';
+import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
 
@@ -44,16 +44,6 @@ const includeRefs = {
     user: { select: { id: true, name: true } },
     property: { select: { id: true, address: true, client: true } },
 };
-
-// Aviso a todos los admins (silencioso, como los errores de GPS).
-async function notifyAdmins(title, body) {
-    try {
-        const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
-        for (const a of admins) {
-            sendPersonalNotification(a.id, title, body).catch(() => {});
-        }
-    } catch { /* nunca interrumpe el flujo */ }
-}
 
 // GET /api/contracts?status=...  — agente: los suyos; admin: todos
 export const getContracts = async (req, res) => {

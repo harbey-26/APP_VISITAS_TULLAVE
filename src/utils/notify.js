@@ -3,6 +3,16 @@ import prisma from './prisma.js';
 import { messaging } from './firebase.js';
 import { androidAlertConfig } from './fcmConfig.js';
 
+// Aviso a todos los admins (silencioso, como los errores de GPS).
+export async function notifyAdmins(title, body) {
+    try {
+        const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+        for (const a of admins) {
+            sendPersonalNotification(a.id, title, body).catch(() => {});
+        }
+    } catch { /* nunca interrumpe el flujo */ }
+}
+
 export async function sendPersonalNotification(userId, title, body) {
     if (!userId) return null;
     try {

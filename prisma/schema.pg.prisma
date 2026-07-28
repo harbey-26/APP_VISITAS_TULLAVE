@@ -91,7 +91,7 @@ model Visit {
   propertyId       Int
   scheduledStart   DateTime
   estimatedDuration Int      // In minutes
-  status           String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, MISSED
+  status           String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, MISSED, CANCELLED
   type             String    // SHOWING, APPRAISAL, INSPECTION
   actualStart      DateTime?
   actualEnd        DateTime?
@@ -102,6 +102,7 @@ model Visit {
 
   notes            String?
   outcome          String?   // Resultado: "Cliente interesado", etc.
+  cancelReason     String?   // Motivo que da el agente al cancelar (status CANCELLED)
   clientName       String?
   clientPhone      String?
   clientEmail      String?    // Correo del cliente — invita al evento de Google Calendar

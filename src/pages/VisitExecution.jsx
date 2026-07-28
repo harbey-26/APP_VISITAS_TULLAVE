@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle, Mail } from 'lucide-react';
+import { MapPin, Clock, Play, CheckCircle, ArrowLeft, User, Phone, AlertCircle, Camera, Trash2, ImageIcon, MessageCircle, Mail, Ban } from 'lucide-react';
 import { API_URL } from '../config';
 import { STATUS_CONFIG, VISIT_TYPE_CONFIG, MODALITY_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
 import { visitMarkerIcon, dotIcon } from '../utils/mapMarkers';
@@ -10,7 +10,7 @@ import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
 import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
 import { MAP_STYLE } from '../utils/mapStyles';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
-import { Button, Select } from '../components/ui';
+import { Button, Select, Modal } from '../components/ui';
 import SlideToConfirm from '../components/SlideToConfirm';
 
 class ErrorBoundary extends React.Component {
@@ -64,8 +64,15 @@ function VisitExecutionContent() {
     const [notes, setNotes] = useState('');
     const [currentPos, setCurrentPos] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
-    const [openVisitId, setOpenVisitId] = useState(null); // otra visita IN_PROGRESS que bloquea el check-in
+    // Otra visita que bloquea el check-in: una IN_PROGRESS sin finalizar o una
+    // PENDING anterior sin resolver (el backend devuelve openVisitId/blockingVisitId)
+    const [blockingVisitId, setBlockingVisitId] = useState(null);
     const [outcome, setOutcome] = useState('');
+
+    // Cancelar visita pendiente (con motivo — el admin recibe la novedad)
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancelling, setCancelling] = useState(false);
 
     // Captación por llamada: sin GPS, sin geofencing; se registra en un solo paso.
     const isPhone = visit?.modality === 'PHONE';
@@ -195,7 +202,7 @@ function VisitExecutionContent() {
     const handleStart = async () => {
         setLoading(true);
         setErrorMsg(null);
-        setOpenVisitId(null);
+        setBlockingVisitId(null);
         try {
             const { lat, lng } = await getCurrentLocation();
             const res = await fetch(`${API_URL}/api/visits/${id}/start`, {
@@ -209,7 +216,9 @@ function VisitExecutionContent() {
                 setVisit(prev => ({ ...updated, property: prev.property }));
             } else {
                 const errData = await res.json();
-                if (errData.openVisitId) setOpenVisitId(errData.openVisitId);
+                if (errData.openVisitId || errData.blockingVisitId) {
+                    setBlockingVisitId(errData.openVisitId || errData.blockingVisitId);
+                }
                 throw new Error(errData.error || 'Error desconocido al iniciar visita');
             }
         } catch (error) {
@@ -295,6 +304,37 @@ function VisitExecutionContent() {
             try { msg = (await res.json()).error || msg; } catch { /* sin cuerpo */ }
             setErrorMsg(msg);
             setLoading(false);
+        }
+    };
+
+    // Cancelar una visita pendiente con motivo. El backend notifica la novedad
+    // al administrador; el sistema exige resolver las pendientes anteriores
+    // antes de poder iniciar una nueva.
+    const handleCancelVisit = async () => {
+        if (!cancelReason.trim() || cancelling) return;
+        setCancelling(true);
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${id}/cancel`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ reason: cancelReason.trim() })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+                setShowCancelModal(false);
+                setVisit(prev => ({ ...updated, property: prev.property }));
+            } else {
+                let msg = 'Error al cancelar la visita';
+                try { msg = (await res.json()).error || msg; } catch { /* sin cuerpo */ }
+                setShowCancelModal(false);
+                setErrorMsg(msg);
+            }
+        } catch {
+            setShowCancelModal(false);
+            setErrorMsg('Sin conexión. Intenta de nuevo cuando recuperes internet.');
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -541,6 +581,10 @@ function VisitExecutionContent() {
                         <div className="text-3xl font-bold text-green-600 tracking-wide">
                             Finalizada
                         </div>
+                    ) : visit.status === 'CANCELLED' ? (
+                        <div className="text-3xl font-bold text-gray-400 tracking-wide">
+                            Cancelada
+                        </div>
                     ) : (
                         <div className={`text-5xl font-mono font-bold tracking-wider ${
                             visit.status === 'IN_PROGRESS' && progressPercent >= 100
@@ -696,6 +740,22 @@ function VisitExecutionContent() {
                 </div>
             )}
 
+            {/* Visita cancelada — mostrar el motivo registrado */}
+            {visit.status === 'CANCELLED' && (
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 space-y-3">
+                    <div className="text-center text-gray-500 font-bold flex items-center justify-center gap-2">
+                        <Ban className="w-5 h-5" />
+                        Visita Cancelada
+                    </div>
+                    {visit.cancelReason && (
+                        <div className="bg-white p-3 rounded-xl border border-gray-200">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Motivo</p>
+                            <p className="text-gray-700 font-medium">{visit.cancelReason}</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* M1: Sección de fotos — disponible en progreso y completada */}
             {(visit.status === 'IN_PROGRESS' || visit.status === 'COMPLETED') && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
@@ -765,12 +825,12 @@ function VisitExecutionContent() {
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <div>
                         <span>{errorMsg}</span>
-                        {openVisitId && (
+                        {blockingVisitId && (
                             <button
-                                onClick={() => { setErrorMsg(null); setOpenVisitId(null); navigate(`/visit/${openVisitId}`); }}
+                                onClick={() => { setErrorMsg(null); setBlockingVisitId(null); setVisit(null); navigate(`/visit/${blockingVisitId}`); }}
                                 className="mt-2 block font-semibold underline"
                             >
-                                Ir a la visita en curso →
+                                Ir a esa visita →
                             </button>
                         )}
                     </div>
@@ -789,6 +849,18 @@ function VisitExecutionContent() {
                     loading={loading}
                     onConfirm={handleStart}
                 />
+            )}
+
+            {/* Cancelar una pendiente: salida cuando la visita ya no se hará
+                (el motivo es obligatorio y le llega al administrador) */}
+            {visit.status === 'PENDING' && (
+                <button
+                    onClick={() => { setCancelReason(''); setShowCancelModal(true); }}
+                    className="flex items-center justify-center gap-1.5 text-sm text-gray-400 hover:text-red-500 font-medium transition py-1"
+                >
+                    <Ban className="w-4 h-4" />
+                    ¿No se realizará? Cancelar visita
+                </button>
             )}
 
             {/* Visita por llamada: registro en un solo paso, sin GPS */}
@@ -833,6 +905,29 @@ function VisitExecutionContent() {
                     </p>
                 </div>
             )}
+
+            {/* Modal de cancelación — el motivo es obligatorio y llega al admin */}
+            <Modal open={showCancelModal} onClose={() => setShowCancelModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Ban className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Cancelar Visita</h3>
+                <p className="text-gray-500 mb-4 text-sm text-center">
+                    Indica el motivo de la cancelación. El administrador recibirá esta novedad.
+                </p>
+                <textarea
+                    className="w-full p-3 border border-gray-200 rounded-xl h-24 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none text-sm mb-4"
+                    placeholder="Motivo (ej.: el cliente reprogramó, no fue posible contactarlo...)"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                />
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowCancelModal(false)}>Volver</Button>
+                    <Button variant="danger" className="flex-1" disabled={!cancelReason.trim() || cancelling} onClick={handleCancelVisit}>
+                        {cancelling ? 'Cancelando...' : 'Cancelar visita'}
+                    </Button>
+                </div>
+            </Modal>
         </div>
     );
 }

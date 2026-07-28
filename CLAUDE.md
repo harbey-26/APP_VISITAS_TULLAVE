@@ -102,7 +102,8 @@ User      — id, email, password, name, phone (celular del agente — sale en
             lastLat, lastLng, lastSeenAt, connectedSince
 Property  — id, address, client, lat, lng
 Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
-            status (PENDING/IN_PROGRESS/COMPLETED/MISSED),
+            status (PENDING/IN_PROGRESS/COMPLETED/MISSED/CANCELLED),
+            cancelReason (motivo obligatorio al cancelar — llega al admin),
             type (SHOWING/APPRAISAL/INSPECTION),
             modality (ON_SITE/PHONE) — PHONE = captación por llamada, sin GPS,
             actualStart, actualEnd, checkInLat/Lng, checkOutLat/Lng,
@@ -136,10 +137,11 @@ Contract  — id, type (ADMINISTRACION/ARRENDAMIENTO),
 | PUT | `/api/properties/:id` | JWT | Editar inmueble (NO es PATCH). Geocodifica si lat/lng son null o defaults |
 | GET | `/api/visits/stats` | JWT+Admin | Estadísticas globales del período |
 | GET | `/api/visits/stats/agents` | JWT+Admin | Estadísticas por agente |
-| PATCH | `/api/visits/:id/start` | JWT | Iniciar visita |
-| PATCH | `/api/visits/:id/finish` | JWT | Finalizar visita |
+| PATCH | `/api/visits/:id/start` | JWT | Iniciar visita. **Bloquea (409)** si el agente tiene otra visita IN_PROGRESS o una PENDING programada antes de esta (debe finalizarla / marcarla no atendida / cancelarla); devuelve `openVisitId`/`blockingVisitId` |
+| PATCH | `/api/visits/:id/finish` | JWT | Finalizar visita. Geofencing obligatorio para agentes; **solo el ADMIN puede finalizar sin estar en el sitio** |
 | PATCH | `/api/visits/:id/complete-call` | JWT | Registrar captación por llamada (modalidad PHONE): PENDING→COMPLETED en un paso, sin GPS ni geofencing. Captura resultado + notas |
-| PATCH | `/api/visits/:id/missed` | JWT | Marcar como no atendida |
+| PATCH | `/api/visits/:id/missed` | JWT | Marcar como no atendida. Si lo hace un agente, notifica a los admins (FCM) |
+| PATCH | `/api/visits/:id/cancel` | JWT | Cancelar visita PENDING con `{reason}` obligatorio → CANCELLED. Borra el evento de Calendar. Agente cancela → notifica admins; admin cancela visita ajena → notifica al agente |
 | PATCH | `/api/visits/:id/reassign` | JWT+Admin | Reasignar a otro agente |
 | GET/POST | `/api/visits/:id/images` | JWT | Fotos de visita |
 | DELETE | `/api/visits/:id/images/:imgId` | JWT | Eliminar foto |
@@ -269,6 +271,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Aviso de inmueble duplicado** al registrar uno nuevo: detecta coincidencia por dirección normalizada O coordenadas a <30 m, y ofrece "usar el existente" sin bloquear
 - Muestra el **conjunto/edificio** (`property.client`) bajo la dirección en lista y card del mapa
 - Reasignar agente (admin), marcar no atendida, eliminar con contraseña
+- **Cancelar visita** (ícono ⊘, cualquier PENDING): modal que exige el motivo →
+  status CANCELLED. El motivo se muestra en la tarjeta y el admin recibe la
+  novedad por notificación
+- **Disciplina de visitas:** el backend bloquea el check-in (`start`, 409) si el
+  agente tiene otra visita en curso o una pendiente programada antes de la que
+  intenta iniciar — debe finalizarla, marcarla no atendida o cancelarla primero.
+  El error en `VisitExecution` incluye botón "Ir a esa visita →". Solo el admin
+  puede finalizar una visita sin estar en el sitio (bypass de geofencing en
+  `finish`)
 
 ### Dashboard (`Dashboard.jsx`)
 - **Pestaña General:** 4 métricas (total, completadas, duración prom., conversión %), barras por tipo, tabla paginada, exportar CSV y PDF

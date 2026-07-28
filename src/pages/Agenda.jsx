@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle, Pencil, MapPin, AlertTriangle } from 'lucide-react';
+import { Clock, Plus, X, Trash2, User, Home, Calendar, CalendarX, ChevronRight, UserX, UserCheck, CheckCircle, List, Map as MapIcon, Phone, MessageCircle, Pencil, MapPin, AlertTriangle, Ban } from 'lucide-react';
 import { API_URL } from '../config';
 import { useToast } from '../context/ToastContext';
 import { VISIT_TYPE_CONFIG, STATUS_CONFIG, MODALITY_CONFIG, getLateStartMinutes } from '../utils/visitTypes';
@@ -279,6 +279,12 @@ export default function Agenda() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteTargetId, setDeleteTargetId] = useState(null);
     const [deletePassword, setDeletePassword] = useState('');
+
+    // Cancelar visita (con motivo — el admin recibe la novedad)
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelTargetId, setCancelTargetId] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancelling, setCancelling] = useState(false);
 
     // Reassign State (M2)
     const [showReassignModal, setShowReassignModal] = useState(false);
@@ -574,6 +580,38 @@ export default function Agenda() {
             }
         } catch (error) {
             toast.error(friendlyError(error));
+        }
+    };
+
+    // Cancelar visita pendiente: pide el motivo y lo reporta al administrador
+    const initiateCancel = (e, id) => {
+        e.stopPropagation();
+        setCancelTargetId(id);
+        setCancelReason('');
+        setShowCancelModal(true);
+    };
+
+    const confirmCancel = async () => {
+        if (!cancelReason.trim() || cancelling) return;
+        setCancelling(true);
+        try {
+            const res = await fetch(`${API_URL}/api/visits/${cancelTargetId}/cancel`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ reason: cancelReason.trim() })
+            });
+            if (res.ok) {
+                setShowCancelModal(false);
+                fetchVisits();
+                toast.success('Visita cancelada. Se notificó al administrador.');
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al cancelar');
+            }
+        } catch (error) {
+            toast.error(friendlyError(error));
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -897,7 +935,7 @@ export default function Agenda() {
                                             <div
                                                 key={visit.id}
                                                 onClick={() => navigate(`/visit/${visit.id}`)}
-                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted ? 'opacity-70' : ''}`}
+                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
                                                 <div className={`h-1 w-full ${typeConfig.dot}`} />
@@ -948,6 +986,11 @@ export default function Agenda() {
                                                             {isPastPending && (
                                                                 <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
                                                                     <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {visit.status === 'PENDING' && (
+                                                                <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
+                                                                    <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
                                                             {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
@@ -1053,6 +1096,14 @@ export default function Agenda() {
                                                         <div className="mt-2.5 pt-2.5 border-t border-gray-100 text-xs text-gray-500 flex items-center gap-1.5 pl-6">
                                                             <CheckCircle className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                                                             <span className="font-medium text-gray-700">{visit.outcome}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Motivo si cancelada */}
+                                                    {visit.status === 'CANCELLED' && visit.cancelReason && (
+                                                        <div className="mt-2.5 pt-2.5 border-t border-gray-100 text-xs text-gray-500 flex items-center gap-1.5 pl-6">
+                                                            <Ban className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                                            <span className="font-medium text-gray-600">{visit.cancelReason}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1487,6 +1538,29 @@ export default function Agenda() {
                         </div>
                     </div>
                 )}
+            </Modal>
+
+            {/* Cancel Visit Modal — el motivo es obligatorio y llega al admin */}
+            <Modal open={showCancelModal} onClose={() => setShowCancelModal(false)} maxWidth="max-w-sm">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Ban className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Cancelar Visita</h3>
+                <p className="text-gray-500 mb-4 text-sm text-center">
+                    Indica el motivo de la cancelación. El administrador recibirá esta novedad.
+                </p>
+                <textarea
+                    className="w-full p-3 border border-gray-200 rounded-xl h-24 resize-none focus:ring-2 focus:ring-brand-500 focus:outline-none text-sm mb-4"
+                    placeholder="Motivo (ej.: el cliente reprogramó, no fue posible contactarlo...)"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                />
+                <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowCancelModal(false)}>Volver</Button>
+                    <Button variant="danger" className="flex-1" disabled={!cancelReason.trim() || cancelling} onClick={confirmCancel}>
+                        {cancelling ? 'Cancelando...' : 'Cancelar visita'}
+                    </Button>
+                </div>
             </Modal>
 
             {/* Reassign Modal (M2) */}
