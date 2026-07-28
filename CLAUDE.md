@@ -165,7 +165,8 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
 | GET | `/api/contracts/public/:token/pdf` | **No** | PDF público para el cliente final (solo contratos SENT) |
 | DELETE | `/api/contracts/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera) |
 | GET/POST | `/api/liquidaciones` | JWT | Liquidaciones (agente las suyas; admin todas). POST crea DRAFT desde `{contractId}` (ARRENDAMIENTO aprobado, 409 si ya existe) |
-| PATCH | `/api/liquidaciones/:id` | JWT | Editar SOLO `config` (estados editables). `origen` nunca se acepta del cliente |
+| PATCH | `/api/liquidaciones/:id` | JWT | Editar SOLO `config` (estados editables; admin también en PENDING_APPROVAL). `origen` nunca se acepta del cliente. Las **fechas del cobro solo las cambia el admin**; `diasCobrados` se recalcula SIEMPRE server-side desde las fechas |
+| POST | `/api/liquidaciones/:id/solicitar-fechas` | JWT | El agente propone otro período `{fechaInicialCobro, fechaFinalCobro, motivo}` → `data.solicitudFechas` PENDIENTE + notifica admins. El admin la aplica editando las fechas (queda ATENDIDA y se avisa al agente) |
 | POST | `/api/liquidaciones/:id/sync-contrato` | JWT | Re-importar el snapshot del contrato (solo editable) |
 | PATCH | `/api/liquidaciones/:id/submit` | JWT | Enviar a revisión (valida config) → notifica admins |
 | PATCH | `/api/liquidaciones/:id/review` | JWT+Admin | Aprobar (congela `data.totales`) o devolver con nota |
@@ -360,9 +361,16 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Sección A bloqueada**: los datos del contrato son un snapshot (`data.origen`)
   que solo se refresca con "Re-importar" (`/sync-contrato`) — nunca se editan en
   la liquidación para no generar inconsistencias. Link "Editar contrato de origen"
-- **Sección B**: fechas del cobro (recalculan días automáticamente, ajustables),
-  modo admón (proporcional/completa/no cobrar), % derechos, estudio, póliza,
-  abonos previos, otros cargos/descuentos — cada servicio con toggle IVA
+- **Sección B**: fechas del cobro, modo admón (proporcional/completa/no cobrar),
+  % derechos, estudio, póliza, abonos previos, otros cargos/descuentos — cada
+  servicio con toggle IVA. Los **días cobrados son siempre derivados de las
+  fechas** (calendario real, ambos extremos incluidos) — no se digitan; el
+  server los recalcula en cada PATCH. Las **fechas solo las modifica el admin**:
+  el agente usa "Solicitar ajuste de fechas" (fechas propuestas + motivo →
+  notificación FCM al admin, badge "Ajuste solicitado" en la card); el admin ve
+  la solicitud resaltada en el formulario y la aplica con un clic ("Aplicar
+  estas fechas" → guardar). El admin puede editar también en PENDING_APPROVAL
+  para ajustar al revisar sin devolver
 - **Sección C**: resumen en vivo con `calcularLiquidacion` de
   `src/utils/liquidacionCalc.js` — **misma lógica pura en frontend, backend y
   PDF** (tests en `tests/liquidacionCalc.test.js`, con paridad verificada contra

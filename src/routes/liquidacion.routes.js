@@ -3,7 +3,7 @@ import {
     getLiquidaciones, getLiquidacion, createLiquidacion, updateLiquidacion,
     syncContrato, submitLiquidacion, reviewLiquidacion, reopenLiquidacion,
     addPago, deletePago, shareLiquidacion, emailLiquidacion,
-    publicLiquidacionPdf, deleteLiquidacion,
+    publicLiquidacionPdf, deleteLiquidacion, solicitarFechas,
 } from '../controllers/liquidacion.controller.js';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 
@@ -20,6 +20,7 @@ router.post('/', createLiquidacion);
 router.get('/:id', getLiquidacion);
 router.patch('/:id', updateLiquidacion);
 router.post('/:id/sync-contrato', syncContrato);
+router.post('/:id/solicitar-fechas', solicitarFechas);
 router.patch('/:id/submit', submitLiquidacion);
 router.patch('/:id/review', requireAdmin, reviewLiquidacion);
 router.patch('/:id/reopen', reopenLiquidacion);

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch, friendlyError } from '../utils/api';
 import {
-    calcularLiquidacion, validateLiquidacionConfig, diasEntre,
+    calcularLiquidacion, validateLiquidacionConfig, diasEntre, diasDelMes,
     LIQUIDACION_STATUS, EDITABLE_STATUSES, SENDABLE_STATUSES, ADMON_MODOS,
 } from '../utils/liquidacionCalc';
 import { downloadLiquidacionPdf } from '../utils/liquidacionPdf';
@@ -17,6 +17,7 @@ import { buildWhatsAppUrl } from '../utils/phone';
 import {
     Receipt, Pencil, Eye, Send, Download, Trash2, CheckCircle, Undo2,
     MessageCircle, Mail, RotateCcw, User, X, Plus, Banknote, RefreshCw, ExternalLink,
+    CalendarClock,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -147,6 +148,9 @@ export default function Liquidaciones() {
     const [reviewNote, setReviewNote] = useState('');
     const [pagoTarget, setPagoTarget] = useState(null); // liquidación a la que se registra pago
     const [pagoForm, setPagoForm] = useState({ fecha: '', valor: '', nota: '' });
+    // Solicitud de ajuste de fechas (agente → admin)
+    const [solicitudOpen, setSolicitudOpen] = useState(false);
+    const [solicitudForm, setSolicitudForm] = useState({ fechaInicialCobro: '', fechaFinalCobro: '', motivo: '' });
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [confirmReopen, setConfirmReopen] = useState(null);
 
@@ -198,13 +202,20 @@ export default function Liquidaciones() {
         })();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Resumen en vivo de la liquidación en edición (mismo cálculo del backend)
+    // Resumen en vivo de la liquidación en edición (mismo cálculo del backend).
+    // Los días cobrados SIEMPRE se derivan de las fechas (calendario real) —
+    // el servidor hace lo mismo al guardar, así nadie los digita a mano.
+    const configDerivada = useMemo(() => ({
+        ...config,
+        diasCobrados: diasEntre(config.fechaInicialCobro, config.fechaFinalCobro),
+    }), [config]);
+
     const liveCalc = useMemo(() => {
         if (!editing) return null;
-        return calcularLiquidacion({ origen: editing.data.origen, config }, editing.pagos || []);
-    }, [editing, config]);
+        return calcularLiquidacion({ origen: editing.data.origen, config: configDerivada }, editing.pagos || []);
+    }, [editing, configDerivada]);
 
-    const configErrors = useMemo(() => (editing ? validateLiquidacionConfig(config) : []), [editing, config]);
+    const configErrors = useMemo(() => (editing ? validateLiquidacionConfig(configDerivada) : []), [editing, configDerivada]);
 
     // Cambia un campo de config; al mover las fechas recalcula los días
     const setCfg = (key, value) => {
@@ -222,8 +233,8 @@ export default function Liquidaciones() {
         setBusy(true);
         try {
             const clean = {
-                ...config,
-                diasCobrados: Number(config.diasCobrados) || 0,
+                ...configDerivada,
+                diasCobrados: Number(configDerivada.diasCobrados) || 0,
                 pctDerechos: Number(config.pctDerechos) || 0,
                 estudioValor: Number(config.estudioValor) || 0,
                 polizaValor: Number(config.polizaValor) || 0,
@@ -445,7 +456,53 @@ export default function Liquidaciones() {
         .reduce((s, l) => s + (l.calc?.saldo ?? 0), 0);
 
     const origen = editing?.data?.origen || {};
-    const editableNow = editing && EDITABLE_STATUSES.includes(editing.status);
+    // El admin también puede editar en PENDING_APPROVAL (ajusta las fechas al
+    // revisar sin devolver la liquidación); el agente solo en estados editables
+    const editableNow = editing && (EDITABLE_STATUSES.includes(editing.status)
+        || (isAdmin && editing.status === 'PENDING_APPROVAL'));
+    // Las fechas del cobro SOLO las modifica el admin — el agente las solicita
+    const fechasEditables = editableNow && isAdmin;
+    const solicitudPendiente = editing?.data?.solicitudFechas?.estado === 'PENDIENTE'
+        ? editing.data.solicitudFechas : null;
+
+    // El agente propone otro período de cobro; el admin recibe la notificación
+    const abrirSolicitud = () => {
+        setSolicitudForm({
+            fechaInicialCobro: config.fechaInicialCobro || '',
+            fechaFinalCobro: config.fechaFinalCobro || '',
+            motivo: '',
+        });
+        setSolicitudOpen(true);
+    };
+
+    const enviarSolicitud = async () => {
+        if (!solicitudForm.motivo.trim()) {
+            toast.error('Explica el motivo del ajuste (ej.: el inmueble se entregó después de la firma).');
+            return;
+        }
+        setBusy(true);
+        try {
+            const updated = await apiFetch(`/api/liquidaciones/${editing.id}/solicitar-fechas`, {
+                method: 'POST',
+                body: { ...solicitudForm, motivo: solicitudForm.motivo.trim() },
+            });
+            setEditing(updated);
+            setSolicitudOpen(false);
+            toast.success('Solicitud enviada al administrador');
+            fetchLiquidaciones(true);
+        } catch (err) {
+            toast.error(friendlyError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // El admin aplica las fechas propuestas con un clic (luego guarda)
+    const aplicarSolicitud = () => {
+        if (!solicitudPendiente) return;
+        setCfg('fechaInicialCobro', solicitudPendiente.fechaInicialCobro);
+        setCfg('fechaFinalCobro', solicitudPendiente.fechaFinalCobro);
+    };
 
     return (
         <div>
@@ -545,6 +602,9 @@ export default function Liquidaciones() {
                                                     <User className="w-3 h-3" />
                                                     {l.user.name}
                                                 </Badge>
+                                            )}
+                                            {l.data?.solicitudFechas?.estado === 'PENDIENTE' && (
+                                                <Badge className="bg-amber-100 text-amber-700">📅 Ajuste solicitado</Badge>
                                             )}
                                         </div>
                                         <p className="font-bold text-gray-900 mt-2 truncate">{nombreDe(l)}</p>
@@ -684,21 +744,60 @@ export default function Liquidaciones() {
                                 <section>
                                     <h4 className="font-bold text-gray-900 text-sm mb-3">B. Configuración de la liquidación</h4>
                                     <div className="space-y-4">
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            <Field label="Fecha inicial del cobro *">
-                                                <Input type="date" disabled={!editableNow} value={config.fechaInicialCobro || ''}
+                                        {/* Fechas: solo el admin las modifica; el agente pide el
+                                            ajuste (ej.: el inmueble se entregó después de la firma) */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <Field label="Fecha inicial del cobro *"
+                                                hint={!isAdmin ? 'Solo el administrador la modifica' : undefined}>
+                                                <Input type="date" disabled={!fechasEditables} value={config.fechaInicialCobro || ''}
                                                     onChange={(e) => setCfg('fechaInicialCobro', e.target.value)} />
                                             </Field>
-                                            <Field label="Fecha final del primer cobro *">
-                                                <Input type="date" disabled={!editableNow} value={config.fechaFinalCobro || ''}
+                                            <Field label="Fecha final del primer cobro *"
+                                                hint={!isAdmin ? 'Solo el administrador la modifica' : undefined}>
+                                                <Input type="date" disabled={!fechasEditables} value={config.fechaFinalCobro || ''}
                                                     onChange={(e) => setCfg('fechaFinalCobro', e.target.value)} />
                                             </Field>
-                                            <Field label="Días cobrados *" hint="Se calcula con las fechas; puedes ajustarlo">
-                                                <Input type="number" min="0" inputMode="numeric" disabled={!editableNow}
-                                                    value={config.diasCobrados ?? ''}
-                                                    onChange={(e) => setCfg('diasCobrados', e.target.value)} />
-                                            </Field>
                                         </div>
+
+                                        {/* Días cobrados: siempre derivados del calendario real */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                                            <p className="text-sm text-gray-700">
+                                                <span className="font-bold">{diasEntre(config.fechaInicialCobro, config.fechaFinalCobro)} días cobrados</span>
+                                                {config.fechaInicialCobro && (
+                                                    <span className="text-gray-400"> · el mes inicial tiene {diasDelMes(config.fechaInicialCobro)} días</span>
+                                                )}
+                                                <span className="block text-[11px] text-gray-400">Se calculan automáticamente con las fechas del cobro</span>
+                                            </p>
+                                            {!isAdmin && editableNow && (
+                                                <Button type="button" variant="outline" size="sm" icon={CalendarClock}
+                                                    disabled={!!solicitudPendiente}
+                                                    onClick={abrirSolicitud}>
+                                                    {solicitudPendiente ? 'Ajuste solicitado' : 'Solicitar ajuste de fechas'}
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        {/* Solicitud pendiente: el agente ve el estado; el admin puede aplicarla */}
+                                        {solicitudPendiente && (
+                                            <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
+                                                <p className="font-bold text-amber-800">
+                                                    📅 Ajuste de fechas solicitado{solicitudPendiente.solicitadaPorNombre ? ` por ${solicitudPendiente.solicitadaPorNombre}` : ''}
+                                                </p>
+                                                <p className="text-amber-700">
+                                                    Propone: del <strong>{fechaCorta(solicitudPendiente.fechaInicialCobro)}</strong> al{' '}
+                                                    <strong>{fechaCorta(solicitudPendiente.fechaFinalCobro)}</strong>{' '}
+                                                    ({diasEntre(solicitudPendiente.fechaInicialCobro, solicitudPendiente.fechaFinalCobro)} días)
+                                                    · Motivo: {solicitudPendiente.motivo}
+                                                </p>
+                                                {isAdmin ? (
+                                                    <Button type="button" size="sm" icon={CheckCircle} onClick={aplicarSolicitud}>
+                                                        Aplicar estas fechas
+                                                    </Button>
+                                                ) : (
+                                                    <p className="text-amber-600">El administrador fue notificado; aplicará el cambio si procede.</p>
+                                                )}
+                                            </div>
+                                        )}
                                         {Number(origen.administracionMensual) > 0 && (
                                             <Field label="Cobro de la administración">
                                                 <Select disabled={!editableNow} value={config.admonModo || 'PROPORCIONAL'}
@@ -828,12 +927,14 @@ export default function Liquidaciones() {
                         {editableNow && (
                             <div className="flex flex-wrap items-center justify-end gap-2 pt-4 mt-4 border-t border-gray-100">
                                 <Button variant="secondary" size="sm" loading={busy} onClick={() => saveConfig()}>
-                                    Guardar borrador
+                                    {EDITABLE_STATUSES.includes(editing.status) ? 'Guardar borrador' : 'Guardar cambios'}
                                 </Button>
-                                <Button size="sm" icon={Send} loading={busy} disabled={configErrors.length > 0}
-                                    onClick={() => saveConfig({ thenSubmit: true })}>
-                                    Enviar a revisión
-                                </Button>
+                                {EDITABLE_STATUSES.includes(editing.status) && (
+                                    <Button size="sm" icon={Send} loading={busy} disabled={configErrors.length > 0}
+                                        onClick={() => saveConfig({ thenSubmit: true })}>
+                                        Enviar a revisión
+                                    </Button>
+                                )}
                             </div>
                         )}
                     </>
@@ -957,6 +1058,10 @@ export default function Liquidaciones() {
                             )}
                             {isAdmin && preview.status === 'PENDING_APPROVAL' && (
                                 <>
+                                    <Button variant="ghost" size="sm" icon={Pencil}
+                                        onClick={() => { setPreview(null); openEdit(preview); }}>
+                                        Editar
+                                    </Button>
                                     <Button variant="danger-soft" size="sm" icon={Undo2} loading={busy}
                                         onClick={() => review(preview, 'REJECTED')}>
                                         Devolver
@@ -1012,6 +1117,43 @@ export default function Liquidaciones() {
                         </div>
                     </>
                 )}
+            </Modal>
+
+            {/* ── Modal solicitar ajuste de fechas (agente → admin) ─────── */}
+            <Modal open={solicitudOpen} onClose={() => !busy && setSolicitudOpen(false)} title="Solicitar ajuste de fechas">
+                <p className="text-sm text-gray-600 mb-4">
+                    Propón el período de cobro correcto (ej.: el contrato se firmó un día pero el
+                    inmueble se entregó después). El administrador recibirá la solicitud y aplicará el cambio.
+                </p>
+                <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="Fecha inicial propuesta *">
+                            <Input type="date" value={solicitudForm.fechaInicialCobro}
+                                onChange={(e) => setSolicitudForm({ ...solicitudForm, fechaInicialCobro: e.target.value })} />
+                        </Field>
+                        <Field label="Fecha final propuesta *">
+                            <Input type="date" value={solicitudForm.fechaFinalCobro}
+                                onChange={(e) => setSolicitudForm({ ...solicitudForm, fechaFinalCobro: e.target.value })} />
+                        </Field>
+                    </div>
+                    {diasEntre(solicitudForm.fechaInicialCobro, solicitudForm.fechaFinalCobro) > 0 && (
+                        <p className="text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                            {diasEntre(solicitudForm.fechaInicialCobro, solicitudForm.fechaFinalCobro)} días cobrados
+                            <span className="text-gray-400 font-normal"> · el mes inicial tiene {diasDelMes(solicitudForm.fechaInicialCobro)} días</span>
+                        </p>
+                    )}
+                    <Field label="Motivo *">
+                        <textarea rows={2} className={inputClass} value={solicitudForm.motivo}
+                            placeholder="Ej.: el inmueble se entregó el 25, no el día de la firma"
+                            onChange={(e) => setSolicitudForm({ ...solicitudForm, motivo: e.target.value })} />
+                    </Field>
+                </div>
+                <div className="flex justify-end gap-2 pt-5">
+                    <Button variant="secondary" size="sm" onClick={() => setSolicitudOpen(false)}>Cancelar</Button>
+                    <Button size="sm" icon={CalendarClock} loading={busy} onClick={enviarSolicitud}>
+                        Enviar solicitud
+                    </Button>
+                </div>
             </Modal>
 
             {/* ── Confirmación de borrado ───────────────────────────────── */}

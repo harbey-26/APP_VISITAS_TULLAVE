@@ -216,20 +216,103 @@ async function loadOwned(req) {
 
 // PATCH /api/liquidaciones/:id — edita SOLO la configuración del cobro.
 // `origen` nunca se acepta del cliente (solo /sync-contrato lo refresca).
+// Las FECHAS del cobro solo las modifica el ADMIN (el agente debe pedirlo con
+// /solicitar-fechas); los días cobrados SIEMPRE se recalculan en el servidor a
+// partir de las fechas (calendario real), nunca se aceptan del cliente.
+// El admin también puede editar en PENDING_APPROVAL (ajusta fechas al revisar
+// sin devolver la liquidación).
 export const updateLiquidacion = async (req, res) => {
     try {
         const { liq, error, status } = await loadOwned(req);
         if (error) return res.status(status).json({ error });
-        if (!EDITABLE_STATUSES.includes(liq.status)) {
+        const isAdmin = req.user.role === 'ADMIN';
+        const canEdit = EDITABLE_STATUSES.includes(liq.status)
+            || (isAdmin && liq.status === 'PENDING_APPROVAL');
+        if (!canEdit) {
             return res.status(400).json({ error: 'Solo se pueden editar liquidaciones en borrador o devueltas.' });
         }
         const config = configSchema.parse(req.body?.config || {});
         const data = serialize(liq).data;
+        const prev = data.config || {};
+
+        const cambioFechas = ['fechaInicialCobro', 'fechaFinalCobro'].some(
+            (k) => config[k] !== undefined && config[k] !== prev[k]
+        );
+        if (cambioFechas && !isAdmin) {
+            return res.status(403).json({
+                error: 'Las fechas del cobro solo las modifica el administrador. Usa "Solicitar ajuste de fechas" para pedirlo.',
+            });
+        }
+
+        const nextConfig = { ...prev, ...config };
+        // Los días son siempre derivados de las fechas — con los días reales
+        // de cada mes (pedido del cliente: nada de digitarlos a mano)
+        nextConfig.diasCobrados = diasEntre(nextConfig.fechaInicialCobro, nextConfig.fechaFinalCobro);
+
+        // Si el admin cambió las fechas y había una solicitud pendiente del
+        // agente, queda atendida y se le avisa
+        let solicitudFechas = data.solicitudFechas;
+        if (cambioFechas && isAdmin) {
+            if (solicitudFechas?.estado === 'PENDIENTE') {
+                solicitudFechas = { ...solicitudFechas, estado: 'ATENDIDA', atendidaAt: new Date().toISOString() };
+            }
+            if (liq.userId !== req.user.id) {
+                sendPersonalNotification(
+                    liq.userId,
+                    '📅 Fechas de liquidación actualizadas',
+                    `El administrador ajustó el período de cobro de la liquidación de ${data.origen?.arrendatarioNombre || 'tu liquidación'}: del ${nextConfig.fechaInicialCobro} al ${nextConfig.fechaFinalCobro} (${nextConfig.diasCobrados} días).`,
+                ).catch(() => {});
+            }
+        }
+
         const updated = await prisma.liquidacion.update({
             where: { id: liq.id },
-            data: { data: JSON.stringify({ ...data, config: { ...data.config, ...config }, totales: undefined }) },
+            data: { data: JSON.stringify({ ...data, config: nextConfig, solicitudFechas, totales: undefined }) },
             include: includeRefs,
         });
+        res.json(serialize(updated));
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+// POST /api/liquidaciones/:id/solicitar-fechas — el agente propone otro período
+// de cobro (ej.: el contrato se firmó el 20 pero el inmueble se entregó el 25).
+// La solicitud queda registrada en la liquidación y el admin recibe la
+// notificación; solo él puede aplicar el cambio (PATCH con las fechas).
+export const solicitarFechas = async (req, res) => {
+    try {
+        const { liq, error, status } = await loadOwned(req);
+        if (error) return res.status(status).json({ error });
+        if (!EDITABLE_STATUSES.includes(liq.status) && liq.status !== 'PENDING_APPROVAL') {
+            return res.status(400).json({ error: 'Esta liquidación ya no admite ajustes de fechas.' });
+        }
+        const parsed = z.object({
+            fechaInicialCobro: z.string().max(30),
+            fechaFinalCobro: z.string().max(30),
+            motivo: z.string().trim().min(1, 'Explica el motivo del ajuste').max(300),
+        }).parse(req.body);
+        if (diasEntre(parsed.fechaInicialCobro, parsed.fechaFinalCobro) === 0) {
+            return res.status(400).json({ error: 'El rango de fechas propuesto no es válido.' });
+        }
+
+        const data = serialize(liq).data;
+        const solicitudFechas = {
+            ...parsed,
+            estado: 'PENDIENTE',
+            solicitadaPor: req.user.id,
+            solicitadaPorNombre: liq.user?.name || '',
+            solicitadaAt: new Date().toISOString(),
+        };
+        const updated = await prisma.liquidacion.update({
+            where: { id: liq.id },
+            data: { data: JSON.stringify({ ...data, solicitudFechas }) },
+            include: includeRefs,
+        });
+        notifyAdmins(
+            '📅 Solicitud de ajuste de fechas',
+            `${liq.user?.name || 'Un agente'} pide cambiar el período de cobro de la liquidación de ${data.origen?.arrendatarioNombre || 'un arrendatario'} a: del ${parsed.fechaInicialCobro} al ${parsed.fechaFinalCobro}. Motivo: ${parsed.motivo}`,
+        );
         res.json(serialize(updated));
     } catch (error) {
         res.status(400).json({ error: error.message });
