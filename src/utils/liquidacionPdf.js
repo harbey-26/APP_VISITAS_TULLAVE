@@ -15,7 +15,8 @@ import { freshImport } from './freshImport.js';
 import { downloadBlob } from './downloadBlob.js';
 
 const PAGE = { width: 210, height: 297 };  // A4 vertical, mm
-const MARGIN = { top: 40, bottom: 16, left: 19, right: 19 };
+// bottom 22: deja aire para el pie de página con los datos de la inmobiliaria
+const MARGIN = { top: 40, bottom: 22, left: 19, right: 19 };
 const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right;
 const BODY_SIZE = 10;
 const LINE_HEIGHT = 4.6;
@@ -223,14 +224,27 @@ export async function generateLiquidacionPdf(liq) {
     }
 
     // ── Pie + marca de agua ──
+    // Pie de página con los datos de la inmobiliaria (pedido del cliente):
+    // nombre, NIT, dirección, teléfonos y correo, en cada página.
     const isDraft = liq.status !== 'APPROVED' && liq.status !== 'PAID';
     const total = pdf.getNumberOfPages();
     for (let p = 1; p <= total; p++) {
         pdf.setPage(p);
-        pdf.setFont('helvetica', 'normal');
+        pdf.setDrawColor(180);
+        pdf.setLineWidth(0.2);
+        pdf.line(MARGIN.left, PAGE.height - 16, PAGE.width - MARGIN.right, PAGE.height - 16);
+        pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7.5);
+        pdf.setTextColor(80);
+        pdf.text(`${EMPRESA.razonSocial} · NIT ${EMPRESA.nit}`, PAGE.width / 2, PAGE.height - 12.5, { align: 'center' });
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(110);
+        pdf.text(
+            `${EMPRESA.direccion}, ${EMPRESA.ciudad} · Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+            PAGE.width / 2, PAGE.height - 9.5, { align: 'center' },
+        );
         pdf.setTextColor(130);
-        pdf.text(`Página ${p} de ${total}`, PAGE.width / 2, PAGE.height - 7, { align: 'center' });
+        pdf.text(`Página ${p} de ${total}`, PAGE.width / 2, PAGE.height - 6, { align: 'center' });
         if (isDraft) {
             pdf.saveGraphicsState();
             pdf.setGState(new pdf.GState({ opacity: 0.12 }));
