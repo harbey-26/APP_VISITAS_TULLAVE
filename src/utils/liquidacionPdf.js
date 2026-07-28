@@ -105,14 +105,17 @@ export async function generateLiquidacionPdf(liq) {
     y = pdf.lastAutoTable.finalY + 6;
 
     // ── Conceptos ──
+    // Cada concepto va TOTALIZADO (IVA incluido en el valor), igual que en el
+    // formulario: el IVA se menciona como nota en el detalle, sin columna
+    // propia (pedido del cliente — no desglosar el IVA en el PDF).
     autoTable(pdf, {
         startY: y,
         margin: { left: MARGIN.left, right: MARGIN.right, top: MARGIN.top },
-        head: [['Concepto', 'Detalle', 'IVA 19%', 'Valor']],
+        head: [['Concepto', 'Detalle', 'Valor']],
         body: calc.lineas.map((l) => [
             l.concepto,
-            l.detalle,
-            l.iva ? money(l.iva) : '—',
+            [l.detalle, l.iva ? `Incluye IVA 19%: ${money(l.iva)}` : '']
+                .filter(Boolean).join('\n'),
             moneySigned(l.total),
         ]),
         theme: 'grid',
@@ -120,9 +123,8 @@ export async function generateLiquidacionPdf(liq) {
         headStyles: { fillColor: [50, 50, 50], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
             0: { cellWidth: 58 },
-            1: { cellWidth: CONTENT_WIDTH - 58 - 24 - 30 },
-            2: { cellWidth: 24, halign: 'right' },
-            3: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+            1: { cellWidth: CONTENT_WIDTH - 58 - 32 },
+            2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' },
         },
         didAddPage: () => { drawPageHeader(); },
     });
