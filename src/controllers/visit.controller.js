@@ -712,6 +712,42 @@ export const deleteVisit = async (req, res) => {
 };
 
 // A2: Marcar visita como no atendida (MISSED) — el agente o admin la marca manualmente
+// Depuración masiva de visitas pendientes vencidas (solo admin). Con la
+// disciplina de check-in, una PENDING vieja bloquea al agente; este endpoint
+// cierra el backlog de una vez: todas las PENDING programadas ANTES de la
+// fecha de corte pasan a MISSED o CANCELLED (con motivo). A propósito NO
+// envía notificaciones por visita ni toca Google Calendar (los eventos ya
+// pasaron y serían cientos de llamadas). dryRun devuelve solo el conteo.
+const cleanupPendingSchema = z.object({
+    before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de corte inválida (YYYY-MM-DD)'),
+    action: z.enum(['MISSED', 'CANCELLED']),
+    reason: z.string().trim().max(300).optional(),
+    dryRun: z.boolean().optional(),
+});
+
+export const cleanupPendingVisits = async (req, res) => {
+    try {
+        const data = cleanupPendingSchema.parse(req.body);
+        // Corte a las 00:00 de Bogotá (UTC-5 fijo, Colombia no tiene DST)
+        const cutoff = new Date(`${data.before}T00:00:00-05:00`);
+        if (isNaN(cutoff)) return res.status(400).json({ error: 'Fecha de corte inválida' });
+
+        const where = { status: 'PENDING', deletedAt: null, scheduledStart: { lt: cutoff } };
+        if (data.dryRun) {
+            const count = await prisma.visit.count({ where });
+            return res.json({ count, dryRun: true });
+        }
+
+        const payload = data.action === 'CANCELLED'
+            ? { status: 'CANCELLED', cancelReason: data.reason?.trim() || 'Depuración administrativa de visitas vencidas' }
+            : { status: 'MISSED' };
+        const result = await prisma.visit.updateMany({ where, data: payload });
+        res.json({ count: result.count });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 export const markMissed = async (req, res) => {
     let visitId;
     try { visitId = parseId(req.params.id); } catch {

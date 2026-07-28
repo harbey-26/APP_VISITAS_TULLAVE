@@ -152,6 +152,7 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
 | PATCH | `/api/visits/:id/missed` | JWT | Marcar como no atendida. Si lo hace un agente, notifica a los admins (FCM) |
 | PATCH | `/api/visits/:id/cancel` | JWT | Cancelar visita PENDING con `{reason}` obligatorio → CANCELLED. Borra el evento de Calendar. Agente cancela → notifica admins; admin cancela visita ajena → notifica al agente |
 | PATCH | `/api/visits/:id/reassign` | JWT+Admin | Reasignar a otro agente |
+| POST | `/api/visits/cleanup-pending` | JWT+Admin | **Depurar en bloque** las PENDING programadas antes de `{before}` (00:00 Bogotá) → `{action}` MISSED o CANCELLED (+`reason`). `dryRun:true` solo cuenta. Sin notificaciones por visita ni Calendar. Botón "Depurar vencidas" en Agenda (admin) |
 | GET/POST | `/api/visits/:id/images` | JWT | Fotos de visita |
 | DELETE | `/api/visits/:id/images/:imgId` | JWT | Eliminar foto |
 | GET/POST | `/api/broadcasts` | JWT | Comunicados admin→agente |

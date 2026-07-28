@@ -286,6 +286,13 @@ export default function Agenda() {
     const [cancelReason, setCancelReason] = useState('');
     const [cancelling, setCancelling] = useState(false);
 
+    // Depuración masiva de pendientes vencidas (admin) — cierra el backlog que
+    // la disciplina de check-in dejaría bloqueando a los agentes una a una
+    const [showCleanupModal, setShowCleanupModal] = useState(false);
+    const [cleanupForm, setCleanupForm] = useState({ before: '', action: 'MISSED', reason: '' });
+    const [cleanupCount, setCleanupCount] = useState(null); // null = cargando
+    const [cleaningUp, setCleaningUp] = useState(false);
+
     // Reassign State (M2)
     const [showReassignModal, setShowReassignModal] = useState(false);
     const [reassignTargetId, setReassignTargetId] = useState(null);
@@ -392,6 +399,54 @@ export default function Agenda() {
             console.error('Error al cargar visitas', error);
         } finally {
             if (!silent) setLoadingVisits(false);
+        }
+    };
+
+    // ── Depuración masiva de pendientes vencidas (admin) ──
+    const cleanupCountFor = async (before) => {
+        setCleanupCount(null);
+        try {
+            const res = await fetch(`${API_URL}/api/visits/cleanup-pending`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ before, action: 'MISSED', dryRun: true })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCleanupCount(data.count);
+            }
+        } catch { setCleanupCount(0); }
+    };
+
+    const openCleanup = () => {
+        const d = new Date();
+        const hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        setCleanupForm({ before: hoy, action: 'MISSED', reason: '' });
+        setShowCleanupModal(true);
+        cleanupCountFor(hoy);
+    };
+
+    const runCleanup = async () => {
+        setCleaningUp(true);
+        try {
+            const res = await fetch(`${API_URL}/api/visits/cleanup-pending`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    before: cleanupForm.before,
+                    action: cleanupForm.action,
+                    reason: cleanupForm.reason.trim() || undefined
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw data;
+            toast.success(`${data.count} visita${data.count === 1 ? '' : 's'} depurada${data.count === 1 ? '' : 's'} (${cleanupForm.action === 'MISSED' ? 'no atendidas' : 'canceladas'})`);
+            setShowCleanupModal(false);
+            fetchVisits(true);
+        } catch (err) {
+            toast.error(err.error || friendlyError(err));
+        } finally {
+            setCleaningUp(false);
         }
     };
 
@@ -845,6 +900,17 @@ export default function Agenda() {
                                 ))}
                             </select>
                         </div>
+                    )}
+
+                    {/* Depurar pendientes vencidas — solo admin */}
+                    {user?.role === 'ADMIN' && (
+                        <button
+                            onClick={openCleanup}
+                            className="flex items-center gap-1.5 text-sm font-semibold text-orange-600 border border-orange-200 bg-orange-50 hover:bg-orange-100 rounded-lg px-3 py-2 transition whitespace-nowrap"
+                        >
+                            <CalendarX className="w-4 h-4" />
+                            Depurar vencidas
+                        </button>
                     )}
                 </div>
             </div>
@@ -1559,6 +1625,63 @@ export default function Agenda() {
                     <Button variant="secondary" className="flex-1" onClick={() => setShowCancelModal(false)}>Volver</Button>
                     <Button variant="danger" className="flex-1" disabled={!cancelReason.trim() || cancelling} onClick={confirmCancel}>
                         {cancelling ? 'Cancelando...' : 'Cancelar visita'}
+                    </Button>
+                </div>
+            </Modal>
+
+            {/* Depuración masiva de pendientes vencidas (admin) */}
+            <Modal open={showCleanupModal} onClose={() => !cleaningUp && setShowCleanupModal(false)} maxWidth="max-w-md">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CalendarX className="w-6 h-6 text-orange-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">Depurar visitas vencidas</h3>
+                <p className="text-gray-500 mb-4 text-sm text-center">
+                    Cierra en bloque las visitas <strong>pendientes</strong> programadas antes de la
+                    fecha de corte, para que no sigan bloqueando el check-in de los agentes.
+                </p>
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">Fecha de corte</label>
+                        <input
+                            type="date"
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            value={cleanupForm.before}
+                            onChange={(e) => { setCleanupForm({ ...cleanupForm, before: e.target.value }); cleanupCountFor(e.target.value); }}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Se depuran las pendientes programadas ANTES de este día (el día en curso no se toca)</p>
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">Marcarlas como</label>
+                        <select
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            value={cleanupForm.action}
+                            onChange={(e) => setCleanupForm({ ...cleanupForm, action: e.target.value })}
+                        >
+                            <option value="MISSED">No atendidas (cuentan en el indicador del agente)</option>
+                            <option value="CANCELLED">Canceladas con motivo administrativo (neutral para el agente)</option>
+                        </select>
+                    </div>
+                    {cleanupForm.action === 'CANCELLED' && (
+                        <input
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                            placeholder="Motivo (por defecto: Depuración administrativa de visitas vencidas)"
+                            value={cleanupForm.reason}
+                            onChange={(e) => setCleanupForm({ ...cleanupForm, reason: e.target.value })}
+                        />
+                    )}
+                    <p className={`text-sm font-bold rounded-xl px-3 py-2.5 text-center ${cleanupCount === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
+                        {cleanupCount === null ? 'Contando…'
+                            : cleanupCount === 0 ? 'No hay visitas pendientes vencidas antes de esa fecha 🎉'
+                                : `Se depurarán ${cleanupCount} visita${cleanupCount === 1 ? '' : 's'} pendiente${cleanupCount === 1 ? '' : 's'}`}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                        No se envían notificaciones por cada visita. Esta acción no se puede deshacer en bloque.
+                    </p>
+                </div>
+                <div className="flex gap-3 mt-4">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowCleanupModal(false)}>Volver</Button>
+                    <Button variant="danger" className="flex-1" disabled={!cleanupCount || cleaningUp} onClick={runCleanup}>
+                        {cleaningUp ? 'Depurando…' : 'Depurar'}
                     </Button>
                 </div>
             </Modal>
