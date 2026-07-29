@@ -202,9 +202,11 @@ export async function generateContractPdf(contract) {
             drawMarkedText(block.text);
             y += 2.2;
         } else if (block.kind === 'signature') {
-            const height = 16 + block.lines.length * LINE_HEIGHT;
+            // Espacio amplio sobre la línea para la estampa de la firma
+            // digital (Autentic) — el bloque completo no se parte de página
+            const height = 33 + block.lines.length * LINE_HEIGHT;
             ensureSpace(height + 4);
-            y += 11;
+            y += 28;
             pdf.setFontSize(BODY_SIZE);
             pdf.setFont('helvetica', 'normal');
             pdf.setDrawColor(40);

@@ -204,8 +204,9 @@ export async function generateLiquidacionPdf(liq) {
     const entregaNombre = (!liq.user?.name || liq.user?.role === 'ADMIN')
         ? EMPRESA.representanteLegal
         : liq.user.name;
-    ensureSpace(38);
-    y += 14;
+    // Espacio amplio sobre las líneas para las estampas de firma digital
+    ensureSpace(52);
+    y += 28;
     const colW = (CONTENT_WIDTH - 14) / 2;
     const x2 = MARGIN.left + colW + 14;
     pdf.setDrawColor(40);

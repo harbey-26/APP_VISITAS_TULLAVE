@@ -223,7 +223,7 @@ function ContractPreview({ type, data }) {
                 }
                 if (b.kind === 'signature') {
                     return (
-                        <div key={i} className="pt-6">
+                        <div key={i} className="pt-16">
                             <div className="border-t border-gray-500 w-56 mb-1" />
                             <p className="font-bold">{b.role}</p>
                             {b.lines.map((l, j) => <p key={j}><Marked text={l} /></p>)}
