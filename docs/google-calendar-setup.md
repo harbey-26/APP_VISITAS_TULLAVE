@@ -1,12 +1,18 @@
-# Integración Google Calendar — Setup
+# Integración Google (Calendar + Gmail) — Setup
 
-Cómo conectar la app a una cuenta corporativa de Google Calendar para que las visitas
-se reflejen automáticamente como eventos.
+Cómo conectar la app a una cuenta corporativa de Google para que las visitas
+se reflejen automáticamente como eventos de Calendar y para enviar contratos y
+liquidaciones por correo (Gmail API). Es **una sola conexión OAuth** para ambas
+cosas — no existe una integración de correo separada.
 
 ## 1. Crear el proyecto en Google Cloud
 
 1. Entra a https://console.cloud.google.com y crea (o selecciona) un proyecto.
 2. **APIs & Services → Library** → busca **Google Calendar API** → **Enable**.
+3. **APIs & Services → Library** → busca **Gmail API** → **Enable**.
+   > ⚠️ Sin este paso, el envío de contratos/liquidaciones por correo falla con
+   > 403 `accessNotConfigured` aunque la cuenta haya autorizado el permiso
+   > `gmail.send` — reconectar la cuenta NO lo arregla (issue #31).
 
 ## 2. Configurar la pantalla de consentimiento
 
@@ -16,6 +22,9 @@ se reflejen automáticamente como eventos.
 4. **Scopes**: añade
    - `https://www.googleapis.com/auth/calendar.events`
    - `https://www.googleapis.com/auth/userinfo.email`
+   - `https://www.googleapis.com/auth/gmail.send` (envío de contratos por correo;
+     es un scope *restringido* de Google — mientras la app esté en modo Testing
+     los test users pueden autorizarlo sin verificación de la app)
    - `openid`
 5. **Test users**: añade el email de la cuenta corporativa que conectarás
    (mientras la app esté en modo "Testing" solo esa cuenta podrá autorizar).
@@ -52,8 +61,9 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/integrations/google/callback
 1. Reinicia el servidor para que tome las env vars.
 2. Entra a la app como admin → **Ajustes** → **Google Calendar** → **Conectar**.
 3. Se abre una pestaña con el consentimiento de Google; selecciona la cuenta
-   corporativa, acepta los permisos, y cierra la pestaña cuando veas el mensaje
-   de éxito.
+   corporativa, acepta los permisos — **marca también la casilla "Enviar correo
+   electrónico en tu nombre"** (sin ella el envío de contratos fallará) — y
+   cierra la pestaña cuando veas el mensaje de éxito.
 4. Vuelve a la app: el estado debe pasar a **Conectado** con el email de la cuenta.
 
 ## 6. Cómo funciona la sincronización
