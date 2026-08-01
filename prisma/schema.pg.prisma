@@ -162,6 +162,7 @@ model Contract {
   reviewedBy Int?      // id del admin que revisó
   reviewedAt DateTime?
   sentAt     DateTime?
+  emailedAt  DateTime? // último envío por correo exitoso (anti-duplicado, 1 h)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -191,6 +192,7 @@ model Liquidacion {
   reviewedBy Int?
   reviewedAt DateTime?
   sentAt     DateTime? // primera vez que se compartió (WhatsApp/correo)
+  emailedAt  DateTime? // último envío por correo exitoso (anti-duplicado, 1 h)
   paidAt     DateTime? // cuando los pagos cubrieron el total
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

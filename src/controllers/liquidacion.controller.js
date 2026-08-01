@@ -9,6 +9,7 @@ import { EMPRESA } from '../utils/contractTemplates.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateLiquidacionPdf, liquidacionFileName } from '../utils/liquidacionPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
+import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 
 // L1: Liquidación inicial de un contrato de arrendamiento (reemplaza el Excel).
 // Se crea DESDE un contrato ARRENDAMIENTO aprobado: `data.origen` es un snapshot
@@ -588,32 +589,54 @@ export const emailLiquidacion = async (req, res) => {
             return res.status(400).json({ error: 'El contrato de origen no tiene correo del arrendatario.' });
         }
 
-        const updated = await markShared(liq);
-        const parsedSent = serialize(updated);
-        const pdf = await generateLiquidacionPdf(parsedSent);
-        const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
-
-        const nombre = parsed.data.origen?.arrendatarioNombre;
-        const publicUrl = `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`;
-        await sendEmailWithPdf({
-            to,
-            subject: 'Liquidación inicial de su contrato de arrendamiento — TuLlave Inmobiliaria',
-            text: [
-                nombre ? `Hola ${nombre},` : 'Hola,',
-                '',
-                'TuLlave Inmobiliaria le comparte la liquidación inicial de su contrato de arrendamiento en el archivo adjunto.',
-                `También puede descargarla en: ${publicUrl}`,
-                '',
-                'Cualquier inquietud, con gusto la atendemos.',
-                '',
-                EMPRESA.razonSocial,
-                `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
-            ].join('\n'),
-            pdfBuffer,
-            filename: liquidacionFileName(parsedSent),
+        // Anti-duplicado: mismo reclamo atómico que en contratos (1 h de espera
+        // tras un envío exitoso; si el envío falla se restaura el valor previo).
+        const now = new Date();
+        const claimed = await prisma.liquidacion.updateMany({
+            where: {
+                id: liq.id,
+                OR: [{ emailedAt: null }, { emailedAt: { lt: new Date(now.getTime() - EMAIL_COOLDOWN_MS) } }],
+            },
+            data: { emailedAt: now },
         });
+        if (claimed.count === 0) {
+            return res.status(409).json({ error: emailCooldownMessage(emailCooldownRemainingMs(liq.emailedAt)) });
+        }
 
-        res.json({ ...parsedSent, emailedTo: to });
+        try {
+            const updated = await markShared(liq);
+            const parsedSent = serialize(updated);
+            const pdf = await generateLiquidacionPdf(parsedSent);
+            const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+
+            const nombre = parsed.data.origen?.arrendatarioNombre;
+            const publicUrl = `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`;
+            await sendEmailWithPdf({
+                to,
+                subject: 'Liquidación inicial de su contrato de arrendamiento — TuLlave Inmobiliaria',
+                text: [
+                    nombre ? `Hola ${nombre},` : 'Hola,',
+                    '',
+                    'TuLlave Inmobiliaria le comparte la liquidación inicial de su contrato de arrendamiento en el archivo adjunto.',
+                    `También puede descargarla en: ${publicUrl}`,
+                    '',
+                    'Cualquier inquietud, con gusto la atendemos.',
+                    '',
+                    EMPRESA.razonSocial,
+                    `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+                ].join('\n'),
+                pdfBuffer,
+                filename: liquidacionFileName(parsedSent),
+            });
+
+            res.json({ ...parsedSent, emailedAt: now, emailedTo: to });
+        } catch (sendError) {
+            await prisma.liquidacion.update({
+                where: { id: liq.id },
+                data: { emailedAt: liq.emailedAt },
+            }).catch(() => {});
+            throw sendError;
+        }
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

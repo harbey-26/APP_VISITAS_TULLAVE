@@ -5,6 +5,7 @@ import { validateContractData, EDITABLE_STATUSES, REOPENABLE_STATUSES, getTempla
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
+import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 
 // C1: Contratos diligenciados por agentes con visto bueno del admin.
 // Flujo de estados: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED (vuelve a
@@ -302,33 +303,57 @@ export const emailContract = async (req, res) => {
             return res.status(400).json({ error: 'El contrato no tiene correo del cliente. Edítalo y agrega el correo antes de enviarlo.' });
         }
 
-        const updated = await markSent(contract);
-        const parsedSent = serialize(updated);
-        const pdf = await generateContractPdf(parsedSent);
-        const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
-
-        const label = getTemplate(contract.type)?.label || 'contrato';
-        const nombre = clientNameOf(parsed.data);
-        const publicUrl = `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`;
-        await sendEmailWithPdf({
-            to,
-            subject: `${label.charAt(0).toUpperCase()}${label.slice(1)} — TuLlave Inmobiliaria`,
-            text: [
-                nombre ? `Hola ${nombre},` : 'Hola,',
-                '',
-                `TuLlave Inmobiliaria le comparte su ${label} en el archivo adjunto.`,
-                `También puede descargarlo en: ${publicUrl}`,
-                '',
-                'Cualquier inquietud, con gusto la atendemos.',
-                '',
-                EMPRESA.razonSocial,
-                `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
-            ].join('\n'),
-            pdfBuffer,
-            filename: contractFileName(parsedSent),
+        // Anti-duplicado: reclamo atómico del envío. El updateMany condicionado
+        // garantiza que dos clics simultáneos no pasen ambos (el segundo ve
+        // count 0). Si el envío falla más abajo, se restaura el valor previo.
+        const now = new Date();
+        const claimed = await prisma.contract.updateMany({
+            where: {
+                id: contract.id,
+                OR: [{ emailedAt: null }, { emailedAt: { lt: new Date(now.getTime() - EMAIL_COOLDOWN_MS) } }],
+            },
+            data: { emailedAt: now },
         });
+        if (claimed.count === 0) {
+            return res.status(409).json({ error: emailCooldownMessage(emailCooldownRemainingMs(contract.emailedAt)) });
+        }
 
-        res.json({ ...parsedSent, emailedTo: to });
+        try {
+            const updated = await markSent(contract);
+            const parsedSent = serialize(updated);
+            const pdf = await generateContractPdf(parsedSent);
+            const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+
+            const label = getTemplate(contract.type)?.label || 'contrato';
+            const nombre = clientNameOf(parsed.data);
+            const publicUrl = `${publicBaseUrl(req)}${publicPdfPath(updated.shareToken)}`;
+            await sendEmailWithPdf({
+                to,
+                subject: `${label.charAt(0).toUpperCase()}${label.slice(1)} — TuLlave Inmobiliaria`,
+                text: [
+                    nombre ? `Hola ${nombre},` : 'Hola,',
+                    '',
+                    `TuLlave Inmobiliaria le comparte su ${label} en el archivo adjunto.`,
+                    `También puede descargarlo en: ${publicUrl}`,
+                    '',
+                    'Cualquier inquietud, con gusto la atendemos.',
+                    '',
+                    EMPRESA.razonSocial,
+                    `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+                ].join('\n'),
+                pdfBuffer,
+                filename: contractFileName(parsedSent),
+            });
+
+            res.json({ ...parsedSent, emailedAt: now, emailedTo: to });
+        } catch (sendError) {
+            // El correo no salió: liberar el reclamo para permitir reintentar
+            await prisma.contract.update({
+                where: { id: contract.id },
+                data: { emailedAt: contract.emailedAt },
+            }).catch(() => {});
+            throw sendError;
+        }
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

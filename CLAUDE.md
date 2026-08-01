@@ -162,7 +162,7 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
 | PATCH | `/api/contracts/:id/review` | JWT+Admin | Aprobar o devolver (`{decision, note}`) |
 | PATCH | `/api/contracts/:id/reopen` | JWT | Reabrir un APROBADO para corregir → REOPENED (dueño/admin; SENT bloqueado) |
 | POST | `/api/contracts/:id/share` | JWT | Genera shareToken, marca SENT, devuelve `publicUrl` (WhatsApp) |
-| POST | `/api/contracts/:id/email` | JWT | Envía el PDF adjunto al correo del cliente vía Gmail API |
+| POST | `/api/contracts/:id/email` | JWT | Envía el PDF adjunto al correo del cliente vía Gmail API. Anti-duplicado: 409 si ya se envió hace <1 h (`emailedAt`, reclamo atómico) |
 | GET | `/api/contracts/public/:token/pdf` | **No** | PDF público para el cliente final (solo contratos SENT) |
 | DELETE | `/api/contracts/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera) |
 | GET/POST | `/api/liquidaciones` | JWT | Liquidaciones (agente las suyas; admin todas). POST crea DRAFT desde `{contractId}` (ARRENDAMIENTO aprobado, 409 si ya existe) |
@@ -175,7 +175,7 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
 | POST | `/api/liquidaciones/:id/pagos` | JWT | Registrar pago (solo APPROVED); saldo $0 → PAID. Notifica a la contraparte |
 | DELETE | `/api/liquidaciones/:id/pagos/:pagoId` | JWT+Admin | Corregir un pago; si revive el saldo, PAID → APPROVED |
 | POST | `/api/liquidaciones/:id/share` | JWT | Link público (WhatsApp); marca `sentAt` sin cambiar status |
-| POST | `/api/liquidaciones/:id/email` | JWT | PDF adjunto al correo del arrendatario (Gmail API) |
+| POST | `/api/liquidaciones/:id/email` | JWT | PDF adjunto al correo del arrendatario (Gmail API). Anti-duplicado 1 h igual que contratos |
 | GET | `/api/liquidaciones/public/:token/pdf` | **No** | PDF público para el arrendatario (solo compartidas) |
 | DELETE | `/api/liquidaciones/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera; cascade borra pagos) |
 

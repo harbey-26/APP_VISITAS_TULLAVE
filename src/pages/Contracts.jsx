@@ -15,6 +15,7 @@ import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, SearchCombobox, inputClass, cn,
 } from '../components/ui';
 import { buildWhatsAppUrl } from '../utils/phone';
+import { emailCooldownRemainingMs } from '../utils/emailCooldown';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
@@ -678,6 +679,8 @@ export default function Contracts() {
                                                 {clientEmailOf(c) && (
                                                     <Button variant="ghost" size="sm" icon={Mail}
                                                         className="text-blue-600 hover:bg-blue-50"
+                                                        disabled={busy || emailCooldownRemainingMs(c.emailedAt) > 0}
+                                                        title={emailCooldownRemainingMs(c.emailedAt) > 0 ? 'Correo enviado hace poco — espera 1 hora para reenviar' : undefined}
                                                         onClick={() => sendEmail(c)} aria-label="Enviar por correo" />
                                                 )}
                                             </>
@@ -861,7 +864,8 @@ export default function Contracts() {
                                         WhatsApp
                                     </Button>
                                     <Button size="sm" icon={Mail} loading={busy}
-                                        disabled={!clientEmailOf(preview)}
+                                        disabled={!clientEmailOf(preview) || emailCooldownRemainingMs(preview.emailedAt) > 0}
+                                        title={emailCooldownRemainingMs(preview.emailedAt) > 0 ? 'Correo enviado hace poco — espera 1 hora para reenviar' : undefined}
                                         onClick={() => sendEmail(preview)}>
                                         Enviar correo
                                     </Button>
