@@ -25,7 +25,25 @@ export const EMPRESA = {
     emailAdministrativo: 'gerenciaadministrativa@tullaveinmobiliaria.com.co',
     bancoRecaudo: 'Banco Davivienda',
     cuentaRecaudo: 'cuenta de Ahorros No. 009100739565',
+    // Pago en línea / en puntos físicos (Mi Pago Amigo). El arrendatario busca
+    // el convenio por nombre dentro del portal.
+    pagoEnLineaPlataforma: 'Mi Pago Amigo',
+    pagoEnLineaConvenio: 'TU LLAVE INMOBILIARIA',
+    pagoEnLineaUrl: 'https://www.mipagoamigo.com/MPA_WebSite/ServicePayments',
 };
+
+// Formas de pago en texto plano, para el mensaje de WhatsApp y el correo con
+// que se envía la liquidación (el PDF las dibuja aparte, en su propio bloque).
+// Una sola fuente: si cambia la cuenta o el convenio, se toca EMPRESA y ya.
+// `referencia` = la que pide el banco (ver referenciaPago en liquidacionCalc).
+export function mediosDePagoTexto(referencia = '') {
+    return [
+        ...(referencia ? [`Referencia de pago: ${referencia}`, ''] : []),
+        'Formas de pago:',
+        `1) Consignación o transferencia — ${EMPRESA.bancoRecaudo}, ${EMPRESA.cuentaRecaudo}, a nombre de ${EMPRESA.razonSocial} (NIT ${EMPRESA.nit}).`,
+        `2) En línea o en puntos ${EMPRESA.pagoEnLineaPlataforma} — busque el convenio "${EMPRESA.pagoEnLineaConvenio}": ${EMPRESA.pagoEnLineaUrl}`,
+    ];
+}
 
 // Estados del flujo: el agente diligencia (DRAFT), envía a revisión
 // (PENDING_APPROVAL), el admin aprueba (APPROVED) o devuelve (REJECTED,
@@ -191,6 +209,7 @@ export const CONTRACT_TEMPLATES = {
                     { key: 'torreInmueble', label: 'Torre / Bloque', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
                     { key: 'aptoInmueble', label: 'Apartamento / Interior', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
                     { key: 'conjuntoInmueble', label: 'Conjunto / Edificio', type: 'text', hint: 'Opcional. Como aparece en el certificado de libertad', prefill: 'conjunto' },
+                    { key: 'barrioInmueble', label: 'Barrio', type: 'text', hint: 'Opcional. Se usa como referencia de pago en el banco cuando el inmueble no está en conjunto' },
                     { key: 'ciudadInmueble', label: 'Ciudad', type: 'text', required: true, default: 'Bogotá D.C.' },
                     { key: 'fechaInicio', label: 'Fecha de iniciación', type: 'date', required: true },
                     { key: 'duracionMeses', label: 'Vigencia (meses)', type: 'number', required: true, default: 12 },

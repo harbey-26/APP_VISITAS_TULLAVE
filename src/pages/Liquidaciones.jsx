@@ -5,7 +5,8 @@ import { useToast } from '../context/ToastContext';
 import { apiFetch, friendlyError } from '../utils/api';
 import {
     calcularLiquidacion, validateLiquidacionConfig, diasEntre, diasDelMes,
-    LIQUIDACION_STATUS, EDITABLE_STATUSES, SENDABLE_STATUSES, ADMON_MODOS,
+    LIQUIDACION_STATUS, EDITABLE_STATUSES, SENDABLE_STATUSES, ADMON_MODOS, etiquetaItems,
+    referenciaPago,
 } from '../utils/liquidacionCalc';
 import { downloadLiquidacionPdf } from '../utils/liquidacionPdf';
 import { formatoCifra } from '../utils/numeroALetras';
@@ -14,6 +15,7 @@ import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, inputClass, cn,
 } from '../components/ui';
 import { buildWhatsAppUrl } from '../utils/phone';
+import { mediosDePagoTexto } from '../utils/contractTemplates';
 import { emailCooldownRemainingMs } from '../utils/emailCooldown';
 import {
     Receipt, Pencil, Eye, Send, Download, Trash2, CheckCircle, Undo2,
@@ -77,35 +79,53 @@ function IvaCheckbox({ checked, onChange, disabled }) {
     );
 }
 
-// ─── Resumen (sección C): totales en vivo, también usado como vista previa ──
+// ─── Resumen (sección 3): totales en vivo, también usado como vista previa ──
+// Misma estructura del PDF: ítems numerados, agrupados por sección, con el IVA
+// mostrado UNA vez por ítem (ya incluido en su total) y subtotales que citan
+// los ítems que suman. No repetir el IVA abajo: era el reclamo del cliente.
 function Resumen({ calc, compact = false }) {
     return (
         <div className={cn('space-y-1.5', compact ? 'text-xs' : 'text-sm')}>
-            {calc.lineas.map((l, i) => (
-                <div key={i} className="flex justify-between gap-2 text-gray-600">
-                    <span className="min-w-0">
-                        {l.concepto}
-                        {l.detalle && <span className="block text-[11px] text-gray-400">{l.detalle}</span>}
-                        {l.iva > 0 && <span className="block text-[11px] text-gray-400">+ IVA {money(l.iva)}</span>}
-                    </span>
-                    <span className={cn('font-semibold whitespace-nowrap', l.total < 0 && 'text-emerald-600')}>
-                        {l.total < 0 ? `- ${money(l.total)}` : money(l.total)}
-                    </span>
+            {calc.grupos.map((g) => (
+                <div key={g.clave} className="space-y-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 pt-1">
+                        {g.letra}. {g.titulo}
+                    </p>
+                    {calc.lineas.filter((l) => l.grupo === g.clave).map((l) => (
+                        <div key={l.num} className="flex justify-between gap-2 text-gray-600">
+                            <span className="min-w-0">
+                                <span className="text-gray-400">{l.num}.</span> {l.concepto}
+                                {l.detalle && <span className="block text-[11px] text-gray-400">{l.detalle}</span>}
+                                {l.iva > 0 && (
+                                    <span className="block text-[11px] text-gray-400">
+                                        {money(l.base)} + IVA {money(l.iva)}
+                                    </span>
+                                )}
+                            </span>
+                            <span className={cn('font-semibold whitespace-nowrap', l.total < 0 && 'text-emerald-600')}>
+                                {l.total < 0 ? `- ${money(l.total)}` : money(l.total)}
+                            </span>
+                        </div>
+                    ))}
+                    <div className="flex justify-between text-gray-500 border-t border-dashed border-gray-200 pt-1">
+                        <span>Subtotal {g.letra} ({etiquetaItems(g.nums)})</span>
+                        <span>{g.total < 0 ? `- ${money(g.total)}` : money(g.total)}</span>
+                    </div>
                 </div>
             ))}
             <div className="border-t border-gray-200 pt-1.5 space-y-1">
-                <div className="flex justify-between text-gray-500">
-                    <span>Subtotal proporcional</span><span>{money(calc.subtotalProporcional)}</span>
-                </div>
-                <div className="flex justify-between text-gray-500">
-                    <span>Servicios</span><span>{money(calc.subtotalServicios)}</span>
-                </div>
-                <div className="flex justify-between text-gray-500">
-                    <span>IVA 19%</span><span>{money(calc.totalIva)}</span>
-                </div>
                 <div className="flex justify-between font-bold text-gray-900">
-                    <span>Total general</span><span>{money(calc.totalGeneral)}</span>
+                    <span>
+                        Total liquidación
+                        {calc.grupos.length > 1 && ` (${calc.grupos.map((g) => g.letra).join(' + ')})`}
+                    </span>
+                    <span>{money(calc.totalGeneral)}</span>
                 </div>
+                {calc.totalIva > 0 && (
+                    <p className="text-[11px] text-gray-400">
+                        Incluye IVA 19% por {money(calc.totalIva)} ({etiquetaItems(calc.itemsConIva)}).
+                    </p>
+                )}
                 {calc.abonos.map((a, i) => (
                     <div key={i} className="flex justify-between text-emerald-700">
                         <span className="min-w-0 truncate">
@@ -355,7 +375,11 @@ export default function Liquidaciones() {
         try {
             const res = await apiFetch(`/api/liquidaciones/${liq.id}/share`, { method: 'POST' });
             const nombre = nombreDe(liq);
-            const msg = `Hola ${nombre} 👋, TuLlave Inmobiliaria le comparte la liquidación inicial de su contrato de arrendamiento. Puede consultarla y descargarla aquí: ${res.publicUrl}`;
+            const msg = [
+                `Hola ${nombre} 👋, TuLlave Inmobiliaria le comparte la liquidación inicial de su contrato de arrendamiento. Puede consultarla y descargarla aquí: ${res.publicUrl}`,
+                '',
+                ...mediosDePagoTexto(referenciaPago(liq.data?.origen)),
+            ].join('\n');
             const url = buildWhatsAppUrl(liq.data?.origen?.arrendatarioCelular, msg);
             if (win) win.location.href = url;
             else window.location.href = url;
@@ -720,10 +744,10 @@ export default function Liquidaciones() {
                         <div className="max-h-[60vh] overflow-y-auto scrollbar-thin pr-1 -mr-1">
                         <div className="grid grid-cols-1 lg:grid-cols-[1fr,290px] gap-5">
                             <div className="space-y-5">
-                                {/* A. Datos del contrato (bloqueados) */}
+                                {/* 1. Datos del contrato (bloqueados) */}
                                 <section>
                                     <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                                        <h4 className="font-bold text-gray-900 text-sm">A. Datos del contrato</h4>
+                                        <h4 className="font-bold text-gray-900 text-sm">1. Datos del contrato</h4>
                                         <div className="flex items-center gap-2">
                                             {editableNow && (
                                                 <Button variant="ghost" size="sm" icon={RefreshCw} loading={busy} onClick={syncFromContract}>
@@ -746,22 +770,28 @@ export default function Liquidaciones() {
                                             ['Celular', origen.arrendatarioCelular],
                                             ['Código Wasi', origen.codigoWasi],
                                             ['Dirección', origen.direccionCompleta],
+                                            // La que el arrendatario le dicta al banco; sale del
+                                            // contrato (conjunto+torre+apto, o dirección+barrio)
+                                            // (sin truncar: es el dato que se dicta en el banco)
+                                            ['Referencia de pago', referenciaPago(origen), true],
                                             ['Inicio del contrato', origen.fechaInicioContrato ? fechaCorta(origen.fechaInicioContrato) : ''],
                                             ['Fin del contrato', origen.fechaFinContrato ? fechaCorta(origen.fechaFinContrato) : ''],
                                             ['Canon mensual', money(origen.canonMensual)],
                                             ['Administración mensual', Number(origen.administracionMensual) > 0 ? money(origen.administracionMensual) : 'No aplica'],
-                                        ].map(([label, value]) => (
+                                        ].map(([label, value, completo]) => (
                                             <div key={label} className="min-w-0">
                                                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{label}</p>
-                                                <p className="text-gray-800 font-semibold truncate">{value || '—'}</p>
+                                                <p className={cn('text-gray-800 font-semibold', completo ? 'break-words' : 'truncate')}>
+                                                    {value || '—'}
+                                                </p>
                                             </div>
                                         ))}
                                     </div>
                                 </section>
 
-                                {/* B. Configuración del cobro */}
+                                {/* 2. Configuración del cobro */}
                                 <section>
-                                    <h4 className="font-bold text-gray-900 text-sm mb-3">B. Configuración de la liquidación</h4>
+                                    <h4 className="font-bold text-gray-900 text-sm mb-3">2. Configuración de la liquidación</h4>
                                     <div className="space-y-4">
                                         {/* Fechas: solo el admin las modifica; el agente pide el
                                             ajuste (ej.: el inmueble se entregó después de la firma) */}
@@ -927,10 +957,10 @@ export default function Liquidaciones() {
                                 </section>
                             </div>
 
-                            {/* C. Resumen en vivo */}
+                            {/* 3. Resumen en vivo */}
                             <aside className="lg:border-l lg:border-gray-100 lg:pl-5">
                                 <div className="lg:sticky lg:top-0">
-                                    <h4 className="font-bold text-gray-900 text-sm mb-3">C. Resumen</h4>
+                                    <h4 className="font-bold text-gray-900 text-sm mb-3">3. Resumen</h4>
                                     {liveCalc && <Resumen calc={liveCalc} compact />}
                                 </div>
                             </aside>

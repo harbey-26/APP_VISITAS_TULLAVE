@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    calcularLiquidacion, validateLiquidacionConfig, diasDelMes, diasEntre,
+    calcularLiquidacion, validateLiquidacionConfig, diasDelMes, diasEntre, etiquetaItems, referenciaPago,
 } from '../src/utils/liquidacionCalc.js';
 
 // Base: caso "Fontibon" del Excel real — canon 1.300.000, julio (31 días),
@@ -175,6 +175,116 @@ describe('calcularLiquidacion — otros cargos, descuentos y pagos', () => {
             config: { fechaInicialCobro: '2026-07-05', diasCobrados: 28 },
         });
         expect(r.subtotalProporcional).toBe(1174194);
+    });
+});
+
+// El documento debe cuadrar SIEMPRE: lo que suman los grupos, lo que suman las
+// columnas base+IVA y el total general tienen que ser el mismo número. Antes
+// existía `subtotalServicios` (solo líneas SERVICIO) que dejaba los otros
+// cargos/descuentos fuera del recuadro y descuadraba el PDF.
+describe('calcularLiquidacion — coherencia del documento', () => {
+    const conDeTodo = {
+        origen: { canonMensual: 1300000, administracionMensual: 250000 },
+        config: {
+            fechaInicialCobro: '2026-07-05', fechaFinalCobro: '2026-07-31', diasCobrados: 27,
+            admonModo: 'PROPORCIONAL', pctDerechos: 15, aplicaIvaDerechos: true,
+            estudioValor: 80000, aplicaIvaEstudio: true, polizaValor: 60000,
+            otros: [
+                { concepto: 'Aseo', valor: 50000, tipo: 'CARGO', aplicaIva: true },
+                { concepto: 'Promoción', valor: 100000, tipo: 'DESCUENTO' },
+            ],
+        },
+    };
+
+    it('los grupos suman el total general', () => {
+        for (const caso of [fontibon, conDeTodo]) {
+            const r = calcularLiquidacion(caso);
+            expect(r.grupos.reduce((s, g) => s + g.total, 0)).toBe(r.totalGeneral);
+            expect(r.totalBase + r.totalIva).toBe(r.totalGeneral);
+        }
+    });
+
+    it('cada línea pertenece a un grupo y lleva número corrido', () => {
+        const r = calcularLiquidacion(conDeTodo);
+        expect(r.lineas.map((l) => l.num)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+        expect(r.grupos.map((g) => g.letra)).toEqual(['A', 'B', 'C']);
+        expect(r.grupos.map((g) => g.nums)).toEqual([[1, 2], [3, 4, 5], [6, 7]]);
+        // Ningún ítem queda fuera de los grupos
+        expect(r.grupos.flatMap((g) => g.nums).length).toBe(r.lineas.length);
+    });
+
+    it('solo se numeran los grupos con líneas', () => {
+        const r = calcularLiquidacion({
+            origen: { canonMensual: 1000000 },
+            config: { fechaInicialCobro: '2026-07-01', diasCobrados: 31 },
+        });
+        expect(r.grupos.map((g) => g.clave)).toEqual(['ARRENDAMIENTO']);
+        expect(r.grupos[0].letra).toBe('A');
+    });
+
+    it('itemsConIva cita exactamente las líneas con IVA', () => {
+        const r = calcularLiquidacion(conDeTodo);
+        expect(r.itemsConIva).toEqual(r.lineas.filter((l) => l.iva > 0).map((l) => l.num));
+        expect(r.itemsConIva).toEqual([3, 4, 6]); // derechos, estudio y aseo
+    });
+});
+
+// Referencia de pago del banco: conjunto + torre + apto, o dirección + barrio
+// cuando es casa / no hay conjunto.
+describe('referenciaPago', () => {
+    it('en conjunto: nombre + torre + apartamento, en mayúsculas', () => {
+        expect(referenciaPago({
+            conjuntoInmueble: 'Conjunto Reserva de Fontibón',
+            torreInmueble: '3', aptoInmueble: '802',
+            direccionInmueble: 'Calle 22 # 96 - 41',
+        })).toBe('CONJUNTO RESERVA DE FONTIBÓN TORRE 3 APTO 802');
+    });
+
+    it('no duplica el prefijo si el agente escribió "Torre 3" / "Apto 802"', () => {
+        expect(referenciaPago({
+            conjuntoInmueble: 'Altos del Norte', torreInmueble: 'Torre 3', aptoInmueble: 'Apto 802',
+        })).toBe('ALTOS DEL NORTE TORRE 3 APTO 802');
+    });
+
+    it('conjunto sin torre: solo conjunto y apartamento', () => {
+        expect(referenciaPago({ conjuntoInmueble: 'Edificio Bosque', aptoInmueble: '405' }))
+            .toBe('EDIFICIO BOSQUE APTO 405');
+    });
+
+    it('casa sin conjunto: dirección + barrio', () => {
+        expect(referenciaPago({
+            direccionInmueble: 'Calle 138 # 55 - 20', barrioInmueble: 'Villa del Prado',
+        })).toBe('CALLE 138 # 55 - 20 VILLA DEL PRADO');
+    });
+
+    it('casa sin barrio: solo la dirección', () => {
+        expect(referenciaPago({ direccionInmueble: 'Calle 138 # 55 - 20' }))
+            .toBe('CALLE 138 # 55 - 20');
+    });
+
+    it('liquidación antigua: reconstruye desde direccionCompleta', () => {
+        expect(referenciaPago({
+            direccionCompleta: 'Calle 22 # 96 - 41, Torre 3, Apto 802, Conjunto Reserva de Fontibón, Bogotá D.C.',
+        })).toBe('CONJUNTO RESERVA DE FONTIBÓN TORRE 3 APTO 802');
+    });
+
+    it('liquidación antigua sin conjunto: NO toma la ciudad como conjunto', () => {
+        const r = referenciaPago({ direccionCompleta: 'Calle 22 # 96 - 41, Apto 802, Bogotá D.C.' });
+        expect(r).toBe('CALLE 22 # 96 - 41');
+        expect(r).not.toMatch(/BOGOTÁ/);
+    });
+
+    it('sin datos → cadena vacía (mejor nada que una referencia inventada)', () => {
+        expect(referenciaPago({})).toBe('');
+        expect(referenciaPago()).toBe('');
+    });
+});
+
+describe('etiquetaItems', () => {
+    it('singular, plural y vacío', () => {
+        expect(etiquetaItems([3])).toBe('ítem 3');
+        expect(etiquetaItems([1, 2])).toBe('ítems 1 + 2');
+        expect(etiquetaItems([])).toBe('');
     });
 });
 

@@ -27,6 +27,88 @@ export const EDITABLE_STATUSES = ['DRAFT', 'REJECTED', 'REOPENED'];
 // "Enviada" no es estado propio: queda registrado en sentAt.
 export const SENDABLE_STATUSES = ['APPROVED', 'PAID'];
 
+// Agrupación de los conceptos en el documento. Cada grupo presente recibe una
+// letra (A, B, C…) y sus ítems una numeración corrida (1, 2, 3…), para que los
+// subtotales puedan citarlos explícitamente ("Subtotal A (ítems 1 + 2)") en
+// lugar de usar categorías genéricas — pedido del cliente: el arrendatario debe
+// poder rastrear de dónde sale cada suma.
+export const GRUPOS = [
+    { clave: 'ARRENDAMIENTO', titulo: 'Arrendamiento del período liquidado' },
+    { clave: 'LEGALIZACION', titulo: 'Gastos de legalización del contrato' },
+    { clave: 'OTROS', titulo: 'Otros cargos y descuentos' },
+];
+
+const GRUPO_DE_TIPO = {
+    PROPORCIONAL: 'ARRENDAMIENTO',
+    SERVICIO: 'LEGALIZACION',
+    OTRO: 'OTROS',
+    DESCUENTO: 'OTROS',
+};
+
+const LETRAS = 'ABCDEFGH';
+
+// "ítem 3" | "ítems 1 + 2" — etiqueta de los números que componen un subtotal;
+// el "+" es intencional: muestra que el subtotal ES esa suma.
+export function etiquetaItems(nums = []) {
+    if (nums.length === 0) return '';
+    if (nums.length === 1) return `ítem ${nums[0]}`;
+    return `ítems ${nums.join(' + ')}`;
+}
+
+// "el ítem 3" | "los ítems 3 y 4" | "los ítems 1, 3 y 4" — para texto corrido.
+export function etiquetaItemsProsa(nums = []) {
+    if (nums.length === 0) return '';
+    if (nums.length === 1) return `el ítem ${nums[0]}`;
+    return `los ítems ${nums.slice(0, -1).join(', ')} y ${nums[nums.length - 1]}`;
+}
+
+// Referencia que pide el banco al consignar. Regla del cliente:
+//   - en conjunto/edificio → NOMBRE DEL CONJUNTO + TORRE + APARTAMENTO
+//   - casa o sin conjunto  → DIRECCIÓN + BARRIO
+// Los componentes vienen sueltos en `origen` (los guarda buildOrigen). Para las
+// liquidaciones creadas antes de que se guardaran, se reconstruye lo que se
+// pueda desde `direccionCompleta`, que buildOrigen armó con este orden:
+//   dirección, Torre X, Apto Y, conjunto, barrio, ciudad
+// Solo se deducen las partes inequívocas: nunca se inventa un conjunto.
+export function referenciaPago(origen = {}) {
+    const limpio = (v) => String(v ?? '').trim();
+    let conjunto = limpio(origen.conjuntoInmueble);
+    let torre = limpio(origen.torreInmueble);
+    let apto = limpio(origen.aptoInmueble);
+    let direccion = limpio(origen.direccionInmueble);
+    const barrio = limpio(origen.barrioInmueble);
+
+    const tieneComponentes = conjunto || torre || apto || direccion;
+    if (!tieneComponentes) {
+        const partes = limpio(origen.direccionCompleta).split(',').map((p) => p.trim()).filter(Boolean);
+        if (partes.length === 0) return '';
+        direccion = partes[0];
+        let ultimoIndice = 0;
+        partes.forEach((p, i) => {
+            const mTorre = p.match(/^Torre\s+(.+)$/i);
+            const mApto = p.match(/^Apto\s+(.+)$/i);
+            if (mTorre) { torre = mTorre[1]; ultimoIndice = i; }
+            if (mApto) { apto = mApto[1]; ultimoIndice = i; }
+        });
+        // El conjunto es el segmento siguiente a Torre/Apto, y solo si aún
+        // queda otro detrás (la ciudad): si no, ese segmento ES la ciudad.
+        if (ultimoIndice > 0 && partes.length >= ultimoIndice + 3) {
+            conjunto = partes[ultimoIndice + 1];
+        }
+    }
+
+    // El agente puede escribir "Torre 2" o solo "2" (y lo mismo con el apto):
+    // se quita el prefijo para no imprimir "TORRE TORRE 2".
+    torre = torre.replace(/^(torre|bloque)\s+/i, '');
+    apto = apto.replace(/^(apto|apartamento|apartaestudio|interior)\s+/i, '');
+
+    const enMayusculas = (s) => s.toLocaleUpperCase('es-CO');
+    const referencia = conjunto
+        ? [conjunto, torre && `TORRE ${torre}`, apto && `APTO ${apto}`]
+        : [direccion, barrio];
+    return enMayusculas(referencia.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim());
+}
+
 export const ADMON_MODOS = {
     PROPORCIONAL: 'Proporcional a los días',
     COMPLETA: 'Mes completo',
@@ -166,9 +248,36 @@ export function calcularLiquidacion({ origen = {}, config = {} } = {}, pagos = [
         });
     }
 
-    const subtotalServicios = lineas.filter((l) => l.tipo === 'SERVICIO').reduce((s, l) => s + l.base, 0);
+    // — Numeración e itemización por grupos —
+    // El número de ítem y la letra del grupo son la columna vertebral del
+    // documento: la tabla, los subtotales y el total se citan entre sí con
+    // ellos, de modo que el IVA se presenta UNA sola vez (columna propia) y
+    // nunca se re-suma abajo. Solo se numeran los grupos con líneas.
+    lineas.forEach((l, i) => {
+        l.num = i + 1;
+        l.grupo = GRUPO_DE_TIPO[l.tipo] || 'OTROS';
+    });
+    const grupos = GRUPOS
+        .map(({ clave, titulo }) => {
+            const items = lineas.filter((l) => l.grupo === clave);
+            return {
+                clave,
+                titulo,
+                nums: items.map((l) => l.num),
+                base: items.reduce((s, l) => s + l.base, 0),
+                iva: items.reduce((s, l) => s + l.iva, 0),
+                total: items.reduce((s, l) => s + l.total, 0),
+            };
+        })
+        .filter((g) => g.nums.length > 0)
+        .map((g, i) => ({ ...g, letra: LETRAS[i] }));
+
+    const totalBase = lineas.reduce((s, l) => s + l.base, 0);
     const totalIva = lineas.reduce((s, l) => s + l.iva, 0);
-    const totalGeneral = lineas.reduce((s, l) => s + l.total, 0);
+    const totalGeneral = totalBase + totalIva;
+    // Ítems que llevan IVA — la nota al pie del documento los cita para que
+    // quede claro que ya viene incluido en el total y no se suma otra vez.
+    const itemsConIva = lineas.filter((l) => l.iva > 0).map((l) => l.num);
 
     // — Abonos: los previos (config) + los pagos registrados en el sistema —
     const abonos = [
@@ -187,9 +296,11 @@ export function calcularLiquidacion({ origen = {}, config = {} } = {}, pagos = [
         divisorMes,
         dias,
         lineas,
+        grupos,
         subtotalProporcional,
-        subtotalServicios,
+        totalBase,
         totalIva,
+        itemsConIva,
         totalGeneral,
         abonos,
         totalAbonos,

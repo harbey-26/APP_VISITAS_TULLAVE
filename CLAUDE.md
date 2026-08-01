@@ -359,10 +359,12 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - Se crea **desde un contrato ARRENDAMIENTO aprobado** (botón "Liquidación" en
   la card de Contratos → `/liquidaciones?contractId=N`, que abre la existente o
   crea el borrador). 1:1 por contrato (`contractId @unique`)
-- **Sección A bloqueada**: los datos del contrato son un snapshot (`data.origen`)
+- **Sección 1 bloqueada** (el formulario numera sus secciones 1/2/3 — las letras
+  A/B/C están reservadas para los grupos del documento): los datos del contrato
+  son un snapshot (`data.origen`)
   que solo se refresca con "Re-importar" (`/sync-contrato`) — nunca se editan en
   la liquidación para no generar inconsistencias. Link "Editar contrato de origen"
-- **Sección B**: fechas del cobro, modo admón (proporcional/completa/no cobrar),
+- **Sección 2**: fechas del cobro, modo admón (proporcional/completa/no cobrar),
   % derechos, estudio, póliza, abonos previos, otros cargos/descuentos — cada
   servicio con toggle IVA. Los **días cobrados son siempre derivados de las
   fechas** (calendario real, ambos extremos incluidos) — no se digitan; el
@@ -372,11 +374,44 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   la solicitud resaltada en el formulario y la aplica con un clic ("Aplicar
   estas fechas" → guardar). El admin puede editar también en PENDING_APPROVAL
   para ajustar al revisar sin devolver
-- **Sección C**: resumen en vivo con `calcularLiquidacion` de
+- **Sección 3**: resumen en vivo con `calcularLiquidacion` de
   `src/utils/liquidacionCalc.js` — **misma lógica pura en frontend, backend y
   PDF** (tests en `tests/liquidacionCalc.test.js`, con paridad verificada contra
   casos reales del Excel). Prorrateo: canon ÷ días reales del mes × días; admón
   siempre ÷ 30 (como el Excel)
+- **Estructura del documento (ago 2026, pedido del cliente):** los conceptos van
+  **numerados** (1, 2, 3…) y agrupados en secciones **A / B / C**
+  (`GRUPOS` en `liquidacionCalc.js`): A = arrendamiento del período, B = gastos
+  de legalización del contrato, C = otros cargos y descuentos. Cada subtotal cita
+  sus ítems ("Subtotal B (ítems 3 + 4)") y el cierre es "TOTAL LIQUIDACIÓN
+  (A + B + C)". **El IVA se presenta UNA sola vez**, en su propia columna por
+  ítem: nunca se vuelve a sumar abajo. Reemplazó al recuadro anterior
+  (`Subtotal proporcional / Servicios / IVA`), que además **descuadraba**: el
+  eliminado `subtotalServicios` solo sumaba las líneas de tipo SERVICIO y dejaba
+  los otros cargos/descuentos fuera del recuadro. Hay tests que exigen
+  `Σ grupos = totalBase + totalIva = totalGeneral`; el resumen en pantalla usa la
+  misma estructura para que app y PDF digan lo mismo
+- **Formas de pago en el PDF (ago 2026):** bloque de dos opciones — consignación
+  a la cuenta Davivienda y **pago en línea o en puntos Mi Pago Amigo** (convenio
+  `TU LLAVE INMOBILIARIA`). Los datos salen de `EMPRESA` en
+  `contractTemplates.js` (`pagoEnLinea*`), no van escritos en el PDF. La URL se
+  dibuja con `pdf.textWithLink` → es un **enlace real** del PDF (se abre desde el
+  correo o el celular); el subrayado se dibuja a mano porque jspdf no lo hace. El
+  bloque va en la **columna izquierda, a la misma altura del cuadro de saldo**:
+  puesto debajo obligaba una segunda página. Las mismas formas de pago van en el
+  **mensaje de WhatsApp y en el correo** al arrendatario, desde el helper
+  compartido `mediosDePagoTexto(referencia)` de `contractTemplates.js` — no
+  duplicar el texto en la página ni en el controlador
+- **Referencia de pago del banco** (`referenciaPago()` en `liquidacionCalc.js`,
+  con tests): `CONJUNTO + TORRE + APTO`, o `DIRECCIÓN + BARRIO` si es casa / no
+  hay conjunto. Sale de los componentes sueltos que `buildOrigen` guarda en
+  `origen` (`direccionInmueble`, `torreInmueble`, `aptoInmueble`,
+  `conjuntoInmueble`, `barrioInmueble`) — `direccionCompleta` sola no sirve. Para
+  liquidaciones creadas antes de guardar esos campos hay un respaldo que
+  reconstruye lo deducible desde `direccionCompleta`; **nunca inventa conjunto**
+  (si no lo puede deducir sin riesgo de confundirlo con la ciudad, cae a la
+  dirección). El campo `barrioInmueble` se agregó al contrato de ARRENDAMIENTO
+  (opcional). Aparece en el PDF, en WhatsApp/correo y en la sección 1 de la app
 - **Flujo igual a contratos**: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED
   (editable de nuevo) — al aprobar el server congela `data.totales`. Reabrir solo
   sin pagos y sin enviar. Notificaciones FCM en cada transición

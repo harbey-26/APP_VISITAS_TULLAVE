@@ -3,9 +3,9 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import {
     calcularLiquidacion, validateLiquidacionConfig, diasEntre, diasDelMes,
-    EDITABLE_STATUSES, SENDABLE_STATUSES,
+    EDITABLE_STATUSES, SENDABLE_STATUSES, referenciaPago,
 } from '../utils/liquidacionCalc.js';
-import { EMPRESA } from '../utils/contractTemplates.js';
+import { EMPRESA, mediosDePagoTexto } from '../utils/contractTemplates.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateLiquidacionPdf, liquidacionFileName } from '../utils/liquidacionPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
@@ -91,6 +91,7 @@ function buildOrigen(contract) {
         d.torreInmueble && `Torre ${d.torreInmueble}`,
         d.aptoInmueble && `Apto ${d.aptoInmueble}`,
         d.conjuntoInmueble,
+        d.barrioInmueble,
         d.ciudadInmueble,
     ].filter(Boolean).join(', ');
     return {
@@ -101,6 +102,15 @@ function buildOrigen(contract) {
         arrendatarioEmail: d.arrendatarioEmail || '',
         arrendatarioCelular: d.arrendatarioCelular || '',
         direccionCompleta: direccion,
+        // Componentes sueltos: de aquí sale la referencia de pago del banco
+        // (conjunto + torre + apto, o dirección + barrio si no hay conjunto).
+        // `direccionCompleta` sola no sirve — habría que adivinar dónde termina
+        // cada parte. Ver referenciaPago() en liquidacionCalc.js
+        direccionInmueble: d.direccionInmueble || '',
+        torreInmueble: d.torreInmueble || '',
+        aptoInmueble: d.aptoInmueble || '',
+        conjuntoInmueble: d.conjuntoInmueble || '',
+        barrioInmueble: d.barrioInmueble || '',
         fechaInicioContrato: d.fechaInicio || '',
         fechaFinContrato: d.fechaVencimiento || '',
         canonMensual: montoDe(d.canon),
@@ -619,6 +629,8 @@ export const emailLiquidacion = async (req, res) => {
                     '',
                     'TuLlave Inmobiliaria le comparte la liquidación inicial de su contrato de arrendamiento en el archivo adjunto.',
                     `También puede descargarla en: ${publicUrl}`,
+                    '',
+                    ...mediosDePagoTexto(referenciaPago(parsed.data.origen)),
                     '',
                     'Cualquier inquietud, con gusto la atendemos.',
                     '',
