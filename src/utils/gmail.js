@@ -5,6 +5,7 @@
 
 import { getValidAccessToken } from './googleCalendar.js';
 import { buildMimeMessage } from './gmailMime.js';
+import { explainGmailSendError } from './gmailErrors.js';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 
@@ -16,7 +17,7 @@ export async function sendEmailWithPdf({ to, subject, text, pdfBuffer, filename 
         throw new Error('Google no está conectado. Un administrador debe conectar la cuenta en Ajustes.');
     }
     if (!session.scope.includes('gmail.send')) {
-        throw new Error('La cuenta de Google conectada no tiene permiso de envío de correo. Desconecta y vuelve a conectar Google en Ajustes para autorizarlo.');
+        throw new Error('La cuenta de Google conectada no tiene permiso de envío de correo. Un administrador debe desconectar y volver a conectar Google en Ajustes, marcando la casilla "Enviar correo electrónico en tu nombre".');
     }
 
     const mime = buildMimeMessage({
@@ -36,10 +37,9 @@ export async function sendEmailWithPdf({ to, subject, text, pdfBuffer, filename 
     });
     if (!r.ok) {
         const detail = await r.text();
-        if (r.status === 403) {
-            throw new Error('Google rechazó el envío (permisos). Desconecta y vuelve a conectar Google en Ajustes.');
-        }
-        throw new Error(`Gmail: ${r.status} ${detail.slice(0, 200)}`);
+        // El detalle completo queda en los logs del servidor (Railway) para diagnóstico
+        console.error(`[gmail] Envío rechazado: ${r.status} ${detail}`);
+        throw new Error(explainGmailSendError(r.status, detail));
     }
     return r.json();
 }

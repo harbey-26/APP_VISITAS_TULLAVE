@@ -125,11 +125,15 @@ export async function getValidAccessToken() {
     if (row.expiresAt.getTime() > Date.now() + 30_000) return { token: row.accessToken, ...meta };
     const refreshed = await refreshAccessToken(row.refreshToken);
     const expiresAt = new Date(Date.now() + (refreshed.expires_in - 60) * 1000);
+    // Google devuelve en el refresh el scope realmente vigente del grant; se
+    // persiste para que los chequeos de permisos no usen un scope obsoleto
+    // (p. ej. si el usuario revocó gmail.send después de conectar)
+    const scope = refreshed.scope || row.scope;
     await prisma.integrationToken.update({
         where: { kind: INTEGRATION_KIND },
-        data: { accessToken: refreshed.access_token, expiresAt },
+        data: { accessToken: refreshed.access_token, expiresAt, scope },
     });
-    return { token: refreshed.access_token, ...meta };
+    return { token: refreshed.access_token, ...meta, scope: scope || '' };
 }
 
 // Type ↔ etiqueta legible para el resumen del evento
