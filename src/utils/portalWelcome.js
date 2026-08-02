@@ -1,6 +1,7 @@
 import prisma from './prisma.js';
 import { sendTextEmail } from './gmail.js';
 import { EMPRESA } from './contractTemplates.js';
+import { SOLICITUD_ESTADOS } from './solicitudFlow.js';
 
 // P1: Aviso de bienvenida al Portal de Clientes. Cuando el EQUIPO radica una
 // solicitud con el correo del cliente (o se lo agrega/corrige después), se le
@@ -35,6 +36,59 @@ export function bienvenidaPortalEmail({ nombre, radicado, asunto, email, portalU
             `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
         ].join('\n'),
     };
+}
+
+// P1: aviso al cliente en cada cambio de estado — "en todo momento sabe en
+// qué va" sin tener que entrar al portal. Contenido puro (testeable).
+export function avisoEstadoEmail({ nombre, radicado, asunto, estado, nota, resultado, portalUrl, email }) {
+    const label = SOLICITUD_ESTADOS[estado]?.label || estado;
+    const esCierre = estado === 'FINALIZADA';
+    const titulo = esCierre
+        ? (resultado === 'CON_NOVEDAD'
+            ? `Su solicitud ${radicado} fue cerrada con una novedad`
+            : `Su solicitud ${radicado} fue resuelta`)
+        : `Su solicitud ${radicado} está ahora: ${label}`;
+    return {
+        subject: `${titulo} — ${EMPRESA.razonSocial}`,
+        text: [
+            `Hola ${nombre},`,
+            '',
+            esCierre
+                ? (resultado === 'CON_NOVEDAD'
+                    ? `Su solicitud "${asunto}" fue cerrada con una novedad.`
+                    : `¡Buenas noticias! Su solicitud "${asunto}" fue gestionada exitosamente.`)
+                : `Su solicitud "${asunto}" cambió de estado y ahora está: ${label}.`,
+            ...(nota ? ['', `Nota del equipo: ${nota}`] : []),
+            '',
+            'Puede ver el detalle y el avance completo en el Portal de Clientes:',
+            '',
+            `    ${portalUrl}`,
+            '',
+            `Ingrese con este mismo correo (${email}): le llegará un código de acceso.`,
+            '',
+            EMPRESA.razonSocial,
+            `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+        ].join('\n'),
+    };
+}
+
+// Envío fire-and-forget del aviso de estado. No escribe actuación: el cambio
+// de estado ya quedó en la línea de tiempo.
+export async function enviarAvisoEstado(solicitud, { estado, nota, resultado }) {
+    const portalUrl = portalUrlPublica();
+    const email = (solicitud.solicitanteEmail || '').trim();
+    if (!portalUrl || !email) return;
+    try {
+        const { subject, text } = avisoEstadoEmail({
+            nombre: solicitud.solicitanteNombre,
+            radicado: solicitud.radicado,
+            asunto: solicitud.asunto,
+            estado, nota, resultado, portalUrl, email,
+        });
+        await sendTextEmail({ to: email, subject, text });
+    } catch (e) {
+        console.warn(`[Portal] No se pudo avisar el estado de ${solicitud.radicado} a ${email}:`, e.message);
+    }
 }
 
 // Envío fire-and-forget: nunca interrumpe la radicación (si Gmail falla,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { portalUrlPublica, bienvenidaPortalEmail } from '../src/utils/portalWelcome.js';
+import { portalUrlPublica, bienvenidaPortalEmail, avisoEstadoEmail } from '../src/utils/portalWelcome.js';
 
 describe('portalUrlPublica', () => {
     it('toma el primer origen de PORTAL_ORIGIN (el dominio propio)', () => {
@@ -38,5 +38,37 @@ describe('bienvenidaPortalEmail', () => {
         expect(text).toContain('https://portal.tullaveinmobiliariasas.com');
         expect(text).toContain('maria@ejemplo.com');
         expect(text).toContain('código de acceso');
+    });
+});
+
+describe('avisoEstadoEmail', () => {
+    const base = {
+        nombre: 'María Pérez',
+        radicado: 'SOL-2026-0042',
+        asunto: 'Fuga de agua en la cocina',
+        portalUrl: 'https://portal.tullaveinmobiliariasas.com',
+        email: 'maria@ejemplo.com',
+    };
+
+    it('cambio de estado normal: lleva el nuevo estado y la nota del equipo', () => {
+        const { subject, text } = avisoEstadoEmail({ ...base, estado: 'EN_GESTION', nota: 'Coordinando la visita del técnico' });
+        expect(subject).toContain('SOL-2026-0042');
+        expect(subject).toContain('En gestión');
+        expect(text).toContain('En gestión');
+        expect(text).toContain('Coordinando la visita del técnico');
+        expect(text).toContain(base.portalUrl);
+    });
+
+    it('cierre exitoso: mensaje de resuelta', () => {
+        const { subject, text } = avisoEstadoEmail({ ...base, estado: 'FINALIZADA', resultado: 'EXITOSA' });
+        expect(subject).toContain('fue resuelta');
+        expect(text).toContain('gestionada exitosamente');
+    });
+
+    it('cierre con novedad: lo dice claramente', () => {
+        const { subject, text } = avisoEstadoEmail({ ...base, estado: 'FINALIZADA', resultado: 'CON_NOVEDAD', nota: 'Queda pendiente una segunda visita' });
+        expect(subject).toContain('cerrada con una novedad');
+        expect(text).toContain('cerrada con una novedad');
+        expect(text).toContain('segunda visita');
     });
 });

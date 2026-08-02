@@ -14,7 +14,7 @@ import { sendEmailWithPdf } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
-import { enviarBienvenidaPortal } from '../utils/portalWelcome.js';
+import { enviarBienvenidaPortal, enviarAvisoEstado } from '../utils/portalWelcome.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 
@@ -409,6 +409,10 @@ export const cambiarEstado = async (req, res) => {
             req.user.id,
             { de: sol.estado, a: parsed.estado },
         );
+        // P1: avisar al cliente por correo en cada cambio de estado (si el
+        // expediente tiene su correo) — fire-and-forget
+        enviarAvisoEstado(sol, { estado: parsed.estado, nota: parsed.nota, resultado: parsed.resultado });
+
         // Notificación al responsable y al creador (a quien no hizo el cambio)
         const aviso = `${sol.radicado} pasó a "${SOLICITUD_ESTADOS[parsed.estado].label}"${parsed.nota ? `: ${parsed.nota}` : ''}`;
         for (const uid of new Set([sol.responsableId, sol.creadaPor].filter(Boolean))) {
