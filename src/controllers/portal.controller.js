@@ -5,7 +5,7 @@ import { generatePortalToken } from '../utils/portalAuth.js';
 import { hashPassword } from '../utils/auth.js';
 import { sendTextEmail } from '../utils/gmail.js';
 import { notifyAdmins, sendPersonalNotification } from '../utils/notify.js';
-import { generarRadicado } from './solicitud.controller.js';
+import { generarRadicado, LIMITE_ADJUNTO_BYTES } from './solicitud.controller.js';
 import { DP_TIPOS, vencimientoDP } from '../utils/solicitudFlow.js';
 import { hoyISO } from '../utils/incrementoCalc.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
@@ -238,10 +238,11 @@ function detalleCliente(sol, tipos) {
             try { meta = a.meta ? JSON.parse(a.meta) : null; } catch { /* meta corrupto */ }
             return { ...a, meta };
         })
-        // El cliente ve: creación, cambios de estado, respuestas y SUS
-        // comentarios. Notas internas, alertas, adjuntos y automatizaciones
-        // del equipo no salen del sistema.
-        .filter((a) => ['CREACION', 'ESTADO', 'RESPUESTA'].includes(a.tipo) || (a.tipo === 'NOTA' && a.meta?.portal))
+        // El cliente ve: creación, cambios de estado, respuestas, SUS
+        // comentarios y SUS fotos. Notas internas, alertas, adjuntos y
+        // automatizaciones del equipo no salen del sistema.
+        .filter((a) => ['CREACION', 'ESTADO', 'RESPUESTA'].includes(a.tipo)
+            || (['NOTA', 'ADJUNTO'].includes(a.tipo) && a.meta?.portal))
         .map((a) => ({
             id: a.id,
             tipo: a.tipo,
@@ -273,6 +274,15 @@ export const getMiSolicitud = async (req, res) => {
 
 // ── Radicación desde el portal ──
 
+// Fotos adjuntas en la radicación: SOLO imágenes, máximo 5 (decisión del
+// cliente, ago 2026), mismo límite de peso de los adjuntos del equipo.
+const fotoSchema = z.object({
+    nombre: z.string().trim().min(1).max(200),
+    mimeType: z.string().trim().max(100).startsWith('image/', 'Solo se aceptan fotos'),
+    size: z.coerce.number().int().positive(),
+    dataUrl: z.string().startsWith('data:image/', 'Solo se aceptan fotos'),
+});
+
 const crearSchema = z.object({
     tipo: z.string().trim().min(1).max(60),
     asunto: z.string().trim().min(3, 'Cuéntanos el asunto').max(200),
@@ -281,6 +291,7 @@ const crearSchema = z.object({
     telefono: z.string().trim().max(30).optional().nullable(),
     solicitanteTipo: z.enum(['PROPIETARIO', 'ARRENDATARIO', 'TERCERO']).optional().nullable(),
     direccionInmueble: z.string().trim().max(200).optional().nullable(),
+    adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 fotos').optional(),
 });
 
 // POST /api/portal/solicitudes
@@ -289,6 +300,13 @@ export const crearSolicitud = async (req, res) => {
         const parsed = crearSchema.parse(req.body);
         const tipoDef = await prisma.solicitudTipo.findUnique({ where: { clave: parsed.tipo } });
         if (!tipoDef || !tipoDef.activo) return res.status(400).json({ error: 'Tipo de solicitud no disponible.' });
+        for (const f of parsed.adjuntos || []) {
+            if (f.size > LIMITE_ADJUNTO_BYTES) {
+                return res.status(400).json({
+                    error: `"${f.nombre}" pesa ${(f.size / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                });
+            }
+        }
 
         // La dirección va al inicio de la descripción: el expediente del
         // equipo no tiene campo propio para "inmueble en texto libre".
@@ -339,9 +357,24 @@ export const crearSolicitud = async (req, res) => {
             `Solicitud radicada (${solicitud.radicado}) desde el Portal de Clientes — ${solicitud.asunto}`,
             { portal: true },
         );
+        for (const f of parsed.adjuntos || []) {
+            await prisma.solicitudAdjunto.create({
+                data: {
+                    solicitudId: solicitud.id,
+                    nombre: f.nombre,
+                    mimeType: f.mimeType,
+                    size: f.size,
+                    categoria: 'FOTO',
+                    dataUrl: f.dataUrl,
+                    subidoPor: creadaPor,
+                },
+            });
+            await actuacionPortal(solicitud.id, 'ADJUNTO', `Adjuntó la foto "${f.nombre}"`, { portal: true, categoria: 'FOTO' });
+        }
+        const nFotos = (parsed.adjuntos || []).length;
         notifyAdmins(
             '📥 Nueva solicitud del portal',
-            `${solicitud.radicado}: ${solicitud.asunto} — ${parsed.nombre} (${tipoDef.label})`,
+            `${solicitud.radicado}: ${solicitud.asunto} — ${parsed.nombre} (${tipoDef.label})${nFotos ? ` · ${nFotos} foto(s)` : ''}`,
         );
 
         const conActuaciones = await prisma.solicitud.findUnique({
