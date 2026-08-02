@@ -6,6 +6,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
+import { crearFichaDesdeContrato } from './incremento.controller.js';
 
 // C1: Contratos diligenciados por agentes con visto bueno del admin.
 // Flujo de estados: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED (vuelve a
@@ -191,6 +192,11 @@ export const reviewContract = async (req, res) => {
             ? '✅ Tu contrato fue aprobado. Ya puedes descargarlo y enviarlo al cliente.'
             : `↩️ Tu contrato fue devuelto: ${parsed.note}`;
         sendPersonalNotification(contract.userId, '📄 Revisión de contrato', msg).catch(() => {});
+        // I1: un ARRENDAMIENTO aprobado entra solo a la base de incrementos
+        // (#45). Silencioso: si falla, la aprobación no se afecta.
+        if (parsed.decision === 'APPROVED') {
+            crearFichaDesdeContrato(updated).catch(() => {});
+        }
         res.json(serialize(updated));
     } catch (error) {
         res.status(400).json({ error: error.message });

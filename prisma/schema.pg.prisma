@@ -28,6 +28,7 @@ model User {
   contracts      Contract[]      // C1: contratos diligenciados
   liquidaciones    Liquidacion[]     // L1: liquidaciones creadas
   pagosLiquidacion LiquidacionPago[] @relation("pagosLiquidacion") // L1: pagos que registró
+  fichasIncremento FichaIncremento[] // I1: fichas de incremento a su cargo
 }
 
 model UserFcmToken {
@@ -170,6 +171,7 @@ model Contract {
   visit       Visit?       @relation(fields: [visitId], references: [id])
   property    Property?    @relation(fields: [propertyId], references: [id])
   liquidacion Liquidacion? // L1
+  fichaIncremento FichaIncremento? // I1
 
   @@index([userId])
   @@index([status])
@@ -203,6 +205,82 @@ model Liquidacion {
 
   @@index([userId])
   @@index([status])
+}
+
+// I1: Ficha de incremento — el contrato de arrendamiento "vivo" que el módulo
+// de incrementos vigila. Se alimenta de tres vías: alta automática al aprobar
+// un contrato ARRENDAMIENTO en la app, backfill de los ya aprobados y carga
+// masiva CSV de los contratos históricos (Wasi) que no están en el sistema.
+// canonActual es el canon VIGENTE (se actualiza al aplicar cada incremento).
+model FichaIncremento {
+  id                  Int      @id @default(autoincrement())
+  contractId          Int?     @unique // contrato de la app; null = importado (CSV/manual)
+  userId              Int?     // agente responsable; null = gestión de oficina (admin)
+  codigoWasi          String?
+  arrendatarioNombre  String
+  arrendatarioCedula  String?
+  arrendatarioEmail   String?
+  arrendatarioCelular String?
+  direccion           String?  // dirección completa del inmueble (para la carta)
+  fechaInicioContrato String   // "YYYY-MM-DD" — de aquí sale el aniversario
+  canonActual         Int      // COP sin centavos — canon vigente hoy
+  tipoIndice          String   @default("IPC") // IPC, IPC_PLUS (IPC + puntos), FIJO (% pactado)
+  puntosAdicionales   Float    @default(0) // solo IPC_PLUS: IPC + estos puntos
+  pctFijo             Float    @default(0) // solo FIJO: % pactado en el contrato
+  activa              Boolean  @default(true) // false = contrato terminado, sale del radar
+  notas               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  contract    Contract?    @relation(fields: [contractId], references: [id])
+  user        User?        @relation(fields: [userId], references: [id])
+  incrementos Incremento[]
+
+  @@index([userId])
+  @@index([activa])
+}
+
+// I1: Un incremento anual de una ficha (el evento). @@unique(fichaId, periodo)
+// impide dos tareas para el mismo aniversario. `data` congela el snapshot de la
+// carta al enviarla (evidencia inmutable: el PDF se regenera idéntico aunque la
+// ficha cambie después). Los campos de envío son de trazabilidad: no se editan.
+model Incremento {
+  id               Int       @id @default(autoincrement())
+  fichaId          Int
+  periodo          Int       // año de aplicación (aniversario que cae en ese año)
+  fechaEfectiva    String    // "YYYY-MM-DD" — desde cuándo rige el nuevo canon
+  canonAnterior    Int       // COP — canon sobre el que se calcula
+  indicePct        Float?    // % aplicado (congelado al generar la carta)
+  nuevoCanon       Int?      // canonAnterior × (1 + indicePct/100), peso exacto
+  status           String    @default("PENDIENTE") // PENDIENTE, ENVIADA, APLICADA, ANULADA
+  data             String?   // JSON: snapshot de la carta al enviar (inmutable)
+  cartaEnviadaAt   DateTime? // trazabilidad del envío (no editable)
+  enviadaPor       Int?      // id del usuario que envió
+  enviadaPorNombre String?   // nombre al momento del envío (sobrevive a cambios)
+  enviadaA         String?   // correo destinatario del envío
+  shareToken       String?   @unique // link público del PDF de la carta
+  emailedAt        DateTime? // último envío por correo exitoso (anti-duplicado, 1 h)
+  aplicadoAt       DateTime? // cuándo se aplicó el nuevo canon a la ficha
+  aplicadoPor      Int?
+  anuladoMotivo    String?   // motivo si status = ANULADA
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  ficha FichaIncremento @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+
+  @@unique([fichaId, periodo])
+  @@index([status])
+  @@index([fechaEfectiva])
+}
+
+// I1: IPC (o índice) aplicable por año de aplicación. Lo configura el admin:
+// "los incrementos de 2026 usan 5,20%" (IPC del año anterior según el DANE).
+model IndiceAnual {
+  id        Int      @id @default(autoincrement())
+  anio      Int      @unique // año de APLICACIÓN de los incrementos
+  pct       Float    // variación anual del IPC, en %
+  fuente    String?  // ej.: "DANE — IPC 2025"
+  updatedAt DateTime @updatedAt
 }
 
 // L1: Pagos (abonos) registrados contra una liquidación aprobada. Tabla propia

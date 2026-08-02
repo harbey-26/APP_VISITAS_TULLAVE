@@ -128,6 +128,18 @@ Liquidacion — id, status (DRAFT/REOPENED/PENDING_APPROVAL/APPROVED/REJECTED/PA
             se congela al aprobar (fuente del PDF definitivo)
 LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
             registradoPor (auditoría) — tabla propia, no JSON
+FichaIncremento — id, contractId? (@unique — null si vino de CSV/manual),
+            userId? (agente responsable), codigoWasi, datos del arrendatario,
+            direccion, fechaInicioContrato ("YYYY-MM-DD"), canonActual (canon
+            VIGENTE, se actualiza al aplicar), tipoIndice (IPC/IPC_PLUS/FIJO),
+            puntosAdicionales, pctFijo, activa (false = contrato terminado)
+Incremento — id, fichaId, periodo (año), fechaEfectiva, canonAnterior,
+            indicePct?, nuevoCanon?, status (PENDIENTE/ENVIADA/APLICADA/ANULADA),
+            data (snapshot JSON de la carta congelado al enviar), campos de
+            trazabilidad del envío (cartaEnviadaAt, enviadaPor+Nombre, enviadaA,
+            shareToken, emailedAt), aplicadoAt/Por, anuladoMotivo.
+            @@unique(fichaId, periodo) — una tarea por aniversario
+IndiceAnual — anio (@unique, año de APLICACIÓN), pct (IPC %), fuente
 ```
 
 ---
@@ -178,6 +190,21 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
 | POST | `/api/liquidaciones/:id/email` | JWT | PDF adjunto al correo del arrendatario (Gmail API). Anti-duplicado 1 h igual que contratos |
 | GET | `/api/liquidaciones/public/:token/pdf` | **No** | PDF público para el arrendatario (solo compartidas) |
 | DELETE | `/api/liquidaciones/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera; cascade borra pagos) |
+| GET | `/api/incrementos/fichas` | JWT | Fichas de incremento (admin todas; agente las suyas) con próximo aniversario e historial |
+| POST | `/api/incrementos/fichas` | JWT+Admin | Alta manual de ficha |
+| PATCH/DELETE | `/api/incrementos/fichas/:id` | JWT+Admin | Editar / eliminar. Para sacar del radar sin perder historial: PATCH `{activa:false}` |
+| POST | `/api/incrementos/fichas/backfill` | JWT+Admin | Migración inicial: fichas para contratos ARRENDAMIENTO aprobados sin ficha |
+| POST | `/api/incrementos/fichas/importar` | JWT+Admin | Carga masiva `{filas:[…]}` (el frontend parsea el CSV); deduplica por código Wasi |
+| GET / PUT | `/api/incrementos/indices(/:anio)` | JWT (PUT admin) | IPC por año de aplicación |
+| POST | `/api/incrementos/detectar` | JWT+Admin | Corre la detección de aniversarios ahora (lo mismo del cron) |
+| POST | `/api/incrementos/procesar-mes` | JWT+Admin | Procesamiento masivo: detecta el período, recalcula pendientes sin índice, resume `{detectados, listos, sinIndice, incompletos}` |
+| GET | `/api/incrementos` | JWT | Incrementos (admin todos; agente los suyos) con semáforo/grupo/snapshot |
+| PATCH | `/api/incrementos/:id` | JWT+Admin | Ajustar % o fecha efectiva (solo PENDIENTE) |
+| POST | `/api/incrementos/:id/share` | JWT | Link público de la carta (WhatsApp). SÍ marca ENVIADA + congela snapshot |
+| POST | `/api/incrementos/:id/email` | JWT | Carta PDF al correo del arrendatario (Gmail API, anti-duplicado 1 h) |
+| GET | `/api/incrementos/public/:token/pdf` | **No** | PDF público de la carta (solo enviadas) |
+| PATCH | `/api/incrementos/:id/aplicar` | JWT+Admin | Aplica el nuevo canon a la ficha (transacción) y cierra el ciclo → APLICADA |
+| PATCH | `/api/incrementos/:id/anular` | JWT+Admin | Anular con `{motivo}` obligatorio |
 
 ---
 
@@ -425,6 +452,57 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   (Gmail API). Compartir marca `sentAt` pero NO cambia el estado (el ciclo
   termina en PAID, no en SENT). PDF de una página con `liquidacionPdf.js`
   (jspdf isomorfo, marca de agua BORRADOR si no está aprobada)
+
+### Incrementos (`Incrementos.jsx`) — módulo I1 (epic #44)
+- Gestión del incremento anual de canon: base de fichas auto-alimentada,
+  dashboard semaforizado, carta automática y aplicación del nuevo canon.
+  Admin gestiona todo; el agente ve/envía las de sus contratos
+- **Fichas (#45)** — tres vías de alta: automática al APROBAR un contrato
+  ARRENDAMIENTO (hook en `contract.controller.js` → `crearFichaDesdeContrato`,
+  silencioso), botón "Cargar desde contratos" (backfill de aprobados sin ficha)
+  e "Importar CSV" para los históricos de Wasi (el frontend parsea — acepta
+  alias de encabezados y fechas DD/MM/YYYY — y el backend deduplica por código
+  Wasi). `canonActual` es el canon VIGENTE: cada aplicación lo actualiza
+- **Detección (#47)** — `startIncrementoCron` en server.js: diaria (7am Bogotá)
+  y al arrancar. `aniversariosEnRadar` (lógica pura, con tests) mete al radar
+  el próximo aniversario dentro del horizonte (`INCREMENTO_ANTICIPACION_DIAS`,
+  90 por defecto) **y el recién vencido** (retrovisor 90 días): en la migración
+  inicial, un contrato cuyo aniversario acaba de pasar nace como tarea VENCIDA
+  en vez de saltar en silencio al año siguiente. Sin duplicados por el
+  `@@unique(fichaId, periodo)`. Notifica a admins cuántos entraron
+- **Cálculo (#46)** — `incrementoCalc.js` compartido frontend/backend/PDF:
+  `Nuevo canon = canon × (1 + pct/100)` redondeado **al peso exacto** (decisión
+  del cliente, sin redondeo a miles). El % sale del tipo pactado: IPC del año
+  (tabla `IndiceAnual`, la configura el admin en el modal "IPC"), IPC + puntos,
+  o % fijo. Sin índice configurado el incremento queda "Sin índice" (no bloquea
+  la detección; `procesar-mes` lo recalcula cuando el admin fija el IPC). El
+  admin puede sobreescribir % y fecha por incremento (PATCH, solo PENDIENTE)
+- **Semáforo (#52)** — `semaforo()` puro: negro (vencido sin aplicar), rojo
+  (≤15 días sin enviar), naranja (<30), amarillo (30–60), verde (>60), azul
+  (carta enviada esperando fecha). Listado ordenado con `compararUrgencia`
+- **Dashboard (#48)** — 4 contadores clicables (filtran la lista):
+  esta semana / este mes / próximo mes / pendientes de aplicar
+  (`grupoDashboard` puro, con tests)
+- **Carta (#49)** — texto en `incrementoDocument.js` (Ley 820 de 2003 art. 20;
+  si cambia la redacción se toca SOLO ese archivo), PDF en `incrementoPdf.js`
+  (jspdf isomorfo, membrete + pie + marca BORRADOR si PENDIENTE), vista previa
+  HTML con los mismos bloques. Correo con PDF adjunto vía Gmail API y WhatsApp
+  con link público tokenizado (mismo patrón de contratos/liquidaciones)
+- **Trazabilidad (#51)** — al enviar (share O email) se congela el snapshot de
+  la carta en `Incremento.data` (el PDF se regenera idéntico aunque la ficha
+  cambie) y se escriben una sola vez cartaEnviadaAt / enviadaPor(Nombre) /
+  enviadaA / shareToken → status ENVIADA. No editables
+- **Historial (#53)** — expandible en cada ficha: período, canon anterior → 
+  nuevo, %, estado, fecha de envío y acceso a la carta/PDF de cada año
+- **Procesar incrementos del mes (#54)** — botón admin: detecta aniversarios
+  hasta fin del mes siguiente, recalcula pendientes sin índice y resume
+  listos / sin índice / con datos incompletos (los incompletos se marcan en la
+  card con ⚠ y los faltantes)
+- **Aplicación (#50, parcial)** — "Aplicar" (admin) actualiza `canonActual` de
+  la ficha y cierra el incremento (transacción; doble aplicación bloqueada por
+  status). La aplicación AUTOMÁTICA en fecha efectiva + propagación a
+  liquidación mensual/cartera/pago propietario queda pendiente de que existan
+  esos módulos (decisión ago 2026: #50 se retoma al final)
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

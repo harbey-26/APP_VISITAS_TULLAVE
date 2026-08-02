@@ -5,6 +5,8 @@ import prisma from './src/utils/prisma.js';
 import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
 import { startLocationReminderCron } from './src/utils/locationReminders.js';
+import { detectarAniversarios } from './src/controllers/incremento.controller.js';
+import { notifyAdmins } from './src/utils/notify.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -149,6 +151,35 @@ function startWeeklyReportCron() {
     }, 60_000); // revisa cada minuto
 }
 
+// I1 (#47): Detección diaria de aniversarios de contrato — crea la tarea de
+// incremento con anticipación (INCREMENTO_ANTICIPACION_DIAS, 90 por defecto)
+// y avisa a los admins cuántas entraron al radar. Corre a las 7am Bogotá
+// (12:00 UTC) y también al arrancar el servidor (si Railway durmió el proceso
+// a esa hora, el deploy/restart la recupera).
+function startIncrementoCron() {
+    const run = async () => {
+        try {
+            const creados = await detectarAniversarios();
+            if (creados.length > 0) {
+                notifyAdmins(
+                    '📈 Incrementos por gestionar',
+                    `${creados.length} contrato(s) entraron al radar de incrementos: ${creados.map(c => c.ficha.arrendatarioNombre).slice(0, 5).join(', ')}${creados.length > 5 ? '…' : ''}. Revisa el módulo de Incrementos.`,
+                );
+            }
+        } catch (e) { console.warn('[Incrementos Cron]', e.message); }
+    };
+    run(); // al arrancar
+    let lastRanDay = new Date().getUTCDate();
+    setInterval(() => {
+        const now = new Date();
+        // 7am Bogotá = 12:00 UTC (UTC-5, Colombia no tiene horario de verano)
+        if (now.getUTCHours() === 12 && now.getUTCDate() !== lastRanDay) {
+            lastRanDay = now.getUTCDate();
+            run();
+        }
+    }, 10 * 60 * 1000); // revisa cada 10 min
+}
+
 async function main() {
   try {
     await prisma.$connect();
@@ -161,6 +192,7 @@ async function main() {
     startFcmCleanupCron();        // M6: limpieza diaria de tokens FCM
     startWeeklyReportCron();      // L1: resumen semanal los lunes a las 9am
     startLocationReminderCron();  // Recordatorio por silencio (reemplaza las notif. locales fijas)
+    startIncrementoCron();        // I1: detección diaria de aniversarios de contrato (#47)
   } catch (error) {
     console.error('❌ Database connection failed:', error);
     process.exit(1);
