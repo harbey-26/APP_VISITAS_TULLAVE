@@ -375,6 +375,22 @@ model IndiceAnual {
   updatedAt DateTime @updatedAt
 }
 
+// P1: Portal de Clientes — códigos OTP de acceso por correo. El código nunca
+// se guarda en claro (hash SHA-256); expira a los 10 minutos y admite máximo
+// 5 intentos de verificación. El portal es un frontend aparte (repo
+// PORTAL_CLIENTES_TULLAVE) que consume solo las rutas /api/portal/*.
+model PortalOtp {
+  id        Int       @id @default(autoincrement())
+  email     String    // normalizado en minúsculas
+  codeHash  String
+  expiresAt DateTime
+  intentos  Int       @default(0)
+  usadoAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+}
+
 // L1: Pagos (abonos) registrados contra una liquidación aprobada. Tabla propia
 // y no JSON: son movimientos financieros con auditoría (quién y cuándo).
 model LiquidacionPago {

@@ -31,7 +31,7 @@ export const LIMITE_ADJUNTO_BYTES = 5 * 1024 * 1024;
 const solicitudSchema = z.object({
     tipo: z.string().trim().min(1).max(60),
     prioridad: z.enum(['ALTA', 'MEDIA', 'BAJA']).optional(),
-    medioIngreso: z.enum(['WHATSAPP', 'CORREO', 'LLAMADA', 'PRESENCIAL', 'OTRO']),
+    medioIngreso: z.enum(['WHATSAPP', 'CORREO', 'LLAMADA', 'PRESENCIAL', 'PORTAL', 'OTRO']),
     asunto: z.string().trim().min(1, 'Falta el asunto').max(200),
     descripcion: z.string().trim().max(3000).optional().nullable(),
     solicitanteNombre: z.string().trim().min(1, 'Falta el nombre del solicitante').max(160),
@@ -140,8 +140,9 @@ async function validarContratoVinculado(contractId, req) {
 }
 
 // Radicado "SOL-2026-0001": consecutivo por año. Reintenta si dos radican a la
-// vez (el @unique detecta la colisión).
-async function generarRadicado() {
+// vez (el @unique detecta la colisión). Exportado: el Portal de Clientes (P1)
+// radica con el mismo consecutivo.
+export async function generarRadicado() {
     const anio = new Date().getFullYear();
     const count = await prisma.solicitud.count({ where: { radicado: { startsWith: `SOL-${anio}-` } } });
     return `SOL-${anio}-${String(count + 1).padStart(4, '0')}`;

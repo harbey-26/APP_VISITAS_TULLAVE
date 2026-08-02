@@ -10,6 +10,7 @@ import contractRoutes from './contract.routes.js';
 import liquidacionRoutes from './liquidacion.routes.js';
 import incrementoRoutes from './incremento.routes.js';
 import solicitudRoutes from './solicitud.routes.js';
+import portalRoutes from './portal.routes.js';
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use('/contracts', contractRoutes);
 router.use('/liquidaciones', liquidacionRoutes);
 router.use('/incrementos', incrementoRoutes);
 router.use('/solicitudes', solicitudRoutes);
+router.use('/portal', portalRoutes); // P1: Portal de Clientes (frontend aparte)
 
 export default router;

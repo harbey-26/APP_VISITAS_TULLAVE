@@ -45,6 +45,7 @@ export const MEDIOS_INGRESO = {
     CORREO: 'Correo',
     LLAMADA: 'Llamada',
     PRESENCIAL: 'Presencial',
+    PORTAL: 'Portal de clientes', // P1: radicada por el cliente desde el portal
     OTRO: 'Otro',
 };
 

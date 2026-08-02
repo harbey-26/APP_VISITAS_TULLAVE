@@ -282,6 +282,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | `VITE_GOOGLE_MAPS_API_KEY` | `.env` local + Railway + GitHub Secret | Google Maps en el frontend (mapa + Places). **Se embebe en build-time**, por eso debe estar también en Railway |
 | `GOOGLE_MAPS_API_KEY` | `.env` local + Railway | Geocoding del servidor (respaldo) — `property.controller.js` |
 | `VITE_API_URL` | `.env` local (vacío = proxy) | URL del backend |
+| `PORTAL_ORIGIN` | Railway (backend) | Origen (https://dominio) del Portal de Clientes para CORS — P1 |
 
 Secreto en GitHub Actions: `VITE_GOOGLE_MAPS_API_KEY`
 
@@ -588,6 +589,36 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Dashboard (#40)** — KPIs (abiertas, cerradas, vencidas con alerta visual,
   tiempo promedio de respuesta vía `finalizadaAt`), distribución por
   tipo/estado y tendencia por mes
+
+### Portal de Clientes (backend `/api/portal`) — módulo P1 (ago 2026)
+- **El frontend vive en otro repo:** `../PORTAL_CLIENTES_TULLAVE` (React+Vite+
+  Tailwind, ver su CLAUDE.md). Decisión: portal separado para no engordar esta
+  app; aquí solo vive el módulo backend AISLADO — `portal.controller.js`,
+  `portal.routes.js`, `portalAuth.middleware.js`, `utils/portalAuth.js` — que
+  no toca ningún endpoint del equipo
+- **Acceso sin contraseña:** correo + OTP de 6 dígitos (tabla `PortalOtp`,
+  hash SHA-256, 10 min de vida, 5 intentos, máx. 3 códigos/15 min → 429). El
+  correo sale por `sendTextEmail` (Gmail API); **en dev el código se imprime
+  en la consola del servidor** (probar sin Gmail conectado). JWT de 30 días
+  firmado con secreto DERIVADO (`JWT_SECRET + '::portal-clientes'`): un token
+  del portal da 401 en la API del equipo y viceversa
+- **Identidad = correo verificado:** el cliente solo ve expedientes cuyo
+  `solicitanteEmail` coincide (ajenos → 404). Vista BLANQUEADA: timeline solo
+  con CREACION/ESTADO/RESPUESTA y sus propias NOTAs (`meta.portal`); nunca
+  notas internas, responsable, data del tipo ni adjuntos
+- **Radicación:** mismo consecutivo `SOL-AAAA-NNNN` (se exportó
+  `generarRadicado`), `medioIngreso: 'PORTAL'` (agregado al enum y a
+  `MEDIOS_INGRESO`), `creadaPor` = usuario sistema "Portal de Clientes"
+  (`portal@tullave.sistema`, rol PORTAL, contraseña aleatoria — no puede
+  loguearse). Inicializa las mismas automatizaciones que el equipo (DP con
+  término legal, reparaciones). Notifica a admins por FCM; los comentarios
+  del cliente notifican al responsable
+- Endpoints: `POST /auth/solicitar-codigo`, `POST /auth/verificar`,
+  `GET /tipos`, `GET|POST /solicitudes`, `GET /solicitudes/:id`,
+  `POST /solicitudes/:id/comentario` — todos bajo `/api/portal`, auth
+  `authenticatePortal` (nunca `authenticate`)
+- **Al desplegar el portal en su dominio:** agregarlo a `ALLOWED_ORIGINS`
+  (CORS). Fase 2 pendiente: Capacitor Android + iOS del portal
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

@@ -13,6 +13,23 @@ function wrap76(b64) {
     return b64.replace(/(.{76})/g, '$1\r\n');
 }
 
+// Construye un mensaje MIME de solo texto (sin adjuntos) — P1: código OTP
+// del Portal de Clientes.
+export function buildTextMimeMessage({ from, to, subject, text }) {
+    const lines = [
+        `From: ${from ? encodeHeader(from) : 'me'}`,
+        `To: ${to}`,
+        `Subject: ${encodeHeader(subject)}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        wrap76(Buffer.from(text, 'utf8').toString('base64')),
+        '',
+    ];
+    return lines.join('\r\n');
+}
+
 // Construye el mensaje MIME (texto plano + PDF adjunto).
 export function buildMimeMessage({ from, to, subject, text, pdfBase64, filename }) {
     const boundary = 'tullave_contrato_boundary';

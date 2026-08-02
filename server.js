@@ -27,9 +27,12 @@ const defaultOrigins = [
     'capacitor://localhost',
     'http://localhost'
 ];
-const allowedOrigins = process.env.ALLOWED_ORIGINS
+const allowedOrigins = (process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-    : defaultOrigins;
+    : defaultOrigins)
+    // P1: dominio del Portal de Clientes (frontend aparte) — se configura en
+    // Railway cuando el portal tenga su URL, sin tocar código
+    .concat(process.env.PORTAL_ORIGIN ? [process.env.PORTAL_ORIGIN.trim()] : []);
 
 // Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
 // CSP queda desactivada — el frontend embebe assets de Google Maps/Firebase
