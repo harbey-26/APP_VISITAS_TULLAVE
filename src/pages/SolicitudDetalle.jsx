@@ -70,6 +70,7 @@ export default function SolicitudDetalle() {
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [nota, setNota] = useState('');
+    const [notaParaCliente, setNotaParaCliente] = useState(false);
     const [estadoModal, setEstadoModal] = useState(null); // { estado, nota }
     const [preview, setPreview] = useState(null);          // adjunto cargado
     const cerrada = sol && ['FINALIZADA', 'ARCHIVADA'].includes(sol.estado);
@@ -136,9 +137,13 @@ export default function SolicitudDetalle() {
         e.preventDefault();
         setBusy(true);
         try {
-            const updated = await apiFetch(`/api/solicitudes/${id}/notas`, { method: 'POST', body: { texto: nota } });
+            const updated = await apiFetch(`/api/solicitudes/${id}/notas`, {
+                method: 'POST',
+                body: { texto: nota, paraCliente: notaParaCliente || undefined },
+            });
             setSol(updated);
             setNota('');
+            setNotaParaCliente(false);
         } catch (err) {
             toast.error(friendlyError(err));
         } finally {
@@ -555,17 +560,34 @@ export default function SolicitudDetalle() {
                                 <p className="text-sm text-gray-800 whitespace-pre-wrap">{a.descripcion}</p>
                                 <p className="text-[11px] text-gray-400 mt-0.5">
                                     {formatDateTime(a.createdAt)} · {a.user?.name || 'Sistema'}
+                                    {a.meta?.paraCliente && (
+                                        <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-50 px-1.5 py-px text-[10px] font-medium text-blue-700">
+                                            📢 Visible para el cliente
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                         </div>
                     ))}
                 </div>
                 {!cerrada && (
-                    <form onSubmit={handleNota} className="mt-4 flex gap-2">
-                        <Input placeholder="Agregar nota u observación…" value={nota} onChange={(e) => setNota(e.target.value)} />
-                        <Button type="submit" disabled={busy || !nota.trim()} title="Agregar nota">
-                            <StickyNote className="w-4 h-4" />
-                        </Button>
+                    <form onSubmit={handleNota} className="mt-4 space-y-2">
+                        <div className="flex gap-2">
+                            <Input placeholder="Agregar nota u observación…" value={nota} onChange={(e) => setNota(e.target.value)} />
+                            <Button type="submit" disabled={busy || !nota.trim()} title="Agregar nota">
+                                <StickyNote className="w-4 h-4" />
+                            </Button>
+                        </div>
+                        {/* P1: informar el avance al cliente en su portal sin exponer notas internas */}
+                        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={notaParaCliente}
+                                onChange={(e) => setNotaParaCliente(e.target.checked)}
+                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                            />
+                            📢 Visible para el cliente en el Portal (informarle el avance)
+                        </label>
                     </form>
                 )}
             </div>

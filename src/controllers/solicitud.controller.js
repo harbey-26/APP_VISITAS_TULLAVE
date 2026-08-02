@@ -420,13 +420,19 @@ export const asignarSolicitud = async (req, res) => {
     }
 };
 
-// POST /api/solicitudes/:id/notas — nota manual en la línea de tiempo (#38)
+// POST /api/solicitudes/:id/notas — nota manual en la línea de tiempo (#38).
+// P1: con { paraCliente: true } la nota queda VISIBLE en el Portal de
+// Clientes (el responsable informa el avance); sin el flag sigue siendo
+// interna, como siempre.
 export const agregarNota = async (req, res) => {
     try {
         const { sol, error, status } = await loadOwned(req);
         if (error) return res.status(status).json({ error });
-        const parsed = z.object({ texto: z.string().trim().min(1, 'La nota está vacía').max(2000) }).parse(req.body);
-        await registrarActuacion(sol.id, 'NOTA', parsed.texto, req.user.id);
+        const parsed = z.object({
+            texto: z.string().trim().min(1, 'La nota está vacía').max(2000),
+            paraCliente: z.boolean().optional(),
+        }).parse(req.body);
+        await registrarActuacion(sol.id, 'NOTA', parsed.texto, req.user.id, parsed.paraCliente ? { paraCliente: true } : null);
         const updated = await prisma.solicitud.findUnique({ where: { id: sol.id }, include: includeDetalle });
         res.status(201).json(serialize(updated));
     } catch (error) {

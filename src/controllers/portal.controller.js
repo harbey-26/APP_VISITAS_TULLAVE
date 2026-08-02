@@ -239,10 +239,11 @@ function detalleCliente(sol, tipos) {
             return { ...a, meta };
         })
         // El cliente ve: creación, cambios de estado, respuestas, SUS
-        // comentarios y SUS fotos. Notas internas, alertas, adjuntos y
+        // comentarios/fotos y las notas que el equipo marcó "para el
+        // cliente" (meta.paraCliente). Notas internas, alertas, adjuntos y
         // automatizaciones del equipo no salen del sistema.
         .filter((a) => ['CREACION', 'ESTADO', 'RESPUESTA'].includes(a.tipo)
-            || (['NOTA', 'ADJUNTO'].includes(a.tipo) && a.meta?.portal))
+            || (['NOTA', 'ADJUNTO'].includes(a.tipo) && (a.meta?.portal || a.meta?.paraCliente)))
         .map((a) => ({
             id: a.id,
             tipo: a.tipo,
@@ -257,6 +258,15 @@ function detalleCliente(sol, tipos) {
         actuaciones,
         respuesta: data.respuesta
             ? { texto: data.respuesta.texto, medio: data.respuesta.medio, fechaEnvio: data.respuesta.fechaEnvio }
+            : null,
+        // Reparaciones (#36): el paso actual del flujo interno alimenta el
+        // stepper del portal — solo el sub-estado y la fecha de visita del
+        // técnico; cotizaciones y montos NUNCA salen al cliente.
+        reparacion: sol.tipo === 'REPARACIONES'
+            ? {
+                subEstado: data.reparacion?.subEstado || 'CASO_CREADO',
+                fechaVisitaTecnico: data.reparacion?.tecnico?.fechaProgramada || null,
+            }
             : null,
     };
 }
