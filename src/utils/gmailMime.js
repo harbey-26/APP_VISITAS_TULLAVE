@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 // arbitrarias — p. ej. un `Bcc:` que manda copia oculta a un tercero.
 // Se aplica a TODOS los valores de cabecera de los tres constructores.
 export function sanitizeHeader(value) {
+    // eslint-disable-next-line no-control-regex -- detectar caracteres de control ES el objetivo de este saneamiento
     return String(value ?? '').replace(/[\r\n\u0000-\u001f\u007f]+/g, ' ').trim();
 }
 
