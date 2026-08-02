@@ -362,7 +362,7 @@ export default function SolicitudDetalle() {
                             <p className="text-gray-700 mt-2 whitespace-pre-wrap">{sol.data.respuesta.texto}</p>
                         </div>
                     ) : !cerrada && (
-                        <RespuestaForm id={id} onSaved={setSol} toast={toast} />
+                        <RespuestaForm id={id} sol={sol} onSaved={setSol} toast={toast} />
                     )}
                 </div>
             )}
@@ -683,11 +683,16 @@ export default function SolicitudDetalle() {
 }
 
 // Respuesta del derecho de petición (#41): texto + medio + registro del envío
-function RespuestaForm({ id, onSaved, toast }) {
+// P1: con medio CORREO el SISTEMA envía el correo al solicitante (con los
+// adjuntos elegidos); los demás medios solo dejan constancia del envío hecho
+// por fuera.
+function RespuestaForm({ id, sol, onSaved, toast }) {
     const [abierto, setAbierto] = useState(false);
     const [texto, setTexto] = useState('');
     const [medio, setMedio] = useState('CORREO');
+    const [adjuntoIds, setAdjuntoIds] = useState([]);
     const [busy, setBusy] = useState(false);
+    const email = (sol?.solicitanteEmail || '').trim();
     if (!abierto) {
         return (
             <Button size="sm" className="mt-3" onClick={() => setAbierto(true)}>
@@ -703,10 +708,11 @@ function RespuestaForm({ id, onSaved, toast }) {
                 setBusy(true);
                 try {
                     const updated = await apiFetch(`/api/solicitudes/${id}/respuesta`, {
-                        method: 'POST', body: { texto, medio },
+                        method: 'POST',
+                        body: { texto, medio, adjuntoIds: medio === 'CORREO' && adjuntoIds.length ? adjuntoIds : undefined },
                     });
                     onSaved(updated);
-                    toast.success('Respuesta registrada');
+                    toast.success(medio === 'CORREO' ? `Respuesta enviada a ${email}` : 'Respuesta registrada');
                 } catch (err) {
                     toast.error(friendlyError(err));
                 } finally {
@@ -717,16 +723,48 @@ function RespuestaForm({ id, onSaved, toast }) {
             <Field label="Texto de la respuesta">
                 <TextArea rows={4} required value={texto} onChange={(e) => setTexto(e.target.value)} />
             </Field>
-            <div className="flex items-end gap-2">
-                <Field label="Medio de envío">
-                    <Select value={medio} onChange={(e) => setMedio(e.target.value)}>
-                        <option value="CORREO">Correo</option>
-                        <option value="FISICO">Físico</option>
-                        <option value="WHATSAPP">WhatsApp</option>
-                        <option value="OTRO">Otro</option>
-                    </Select>
-                </Field>
-                <Button type="submit" disabled={busy || !texto.trim()}><Send className="w-4 h-4" /> Registrar envío</Button>
+            <Field label="Medio de envío">
+                <Select value={medio} onChange={(e) => setMedio(e.target.value)}>
+                    <option value="CORREO">Correo (el sistema lo envía)</option>
+                    <option value="FISICO">Físico (solo registrar)</option>
+                    <option value="WHATSAPP">WhatsApp (solo registrar)</option>
+                    <option value="OTRO">Otro (solo registrar)</option>
+                </Select>
+            </Field>
+            {medio === 'CORREO' && (
+                email ? (
+                    <div className="rounded-xl bg-blue-50 p-3 text-xs text-blue-900 space-y-2">
+                        <p>📧 El sistema enviará este correo a <b>{email}</b>.</p>
+                        {sol?.adjuntos?.length > 0 && (
+                            <div>
+                                <p className="font-semibold mb-1">Adjuntar documentos (máx. 3):</p>
+                                {sol.adjuntos.map((a) => (
+                                    <label key={a.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={adjuntoIds.includes(a.id)}
+                                            disabled={!adjuntoIds.includes(a.id) && adjuntoIds.length >= 3}
+                                            onChange={(e) => setAdjuntoIds(e.target.checked
+                                                ? [...adjuntoIds, a.id]
+                                                : adjuntoIds.filter((x) => x !== a.id))}
+                                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                                        />
+                                        <span className="truncate">{a.nombre}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+                        ⚠️ El expediente no tiene correo del solicitante — agrégalo (editar solicitud) o elige otro medio.
+                    </p>
+                )
+            )}
+            <div className="flex justify-end">
+                <Button type="submit" disabled={busy || !texto.trim() || (medio === 'CORREO' && !email)} loading={busy}>
+                    <Send className="w-4 h-4" /> {medio === 'CORREO' ? 'Enviar respuesta' : 'Registrar envío'}
+                </Button>
             </div>
         </form>
     );

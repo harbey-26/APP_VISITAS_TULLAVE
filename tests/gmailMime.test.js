@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMimeMessage } from '../src/utils/gmailMime.js';
+import { buildMimeMessage, buildMimeMessageAttachments } from '../src/utils/gmailMime.js';
 
 // Mensaje MIME del envío de contratos por correo (Gmail API).
 describe('buildMimeMessage', () => {
@@ -40,5 +40,37 @@ describe('buildMimeMessage', () => {
     it('subject ASCII queda sin codificar', () => {
         const mime = buildMimeMessage({ ...base, subject: 'Contrato TuLlave' });
         expect(mime).toContain('Subject: Contrato TuLlave');
+    });
+});
+
+describe('buildMimeMessageAttachments', () => {
+    const base = {
+        from: 'oficina@tullave.com',
+        to: 'cliente@ejemplo.com',
+        subject: 'Respuesta a su solicitud SOL-2026-0001',
+        text: 'Adjuntamos la respuesta.',
+        attachments: [
+            { base64: Buffer.from('PDF').toString('base64'), filename: 'respuesta.pdf', mimeType: 'application/pdf' },
+            { base64: Buffer.from('IMG').toString('base64'), filename: 'evidencia.jpg', mimeType: 'image/jpeg' },
+        ],
+    };
+
+    it('incluye cada adjunto con su tipo y nombre', () => {
+        const mime = buildMimeMessageAttachments(base);
+        expect(mime).toContain('Content-Type: application/pdf; name="respuesta.pdf"');
+        expect(mime).toContain('Content-Disposition: attachment; filename="respuesta.pdf"');
+        expect(mime).toContain('Content-Type: image/jpeg; name="evidencia.jpg"');
+    });
+
+    it('sin adjuntos produce un mensaje válido de solo texto', () => {
+        const mime = buildMimeMessageAttachments({ ...base, attachments: [] });
+        expect(mime).toContain('Content-Type: multipart/mixed');
+        expect(mime).not.toContain('Content-Disposition: attachment');
+        expect(mime).toContain('--tullave_adjuntos_boundary--');
+    });
+
+    it('el cierre del boundary va después del último adjunto', () => {
+        const mime = buildMimeMessageAttachments(base);
+        expect(mime.trimEnd().endsWith('--tullave_adjuntos_boundary--')).toBe(true);
     });
 });

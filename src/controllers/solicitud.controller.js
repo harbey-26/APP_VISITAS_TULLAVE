@@ -10,7 +10,7 @@ import { hoyISO } from '../utils/incrementoCalc.js';
 import { calcularServicioPublico, validarServicioPublico } from '../utils/servicioPublicoCalc.js';
 import { verificarTerminacion } from '../utils/terminacionCheck.js';
 import { generateServicioPublicoPdf, servicioPublicoFileName } from '../utils/servicioPublicoPdf.js';
-import { sendEmailWithPdf } from '../utils/gmail.js';
+import { sendEmailWithPdf, sendEmailWithAttachments } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
@@ -649,7 +649,11 @@ export const updateData = async (req, res) => {
     }
 };
 
-// POST /api/solicitudes/:id/respuesta — DP (#41): registrar la respuesta y su envío
+// POST /api/solicitudes/:id/respuesta — DP (#41): registrar la respuesta.
+// P1: con medio CORREO el sistema ENVÍA el correo de verdad al solicitante
+// (con los adjuntos elegidos vía adjuntoIds) — antes solo dejaba constancia
+// y el envío era manual, lo que hacía creer que el sistema lo había mandado.
+// Solo se registra la respuesta si el envío sale bien.
 export const registrarRespuesta = async (req, res) => {
     try {
         const { sol, error, status } = await loadOwned(req);
@@ -658,7 +662,47 @@ export const registrarRespuesta = async (req, res) => {
             texto: z.string().trim().min(1, 'La respuesta está vacía').max(5000),
             medio: z.enum(['CORREO', 'FISICO', 'WHATSAPP', 'OTRO']),
             fechaEnvio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            adjuntoIds: z.array(z.coerce.number().int().positive()).max(3).optional(),
         }).parse(req.body);
+
+        let descripcionActuacion;
+        if (parsed.medio === 'CORREO') {
+            const to = (sol.solicitanteEmail || '').trim();
+            if (!to) {
+                return res.status(400).json({ error: 'El expediente no tiene correo del solicitante: agrégalo antes de enviar la respuesta por correo.' });
+            }
+            // Adjuntos elegidos (deben ser de ESTE expediente)
+            const adjuntos = parsed.adjuntoIds?.length
+                ? await prisma.solicitudAdjunto.findMany({ where: { id: { in: parsed.adjuntoIds }, solicitudId: sol.id } })
+                : [];
+            if ((parsed.adjuntoIds?.length || 0) !== adjuntos.length) {
+                return res.status(400).json({ error: 'Alguno de los adjuntos elegidos no pertenece a este expediente.' });
+            }
+            await sendEmailWithAttachments({
+                to,
+                subject: `Respuesta a su solicitud ${sol.radicado} — ${EMPRESA.razonSocial}`,
+                text: [
+                    `Hola ${sol.solicitanteNombre},`,
+                    '',
+                    `${EMPRESA.razonSocial} da respuesta a su solicitud "${sol.asunto}" (radicado ${sol.radicado}):`,
+                    '',
+                    parsed.texto,
+                    ...(adjuntos.length ? ['', `Se adjunta${adjuntos.length > 1 ? 'n' : ''}: ${adjuntos.map((a) => a.nombre).join(', ')}.`] : []),
+                    '',
+                    'Cualquier inquietud, con gusto la atendemos.',
+                    '',
+                    EMPRESA.razonSocial,
+                    `Tel: ${EMPRESA.celular} - ${EMPRESA.telefono} · ${EMPRESA.email}`,
+                ].join('\n'),
+                attachments: adjuntos.map((a) => ({
+                    base64: a.dataUrl.slice(a.dataUrl.indexOf(',') + 1),
+                    filename: a.nombre,
+                    mimeType: a.mimeType,
+                })),
+            });
+            descripcionActuacion = `Respuesta enviada por correo a ${to}${adjuntos.length ? ` con ${adjuntos.length} adjunto(s)` : ''}.`;
+        }
+
         const data = serialize(sol).data;
         data.respuesta = {
             texto: parsed.texto,
@@ -672,7 +716,7 @@ export const registrarRespuesta = async (req, res) => {
         });
         await registrarActuacion(
             sol.id, 'RESPUESTA',
-            `Respuesta enviada por ${parsed.medio.toLowerCase()} el ${fechaCorta(data.respuesta.fechaEnvio)}.`,
+            descripcionActuacion || `Respuesta registrada (enviada por ${parsed.medio.toLowerCase()} el ${fechaCorta(data.respuesta.fechaEnvio)}, por fuera del sistema).`,
             req.user.id,
         );
         const updated = await prisma.solicitud.findUnique({ where: { id: sol.id }, include: includeDetalle });
