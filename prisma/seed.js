@@ -17,8 +17,33 @@ async function backfillAgentPhones() {
     }
 }
 
+// S1 (#35): tipos de solicitud base del Centro de Solicitudes. Idempotente
+// (upsert por clave, solo crea los que falten — nunca pisa label/activo que el
+// admin haya editado) y corre SIEMPRE, aunque la BD ya tenga usuarios.
+async function seedSolicitudTipos() {
+    const tipos = [
+        'Reparaciones', 'Servicios públicos', 'Derechos de petición', 'PQRS',
+        'Terminación de contrato', 'Cobro de penalidades', 'Autorizaciones',
+        'Certificaciones', 'Quejas', 'Consultas generales', 'Otras',
+    ];
+    const clavePara = (label) => label
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    let creados = 0;
+    for (let i = 0; i < tipos.length; i++) {
+        const clave = clavePara(tipos[i]);
+        const existe = await prisma.solicitudTipo.findUnique({ where: { clave } });
+        if (!existe) {
+            await prisma.solicitudTipo.create({ data: { clave, label: tipos[i], orden: i } });
+            creados += 1;
+        }
+    }
+    if (creados > 0) console.log(`Tipos de solicitud sembrados: ${creados}`);
+}
+
 async function main() {
     await backfillAgentPhones();
+    await seedSolicitudTipos();
 
     // Bootstrap-only: si ya hay usuarios en la BD, no sembramos nada. Esto evita
     // que los usuarios eliminados por el admin "resuciten" en cada deploy de

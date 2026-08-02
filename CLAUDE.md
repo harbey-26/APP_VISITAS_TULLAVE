@@ -140,6 +140,23 @@ Incremento — id, fichaId, periodo (año), fechaEfectiva, canonAnterior,
             shareToken, emailedAt), aplicadoAt/Por, anuladoMotivo.
             @@unique(fichaId, periodo) — una tarea por aniversario
 IndiceAnual — anio (@unique, año de APLICACIÓN), pct (IPC %), fuente
+Solicitud  — id, radicado (@unique "SOL-2026-0001", consecutivo por año), tipo
+            (clave de SolicitudTipo), estado (RECIBIDA/EN_REVISION/EN_GESTION/
+            PENDIENTE_TERCERO/FINALIZADA/ARCHIVADA), prioridad, medioIngreso,
+            asunto, descripcion, datos del solicitante (nombre/tipo/tel/email —
+            propietario y arrendatario NO son entidades), propertyId?,
+            contractId?, creadaPor, responsableId? (bandeja), fechaVencimiento?
+            ("YYYY-MM-DD"), data (JSON del tipo: reparacion / servicioPublico /
+            derechoPeticion / terminacion / respuesta / alertasEnviadas),
+            shareToken?, emailedAt?, finalizadaAt? (métrica de respuesta)
+SolicitudActuacion — línea de tiempo INMUTABLE (sin update/delete): tipo
+            (CREACION/ESTADO/ASIGNACION/NOTA/ADJUNTO/AUTOMATIZACION/RESPUESTA/
+            ALERTA), descripcion, userId? (null = sistema/cron), meta JSON
+SolicitudAdjunto — nombre, mimeType, size, categoria (FOTO/FOTO_ANTES/
+            FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/OTRO), dataUrl
+            (base64 en BD, como las fotos de visita — máx. 5 MB/archivo)
+SolicitudTipo — clave (@unique), label, activo, orden — administrable; el seed
+            siembra los 11 del epic (idempotente, corre en cada deploy)
 ```
 
 ---
@@ -205,6 +222,20 @@ IndiceAnual — anio (@unique, año de APLICACIÓN), pct (IPC %), fuente
 | GET | `/api/incrementos/public/:token/pdf` | **No** | PDF público de la carta (solo enviadas) |
 | PATCH | `/api/incrementos/:id/aplicar` | JWT+Admin | Aplica el nuevo canon a la ficha (transacción) y cierra el ciclo → APLICADA |
 | PATCH | `/api/incrementos/:id/anular` | JWT+Admin | Anular con `{motivo}` obligatorio |
+| GET/POST | `/api/solicitudes` | JWT | Expedientes (admin todos; usuario los suyos: asignados + radicados). POST radica con radicado automático; tipo DERECHOS_DE_PETICION calcula el vencimiento legal (días hábiles, `dpTipo`) |
+| GET/POST/PATCH | `/api/solicitudes/tipos(/:id)` | JWT (escribir admin) | Tipos administrables |
+| GET | `/api/solicitudes/stats` | JWT | KPIs del dashboard: abiertas, cerradas, vencidas, promedio de respuesta, por tipo/estado, tendencia |
+| GET/PATCH/DELETE | `/api/solicitudes/:id` | JWT | Detalle con timeline / editar base / eliminar (admin, o creador solo RECIBIDA) |
+| PATCH | `/api/solicitudes/:id/estado` | JWT | Transición validada por la máquina de estados (no salta pasos; permite retroceder y reabrir) → actuación + FCM |
+| PATCH | `/api/solicitudes/:id/asignar` | JWT+Admin | Asignar responsable → FCM |
+| POST | `/api/solicitudes/:id/notas` | JWT | Nota manual en la línea de tiempo |
+| POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u) → actuaciones |
+| GET | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | Contenido (dataUrl) bajo demanda — los listados NO incluyen el dataUrl |
+| PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación) |
+| POST | `/api/solicitudes/:id/respuesta` | JWT | DP: registrar respuesta y su envío (fecha, medio) |
+| POST | `/api/solicitudes/:id/servicio-share` | JWT | Link público del PDF de la liquidación de servicio |
+| POST | `/api/solicitudes/:id/servicio-email` | JWT | PDF por correo (Gmail API, anti-duplicado 1 h) |
+| GET | `/api/solicitudes/public/:token/servicio-pdf` | **No** | PDF público de la liquidación de servicio |
 
 ---
 
@@ -503,6 +534,60 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   status). La aplicación AUTOMÁTICA en fecha efectiva + propagación a
   liquidación mensual/cartera/pago propietario queda pendiente de que existan
   esos módulos (decisión ago 2026: #50 se retoma al final)
+
+### Centro de Solicitudes (`Solicitudes.jsx` + `SolicitudDetalle.jsx`) — módulo S1 (epic #32)
+- Centraliza las solicitudes de propietarios/arrendatarios/terceros que llegan
+  por WhatsApp/correo/llamada: el equipo las RADICA (no hay portal público en
+  esta fase). Permisos: cualquier usuario radica; cada quien ve su bandeja
+  (asignadas + radicadas por él); el admin ve todo, asigna y elimina
+- **Expediente (#34)** — radicado consecutivo por año (`SOL-2026-0001`, retry
+  ante colisión), solicitante como datos sueltos + links opcionales a
+  Property/Contract, prioridad, medio de ingreso, responsable, vencimiento
+- **Máquina de estados (#33)** — `solicitudFlow.js` (puro, con tests):
+  Recibida → En revisión → En gestión → Pendiente de tercero → Finalizada →
+  Archivada; retrocesos de un paso y reabrir permitidos, saltos prohibidos
+  (server-side). Cada transición → actuación + FCM a responsable/creador
+- **Línea de tiempo (#38)** — `SolicitudActuacion` inmutable (no hay endpoints
+  de edición): creación, estados, asignaciones, notas, adjuntos,
+  automatizaciones, respuestas y alertas del cron. Notas manuales con POST
+- **Adjuntos (#39)** — base64 en BD (decisión ago 2026: mismo patrón de las
+  fotos de visita, sin storage externo; migrar a S3 después no cambia la API).
+  Máx. 5 MB/archivo, 10 por subida; imágenes pasan por `compressImage`. El
+  dataUrl solo viaja en `GET /:id/adjuntos/:adjId` (los listados no lo cargan).
+  Preview de imágenes y PDF en modal
+- **Tipos (#35)** — tabla administrable; los 11 del epic se siembran en
+  `seed.js` (idempotente, no pisa ediciones del admin). Claves derivadas del
+  label: `DERECHOS_DE_PETICION`, `SERVICIOS_PUBLICOS`,
+  `TERMINACION_DE_CONTRATO`, `REPARACIONES` activan las automatizaciones
+- **Reparaciones (#36)** — `data.reparacion`: 6 pasos (caso → fotos →
+  cotización → autorización propietario → técnico → finalizada) con stepper,
+  cotizaciones (proveedor/monto), técnico + fecha de visita y fotos
+  antes/después (categorías de adjunto)
+- **Servicios públicos (#37)** — `servicioPublicoCalc.js` (puro, con tests):
+  valor diario = total ÷ días del período (extremos incluidos); propietario
+  hasta el día ANTES de la entrega, arrendatario desde la entrega; el
+  redondeo cuadra al peso (arrendatario = total − propietario). PDF isomorfo
+  (`servicioPublicoPdf.js`), link público tokenizado y correo con adjunto.
+  El formulario guarda con botón explícito "Calcular y guardar" (guardar
+  en blur perdía el último campo por re-renders)
+- **Derechos de petición (#41)** — término legal en DÍAS HÁBILES
+  (`diasHabiles.js`: festivos de Colombia — Ley Emiliani + Pascua por Butcher,
+  con tests contra el calendario 2026): general/queja 15, documentos 10,
+  consulta 30 (Ley 1755 de 2015). Alertas escalonadas del cron (7:30am Bogotá
+  + arranque): mitad del término, ≤3 días, vence hoy, vencido — cada nivel UNA
+  vez (`data…alertasEnviadas`), FCM al responsable (+admins si crítico) y
+  actuación ALERTA. Respuesta con registro de envío (fecha/medio)
+- **Terminación (#42)** — `terminacionCheck.js` (puro, con tests) lee el
+  contrato ARRENDAMIENTO vinculado: vigencia, preaviso de 3 meses (días de
+  retraso si no se cumple) e indemnización de 3 cánones si la entrega es
+  anticipada (cláusula penal del contrato / art. 24-4 Ley 820). Panel con ✅/❌
+  y observaciones; "Fecha deseada de entrega" recalcula con botón Verificar
+- **Bandeja (#43)** — agrupada por tipo, ordenada por `compararBandeja`
+  (vencidas → por vencer → prioridad → fecha límite); el admin puede ver la
+  bandeja de cualquier funcionario (las sin asignar aparecen en la suya)
+- **Dashboard (#40)** — KPIs (abiertas, cerradas, vencidas con alerta visual,
+  tiempo promedio de respuesta vía `finalizadaAt`), distribución por
+  tipo/estado y tendencia por mes
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

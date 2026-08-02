@@ -29,6 +29,9 @@ model User {
   liquidaciones    Liquidacion[]     // L1: liquidaciones creadas
   pagosLiquidacion LiquidacionPago[] @relation("pagosLiquidacion") // L1: pagos que registró
   fichasIncremento FichaIncremento[] // I1: fichas de incremento a su cargo
+  solicitudesCreadas   Solicitud[]  @relation("solicitudesCreadas")   // S1
+  solicitudesAsignadas Solicitud[]  @relation("solicitudesAsignadas") // S1: su bandeja
+  actuacionesSolicitud SolicitudActuacion[]                           // S1
 }
 
 model UserFcmToken {
@@ -85,6 +88,7 @@ model Property {
   createdAt DateTime @default(now())
   visits    Visit[]
   contracts Contract[] // C1
+  solicitudes Solicitud[] // S1
 }
 
 model Visit {
@@ -169,6 +173,7 @@ model Contract {
   property    Property?    @relation(fields: [propertyId], references: [id])
   liquidacion Liquidacion? // L1
   fichaIncremento FichaIncremento? // I1
+  solicitudes Solicitud[] // S1
 
   @@index([userId])
   @@index([status])
@@ -268,6 +273,96 @@ model Incremento {
   @@unique([fichaId, periodo])
   @@index([status])
   @@index([fechaEfectiva])
+}
+
+// S1: Centro de Solicitudes — cada solicitud es un expediente independiente
+// con radicado único, responsable, estado (máquina en solicitudFlow.js),
+// línea de tiempo inmutable (SolicitudActuacion) y adjuntos en base64
+// (SolicitudAdjunto, mismo criterio que las fotos de visita). `data` guarda el
+// JSON específico del tipo (reparación, servicios públicos, derecho de
+// petición, terminación). Propietario/arrendatario van como datos del
+// solicitante + links opcionales a Property/Contract (no existen como entidad).
+model Solicitud {
+  id                  Int       @id @default(autoincrement())
+  radicado            String    @unique // "SOL-2026-0001" — consecutivo por año
+  tipo                String    // clave de SolicitudTipo
+  estado              String    @default("RECIBIDA") // RECIBIDA, EN_REVISION, EN_GESTION, PENDIENTE_TERCERO, FINALIZADA, ARCHIVADA
+  prioridad           String    @default("MEDIA") // ALTA, MEDIA, BAJA
+  medioIngreso        String    // WHATSAPP, CORREO, LLAMADA, PRESENCIAL, OTRO
+  asunto              String
+  descripcion         String?
+  solicitanteNombre   String
+  solicitanteTipo     String?   // PROPIETARIO, ARRENDATARIO, TERCERO
+  solicitanteTelefono String?
+  solicitanteEmail    String?
+  propertyId          Int?
+  contractId          Int?
+  creadaPor           Int       // quien radicó
+  responsableId       Int?      // funcionario asignado (bandeja)
+  fechaVencimiento    String?   // "YYYY-MM-DD" — término legal o compromiso
+  data                String?   // JSON específico del tipo de solicitud
+  shareToken          String?   @unique // link público (PDF de liquidación de servicios)
+  emailedAt           DateTime? // último envío por correo exitoso (anti-duplicado, 1 h)
+  finalizadaAt        DateTime? // para tiempo promedio de respuesta (#40)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  property    Property?            @relation(fields: [propertyId], references: [id])
+  contract    Contract?            @relation(fields: [contractId], references: [id])
+  creador     User                 @relation("solicitudesCreadas", fields: [creadaPor], references: [id])
+  responsable User?                @relation("solicitudesAsignadas", fields: [responsableId], references: [id])
+  actuaciones SolicitudActuacion[]
+  adjuntos    SolicitudAdjunto[]
+
+  @@index([estado])
+  @@index([responsableId])
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+// S1: Línea de tiempo del expediente (#38). Inmutable: no hay update/delete.
+// meta = JSON con detalles de la actuación (estado anterior/nuevo, etc.).
+model SolicitudActuacion {
+  id          Int      @id @default(autoincrement())
+  solicitudId Int
+  tipo        String   // CREACION, ESTADO, ASIGNACION, NOTA, ADJUNTO, AUTOMATIZACION, RESPUESTA, ALERTA
+  descripcion String
+  userId      Int?     // null = actuación del sistema (cron)
+  meta        String?  // JSON
+  createdAt   DateTime @default(now())
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@index([solicitudId])
+}
+
+// S1: Adjuntos del expediente (#39) en base64 (dataUrl), como las fotos de
+// visita — sin storage externo. Límite de tamaño en el controlador.
+model SolicitudAdjunto {
+  id          Int      @id @default(autoincrement())
+  solicitudId Int
+  nombre      String
+  mimeType    String
+  size        Int      // bytes del archivo original
+  categoria   String   @default("OTRO") // FOTO, FOTO_ANTES, FOTO_DESPUES, FACTURA, COTIZACION, ACTA, CORREO, PDF, OTRO
+  dataUrl     String   // data:mime;base64,...
+  subidoPor   Int
+  createdAt   DateTime @default(now())
+
+  solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+
+  @@index([solicitudId])
+}
+
+// S1: Tipos de solicitud administrables (#35). Se siembran los 11 del epic;
+// el admin puede crear más o desactivar los que no use.
+model SolicitudTipo {
+  id     Int     @id @default(autoincrement())
+  clave  String  @unique // REPARACIONES, SERVICIOS_PUBLICOS, ...
+  label  String
+  activo Boolean @default(true)
+  orden  Int     @default(0)
 }
 
 // I1: IPC (o índice) aplicable por año de aplicación. Lo configura el admin:

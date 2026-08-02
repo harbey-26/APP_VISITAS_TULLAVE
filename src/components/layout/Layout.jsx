@@ -24,7 +24,8 @@ import {
     Settings as SettingsIcon,
     FileText,
     Receipt,
-    TrendingUp
+    TrendingUp,
+    Inbox
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationsContext';
 
@@ -412,6 +413,7 @@ export default function Layout() {
                     <NavItem to="/contracts" icon={FileText} label="Contratos" />
                     <NavItem to="/liquidaciones" icon={Receipt} label="Liquidaciones" />
                     <NavItem to="/incrementos" icon={TrendingUp} label="Incrementos" />
+                    <NavItem to="/solicitudes" icon={Inbox} label="Solicitudes" />
                     <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
 
                     {isAdmin && (

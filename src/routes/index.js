@@ -9,6 +9,7 @@ import appRoutes from './app.routes.js';
 import contractRoutes from './contract.routes.js';
 import liquidacionRoutes from './liquidacion.routes.js';
 import incrementoRoutes from './incremento.routes.js';
+import solicitudRoutes from './solicitud.routes.js';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/app', appRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/liquidaciones', liquidacionRoutes);
 router.use('/incrementos', incrementoRoutes);
+router.use('/solicitudes', solicitudRoutes);
 
 export default router;

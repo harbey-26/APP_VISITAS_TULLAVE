@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
 import { startLocationReminderCron } from './src/utils/locationReminders.js';
 import { detectarAniversarios } from './src/controllers/incremento.controller.js';
+import { revisarVencimientos } from './src/controllers/solicitud.controller.js';
 import { notifyAdmins } from './src/utils/notify.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -180,6 +181,23 @@ function startIncrementoCron() {
     }, 10 * 60 * 1000); // revisa cada 10 min
 }
 
+// S1 (#41): Alertas de vencimiento del Centro de Solicitudes — derechos de
+// petición con niveles escalonados (mitad del término, 3 días, vence hoy,
+// vencido) y demás tipos al vencer. Corre a las 7:30am Bogotá (12:30 UTC) y
+// al arrancar; cada nivel se notifica una sola vez (data.alertasEnviadas).
+function startSolicitudAlertCron() {
+    const run = () => revisarVencimientos().catch(e => console.warn('[Solicitudes Cron]', e.message));
+    run(); // al arrancar
+    let lastRanDay = new Date().getUTCDate();
+    setInterval(() => {
+        const now = new Date();
+        if (now.getUTCHours() === 12 && now.getUTCMinutes() >= 30 && now.getUTCDate() !== lastRanDay) {
+            lastRanDay = now.getUTCDate();
+            run();
+        }
+    }, 10 * 60 * 1000); // revisa cada 10 min
+}
+
 async function main() {
   try {
     await prisma.$connect();
@@ -193,6 +211,7 @@ async function main() {
     startWeeklyReportCron();      // L1: resumen semanal los lunes a las 9am
     startLocationReminderCron();  // Recordatorio por silencio (reemplaza las notif. locales fijas)
     startIncrementoCron();        // I1: detección diaria de aniversarios de contrato (#47)
+    startSolicitudAlertCron();    // S1: alertas de vencimiento de solicitudes (#41)
   } catch (error) {
     console.error('❌ Database connection failed:', error);
     process.exit(1);

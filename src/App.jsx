@@ -36,6 +36,8 @@ const Settings = lazyPage(() => import('./pages/Settings'));
 const Contracts = lazyPage(() => import('./pages/Contracts'));
 const Liquidaciones = lazyPage(() => import('./pages/Liquidaciones'));
 const Incrementos = lazyPage(() => import('./pages/Incrementos'));
+const Solicitudes = lazyPage(() => import('./pages/Solicitudes'));
+const SolicitudDetalle = lazyPage(() => import('./pages/SolicitudDetalle'));
 
 const LoadingScreen = () => (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -83,6 +85,8 @@ function App() {
                         <Route path="contracts" element={<Contracts />} />
                         <Route path="liquidaciones" element={<Liquidaciones />} />
                         <Route path="incrementos" element={<Incrementos />} />
+                        <Route path="solicitudes" element={<Solicitudes />} />
+                        <Route path="solicitudes/:id" element={<SolicitudDetalle />} />
                         <Route path="dashboard" element={
                             <AdminRoute>
                                 <Dashboard />
