@@ -282,7 +282,8 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | `VITE_GOOGLE_MAPS_API_KEY` | `.env` local + Railway + GitHub Secret | Google Maps en el frontend (mapa + Places). **Se embebe en build-time**, por eso debe estar también en Railway |
 | `GOOGLE_MAPS_API_KEY` | `.env` local + Railway | Geocoding del servidor (respaldo) — `property.controller.js` |
 | `VITE_API_URL` | `.env` local (vacío = proxy) | URL del backend |
-| `PORTAL_ORIGIN` | Railway (backend) | Origen(es) del Portal de Clientes para CORS, separados por coma (ej. `https://portal.tullaveinmobiliariasas.com,https://….up.railway.app`) — P1 |
+| `PORTAL_ORIGIN` | Railway (backend) | Origen(es) del Portal de Clientes para CORS, separados por coma (ej. `https://portal.tullaveinmobiliariasas.com,https://….up.railway.app`) — P1. **Coincidencia exacta**: cada origen debe ir completo |
+| `PORTAL_DEBUG_OTP` | solo local (`=1`) | Imprime el código OTP en la consola para probar sin Gmail. **Nunca en producción** |
 
 Secreto en GitHub Actions: `VITE_GOOGLE_MAPS_API_KEY`
 
@@ -635,6 +636,26 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   (servicio Railway propio, repo GitHub `harbey-26/PORTAL_CLIENTES_TULLAVE`,
   DNS en Squarespace). `PORTAL_ORIGIN` en Railway lleva ese dominio + la URL
   `.up.railway.app` del servicio. Fase 2 pendiente: Capacitor Android + iOS
+- **Endurecimiento de seguridad (ago 2026, tras auditoría):**
+  - Adjuntos: el peso se mide del base64 real (`bytesRealesDataUrl` en
+    `utils/dataUrl.js`) — el `size` que declara el cliente puede mentir y
+    dejaba el límite de 5 MB en decorativo. Fotos solo JPG/PNG/WEBP (SVG
+    fuera: scripts embebidos); nombres saneados (`nombreArchivoSeguro`)
+  - Correo: **todas** las cabeceras MIME se sanean en `gmailMime.js`
+    (`sanitizeHeader`) y el boundary es aleatorio por mensaje — un CRLF en un
+    destinatario o en el nombre de un adjunto inyectaba cabeceras (`Bcc:` a un
+    tercero). `solicitanteEmail` valida formato con Zod
+  - Límites (`utils/rateLimit.js`): OTP 3/correo/15 min + 120/hora global
+    (email bombing) + 10 por IP; radicaciones 10/día por cliente y 30/h por IP
+  - OTP: se validan todos los códigos vigentes (pedir códigos nuevos ya no
+    deja fuera al cliente), comparación `timingSafeEqual`, y el código solo se
+    escribe en el log con `PORTAL_DEBUG_OTP=1` (antes dependía de `NODE_ENV`,
+    que es fail-open)
+  - Sesión del portal: 14 días (era 30; el JWT no se puede revocar)
+  - CORS por coincidencia EXACTA (antes `startsWith` dejaba pasar
+    `…tullaveinmobiliariasas.com.attacker.net`) — cada puerto local usado debe
+    estar en `defaultOrigins`; cuerpo de 16 KB en las rutas de auth
+  - El portal sirve CSP + cabeceras de seguridad desde su propio `server.js`
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación

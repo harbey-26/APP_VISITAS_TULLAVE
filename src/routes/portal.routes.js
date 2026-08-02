@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticatePortal } from '../middleware/portalAuth.middleware.js';
+import { limitePorIp } from '../utils/rateLimit.js';
 import {
     solicitarCodigo, verificarCodigo,
     getTipos, getMisSolicitudes, getMiSolicitud, crearSolicitud, comentar,
@@ -10,14 +11,30 @@ import {
 // PROPIO middleware (authenticatePortal) — nunca el del equipo.
 const router = Router();
 
-router.post('/auth/solicitar-codigo', solicitarCodigo);
-router.post('/auth/verificar', verificarCodigo);
+// Límites por IP: el tope por correo no frena a quien rota destinatarios
+// (cada código gasta un envío de la cuenta Gmail de la empresa) ni a quien
+// escribe en masa con una sesión válida.
+const limiteCodigos = limitePorIp({
+    maximo: 10, ventanaMs: 15 * 60 * 1000,
+    mensaje: 'Demasiadas solicitudes de código desde esta conexión. Espera unos minutos.',
+});
+const limiteVerificar = limitePorIp({
+    maximo: 30, ventanaMs: 15 * 60 * 1000,
+    mensaje: 'Demasiados intentos desde esta conexión. Espera unos minutos.',
+});
+const limiteEscritura = limitePorIp({
+    maximo: 30, ventanaMs: 60 * 60 * 1000,
+    mensaje: 'Demasiadas solicitudes desde esta conexión. Intenta más tarde.',
+});
+
+router.post('/auth/solicitar-codigo', limiteCodigos, solicitarCodigo);
+router.post('/auth/verificar', limiteVerificar, verificarCodigo);
 
 router.get('/tipos', authenticatePortal, getTipos);
 router.get('/solicitudes', authenticatePortal, getMisSolicitudes);
-router.post('/solicitudes', authenticatePortal, crearSolicitud);
+router.post('/solicitudes', limiteEscritura, authenticatePortal, crearSolicitud);
 router.get('/solicitudes/:id', authenticatePortal, getMiSolicitud);
-router.post('/solicitudes/:id/comentario', authenticatePortal, comentar);
+router.post('/solicitudes/:id/comentario', limiteEscritura, authenticatePortal, comentar);
 router.get('/solicitudes/:id/respuesta-adjuntos/:adjId', authenticatePortal, getRespuestaAdjunto);
 
 export default router;

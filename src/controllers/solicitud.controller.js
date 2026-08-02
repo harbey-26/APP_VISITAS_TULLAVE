@@ -15,6 +15,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { enviarBienvenidaPortal, enviarAvisoEstado } from '../utils/portalWelcome.js';
+import { bytesRealesDataUrl, nombreArchivoSeguro } from '../utils/dataUrl.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 
@@ -38,7 +39,11 @@ const solicitudSchema = z.object({
     solicitanteNombre: z.string().trim().min(1, 'Falta el nombre del solicitante').max(160),
     solicitanteTipo: z.enum(['PROPIETARIO', 'ARRENDATARIO', 'TERCERO']).optional().nullable(),
     solicitanteTelefono: z.string().trim().max(30).optional().nullable(),
-    solicitanteEmail: z.string().trim().max(160).optional().nullable(),
+    // .email() no es cosmético: este valor va a la cabecera To: de los correos
+    // (bienvenida, aviso de estado, respuesta del DP) — sin validar, un valor
+    // con salto de línea inyecta cabeceras (Bcc a un tercero)
+    solicitanteEmail: z.string().trim().email('Correo electrónico inválido').max(160).optional().nullable()
+        .or(z.literal('')),
     propertyId: z.coerce.number().int().positive().optional().nullable(),
     contractId: z.coerce.number().int().positive().optional().nullable(),
     responsableId: z.coerce.number().int().positive().optional().nullable(),
@@ -490,11 +495,15 @@ export const agregarAdjuntos = async (req, res) => {
         if (error) return res.status(status).json({ error });
         const adjuntos = z.array(adjuntoSchema).min(1).max(10).parse(req.body?.adjuntos);
         for (const a of adjuntos) {
-            if (a.size > LIMITE_ADJUNTO_BYTES) {
+            // El peso REAL manda: `size` lo declara el cliente y puede mentir
+            const bytes = bytesRealesDataUrl(a.dataUrl);
+            if (bytes > LIMITE_ADJUNTO_BYTES) {
                 return res.status(400).json({
-                    error: `"${a.nombre}" pesa ${(a.size / 1024 / 1024).toFixed(1)} MB — el máximo por archivo es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                    error: `"${a.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por archivo es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
                 });
             }
+            a.size = bytes;
+            a.nombre = nombreArchivoSeguro(a.nombre);
         }
         for (const a of adjuntos) {
             await prisma.solicitudAdjunto.create({

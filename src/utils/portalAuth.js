@@ -10,10 +10,12 @@ if (!JWT_SECRET) {
 }
 const PORTAL_SECRET = `${JWT_SECRET}::portal-clientes`;
 
-// Sesión larga (30 días): el cliente entra por OTP, sin contraseña que
-// recordar — re-pedir el código cada semana sería fricción innecesaria.
+// Sesión de 14 días: el cliente entra por OTP, sin contraseña que recordar,
+// así que conviene que sea larga; pero como el JWT es stateless (no hay forma
+// de revocarlo si el celular se pierde), 30 días era una ventana de exposición
+// innecesaria. Pedir un código nuevo cada dos semanas es fricción mínima.
 export const generatePortalToken = (email) => {
-    return jwt.sign({ email, portal: true }, PORTAL_SECRET, { expiresIn: '30d' });
+    return jwt.sign({ email, portal: true }, PORTAL_SECRET, { expiresIn: '14d' });
 };
 
 export const verifyPortalToken = (token) => {

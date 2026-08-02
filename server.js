@@ -20,10 +20,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // C2: CORS restringido a orígenes conocidos (configurable vía ALLOWED_ORIGINS)
+// Orígenes permitidos: coincidencia EXACTA (ver el callback de cors abajo),
+// así que cada puerto/esquema en uso debe estar listado. 5174 = portal de
+// clientes en desarrollo (repo PORTAL_CLIENTES_TULLAVE).
 const defaultOrigins = [
     'https://tu-llave-visitas-e66b.up.railway.app',
     'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:3000',
+    'http://localhost:4173',
     'capacitor://localhost',
     'http://localhost'
 ];
@@ -44,11 +49,18 @@ app.use(cors({
     origin: (origin, callback) => {
         // Sin origin = peticiones nativas (APK, curl, Postman) → permitir
         if (!origin) return callback(null, true);
-        const allowed = allowedOrigins.some(o => origin === o || origin.startsWith(o));
+        // Coincidencia EXACTA: con startsWith, un dominio como
+        // "https://portal.tullaveinmobiliariasas.com.attacker.net" pasaba el
+        // filtro por empezar igual que un origen permitido.
+        const allowed = allowedOrigins.includes(origin);
         callback(allowed ? null : new Error(`CORS: origen no permitido (${origin})`), allowed);
     },
     credentials: true
 }));
+// Los endpoints de autenticación no reciben adjuntos: un cuerpo de 8 MB solo
+// serviría para presionar memoria sin estar autenticado. Va ANTES del límite
+// general para que gane en esas rutas.
+app.use(['/api/auth', '/api/portal/auth'], express.json({ limit: '16kb' }));
 // Límite explícito para evitar abuso por payloads enormes. Las fotos de visita
 // llegan como base64 (~hasta 4-5 MB cada una), así que 8 MB es holgado.
 app.use(express.json({ limit: '8mb' }));
@@ -87,6 +99,11 @@ app.get('*', (req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
+  // Cuerpo demasiado grande: es una respuesta esperable (no un fallo del
+  // servidor) y el cliente necesita distinguirla para avisar bien.
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({ error: 'El contenido enviado es demasiado grande.' });
+  }
   console.error(err.stack);
   res.status(500).json({
     error: 'Error interno del servidor. Intenta de nuevo más tarde.',

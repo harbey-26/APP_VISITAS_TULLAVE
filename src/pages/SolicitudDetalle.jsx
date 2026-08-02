@@ -664,9 +664,16 @@ export default function SolicitudDetalle() {
                                 </Select>
                             </Field>
                         )}
-                        <Field label={estadoModal.estado === 'FINALIZADA' ? 'Nota del cierre (el cliente la ve en su portal)' : 'Nota (opcional)'}>
+                        {/* SEGURIDAD/UX: esta nota SIEMPRE la ve el cliente (portal + correo
+                            de aviso de estado). Decirlo en todos los estados evita que se
+                            escriba aquí información interna; para eso está la nota de la
+                            línea de tiempo, interna salvo que se marque "visible". */}
+                        <Field label="📢 Nota para el cliente (la verá en su portal y le llegará por correo)">
                             <Input value={estadoModal.nota} onChange={(e) => setEstadoModal({ ...estadoModal, nota: e.target.value })}
-                                placeholder={estadoModal.estado === 'FINALIZADA' ? 'Ej.: se reparó la fuga y quedó verificado' : 'Ej.: a la espera de la cotización del plomero'} />
+                                placeholder={estadoModal.estado === 'FINALIZADA' ? 'Ej.: se reparó la fuga y quedó verificado' : 'Ej.: estamos coordinando la visita del técnico'} />
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Para observaciones internas (cotizaciones, gestiones con el propietario) usa la nota de la línea de tiempo.
+                            </p>
                         </Field>
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setEstadoModal(null)}>Cancelar</Button>

@@ -6,6 +6,8 @@ import { hashPassword } from '../utils/auth.js';
 import { sendTextEmail } from '../utils/gmail.js';
 import { notifyAdmins, sendPersonalNotification } from '../utils/notify.js';
 import { generarRadicado, LIMITE_ADJUNTO_BYTES } from './solicitud.controller.js';
+import { bytesRealesDataUrl, esPdfReal, IMAGENES_PERMITIDAS, nombreArchivoSeguro } from '../utils/dataUrl.js';
+import { permitir, ipDe } from '../utils/rateLimit.js';
 import { DP_TIPOS, vencimientoDP } from '../utils/solicitudFlow.js';
 import { hoyISO } from '../utils/incrementoCalc.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
@@ -27,8 +29,21 @@ const OTP_TTL_MS = 10 * 60 * 1000;      // el código vive 10 minutos
 const OTP_MAX_INTENTOS = 5;             // intentos de verificación por código
 const OTP_MAX_POR_VENTANA = 3;          // códigos por correo cada 15 min
 const OTP_VENTANA_MS = 15 * 60 * 1000;
+// Tope GLOBAL por hora: el límite por correo no impide que alguien dispare
+// miles de correos con la marca de la empresa a direcciones distintas
+// (email bombing / amplificación de phishing).
+const OTP_MAX_GLOBAL_HORA = 120;
+// Radicaciones por cliente en 24 h: evita que un cliente (o un script con su
+// sesión) llene la base con expedientes y adjuntos.
+const MAX_SOLICITUDES_DIA = 10;
 const PORTAL_USER_EMAIL = 'portal@tullave.sistema';
 
+// SEGURIDAD: el código OTP solo se escribe en el log si se activa
+// EXPLÍCITAMENTE (opt-in). Antes dependía de NODE_ENV !== 'production', que
+// es fail-open: si la variable falta en el servidor, los códigos de acceso de
+// todos los clientes quedan en los logs junto a su correo.
+const logOtpHabilitado = () => process.env.PORTAL_DEBUG_OTP === '1';
+// Tolerancia a fallos de correo (seguir sin enviar) solo fuera de producción
 const esDev = () => process.env.NODE_ENV !== 'production';
 const normalizarEmail = (raw) => String(raw || '').trim().toLowerCase();
 const hashCodigo = (email, codigo) =>
@@ -86,12 +101,21 @@ export const solicitarCodigo = async (req, res) => {
         if (recientes >= OTP_MAX_POR_VENTANA) {
             return res.status(429).json({ error: 'Ya enviamos varios códigos a ese correo. Espera unos minutos e inténtalo de nuevo.' });
         }
+        // Tope global por hora (email bombing a direcciones arbitrarias con la
+        // marca de la empresa). Muy por encima del uso real del piloto.
+        const globalHora = await prisma.portalOtp.count({
+            where: { createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) } },
+        });
+        if (globalHora >= OTP_MAX_GLOBAL_HORA) {
+            console.warn(`[Portal] Tope global de OTP alcanzado (${globalHora}/h) — posible abuso`);
+            return res.status(429).json({ error: 'El servicio está recibiendo muchas solicitudes. Intenta de nuevo en unos minutos.' });
+        }
 
         const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
         const otp = await prisma.portalOtp.create({
             data: { email, codeHash: hashCodigo(email, codigo), expiresAt: new Date(Date.now() + OTP_TTL_MS) },
         });
-        if (esDev()) console.log(`[Portal] Código OTP para ${email}: ${codigo}`);
+        if (logOtpHabilitado()) console.log(`[Portal] Código OTP para ${email}: ${codigo}`);
 
         try {
             await sendTextEmail({
@@ -121,7 +145,7 @@ export const solicitarCodigo = async (req, res) => {
         }
         res.json({ ok: true });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: mensajeError(error) });
     }
 };
 
@@ -134,21 +158,34 @@ export const verificarCodigo = async (req, res) => {
         }).parse(req.body);
         const email = normalizarEmail(parsed.email);
 
-        const otp = await prisma.portalOtp.findFirst({
-            where: { email, usadoAt: null },
+        // Se validan TODOS los códigos vigentes sin usar, no solo el último:
+        // si se mira únicamente el más reciente, un tercero que pida códigos
+        // para el correo de un cliente invalida el que la víctima está
+        // leyendo y la deja fuera del portal indefinidamente.
+        const vigentes = await prisma.portalOtp.findMany({
+            where: { email, usadoAt: null, expiresAt: { gt: new Date() }, intentos: { lt: OTP_MAX_INTENTOS } },
             orderBy: { createdAt: 'desc' },
+            take: OTP_MAX_POR_VENTANA,
         });
-        if (!otp || otp.expiresAt < new Date()) {
+        if (vigentes.length === 0) {
             return res.status(400).json({ error: 'El código venció o no fue solicitado. Pide uno nuevo.' });
         }
-        if (otp.intentos >= OTP_MAX_INTENTOS) {
-            return res.status(400).json({ error: 'Demasiados intentos con ese código. Pide uno nuevo.' });
-        }
-        if (otp.codeHash !== hashCodigo(email, parsed.codigo)) {
-            await prisma.portalOtp.update({ where: { id: otp.id }, data: { intentos: { increment: 1 } } });
+        const hash = hashCodigo(email, parsed.codigo);
+        const otp = vigentes.find((o) => crypto.timingSafeEqual(Buffer.from(o.codeHash), Buffer.from(hash)));
+        if (!otp) {
+            // El intento fallido se cuenta en todos los códigos vigentes: el
+            // tope aplica al correo, no a una fila concreta.
+            await prisma.portalOtp.updateMany({
+                where: { id: { in: vigentes.map((o) => o.id) } },
+                data: { intentos: { increment: 1 } },
+            });
             return res.status(400).json({ error: 'Código incorrecto. Revisa el correo e inténtalo de nuevo.' });
         }
-        await prisma.portalOtp.update({ where: { id: otp.id }, data: { usadoAt: new Date() } });
+        // El código usado y los demás vigentes se queman (un solo uso)
+        await prisma.portalOtp.updateMany({
+            where: { id: { in: vigentes.map((o) => o.id) } },
+            data: { usadoAt: new Date() },
+        });
 
         // Nombre sugerido: el de su solicitud más reciente (si existe)
         const previa = (await solicitudesDe(email))[0] || null;
@@ -158,19 +195,25 @@ export const verificarCodigo = async (req, res) => {
             nombre: previa?.solicitanteNombre || null,
         });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: mensajeError(error) });
     }
 };
 
 // ── Consultas del cliente ──
 
 // Solicitudes cuyo solicitanteEmail coincide con el correo verificado.
-// La comparación insensible a mayúsculas se hace en JS: Prisma sobre SQLite
-// no soporta mode 'insensitive' y el volumen (cientos de expedientes) lo
-// permite sin problema.
+// La comparación insensible a mayúsculas se hace en JS (Prisma sobre SQLite
+// no soporta mode 'insensitive'), pero se traen SOLO las columnas livianas:
+// sin `data` ni `descripcion`, el escaneo no arrastra los expedientes enteros
+// a memoria en cada petición del portal.
+const CAMPOS_LISTA = {
+    id: true, radicado: true, tipo: true, estado: true, asunto: true,
+    createdAt: true, finalizadaAt: true, solicitanteNombre: true, solicitanteEmail: true,
+};
 async function solicitudesDe(email) {
     const todas = await prisma.solicitud.findMany({
         where: { solicitanteEmail: { not: null } },
+        select: CAMPOS_LISTA,
         orderBy: { createdAt: 'desc' },
     });
     return todas.filter((s) => normalizarEmail(s.solicitanteEmail) === email);
@@ -202,7 +245,7 @@ export const getTipos = async (req, res) => {
         const tipos = await prisma.solicitudTipo.findMany({ where: { activo: true }, orderBy: { orden: 'asc' } });
         res.json(tipos.map((t) => ({ clave: t.clave, label: t.label })));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'No pudimos completar la operación. Intenta de nuevo.' });
     }
 };
 
@@ -212,7 +255,7 @@ export const getMisSolicitudes = async (req, res) => {
         const [mias, tipos] = await Promise.all([solicitudesDe(req.portal.email), tiposMap()]);
         res.json(mias.map((s) => itemCliente(s, tipos)));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'No pudimos completar la operación. Intenta de nuevo.' });
     }
 };
 
@@ -268,10 +311,13 @@ function detalleCliente(sol, tipos) {
             : null,
         // Cierre del caso: resultado (exitosa / con novedad) + nota del
         // cierre — el banner del portal. Solo cuando el caso está cerrado.
-        cierre: ['FINALIZADA', 'ARCHIVADA'].includes(sol.estado)
+        // Solo si el equipo cerró el caso de verdad: un expediente archivado
+        // sin pasar por FINALIZADA no tiene `cierre` y no debe mostrar el
+        // banner de "gestionado exitosamente".
+        cierre: ['FINALIZADA', 'ARCHIVADA'].includes(sol.estado) && data.cierre
             ? {
-                resultado: data.cierre?.resultado || 'EXITOSA',
-                nota: data.cierre?.nota || null,
+                resultado: data.cierre.resultado || 'EXITOSA',
+                nota: data.cierre.nota || null,
             }
             : null,
         // Reparaciones (#36): el paso actual del flujo interno alimenta el
@@ -293,7 +339,7 @@ export const getMiSolicitud = async (req, res) => {
         if (!sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
         res.json(detalleCliente(sol, await tiposMap()));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'No pudimos completar la operación. Intenta de nuevo.' });
     }
 };
 
@@ -313,7 +359,7 @@ export const getRespuestaAdjunto = async (req, res) => {
         if (!adj || adj.solicitudId !== sol.id) return res.status(404).json({ error: 'Documento no encontrado' });
         res.json({ id: adj.id, nombre: adj.nombre, mimeType: adj.mimeType, dataUrl: adj.dataUrl });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'No pudimos completar la operación. Intenta de nuevo.' });
     }
 };
 
@@ -353,9 +399,12 @@ const crearSchema = z.object({
     }).optional().nullable(),
 });
 
-// Valida que el contenido REAL sea un PDF: los archivos PDF empiezan con
-// "%PDF" ("JVBERi" en base64) — renombrar un .jpg a .pdf no pasa.
-const esPdfReal = (dataUrl) => dataUrl.slice(dataUrl.indexOf(',') + 1, dataUrl.indexOf(',') + 7).startsWith('JVBERi');
+// Mensaje de error legible: los errores de Zod traen el esquema completo
+// (estructura interna) — al cliente solo le sirve la primera causa.
+function mensajeError(error) {
+    if (error?.issues?.length) return error.issues[0].message;
+    return error?.message || 'No se pudo procesar la solicitud.';
+}
 
 // Mismo orden de composición que buildOrigen (liquidacion.controller.js):
 // dirección, Torre X, Apto X, conjunto, barrio, ciudad.
@@ -374,25 +423,42 @@ export function direccionCompletaInmueble(d) {
 export const crearSolicitud = async (req, res) => {
     try {
         const parsed = crearSchema.parse(req.body);
+        // Anti-abuso: tope de radicaciones por cliente en 24 h
+        const ultimas24h = (await solicitudesDe(req.portal.email))
+            .filter((s) => new Date(s.createdAt) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length;
+        if (ultimas24h >= MAX_SOLICITUDES_DIA) {
+            return res.status(429).json({
+                error: `Ya radicaste ${MAX_SOLICITUDES_DIA} solicitudes hoy. Si necesitas registrar otra, comunícate con nosotros.`,
+            });
+        }
         const tipoDef = await prisma.solicitudTipo.findUnique({ where: { clave: parsed.tipo } });
         if (!tipoDef || !tipoDef.activo) return res.status(400).json({ error: 'Tipo de solicitud no disponible.' });
         for (const f of parsed.adjuntos || []) {
-            if (f.size > LIMITE_ADJUNTO_BYTES) {
+            if (!IMAGENES_PERMITIDAS.includes(f.mimeType)) {
+                return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP.` });
+            }
+            const bytes = bytesRealesDataUrl(f.dataUrl);
+            if (bytes > LIMITE_ADJUNTO_BYTES) {
                 return res.status(400).json({
-                    error: `"${f.nombre}" pesa ${(f.size / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                    error: `"${f.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
                 });
             }
+            f.size = bytes; // se guarda el peso real, no el declarado
+            f.nombre = nombreArchivoSeguro(f.nombre);
         }
         if (parsed.documentoPdf) {
             if (parsed.tipo !== 'DERECHOS_DE_PETICION') {
                 return res.status(400).json({ error: 'El documento PDF solo aplica para derechos de petición.' });
             }
-            if (parsed.documentoPdf.size > LIMITE_ADJUNTO_BYTES) {
-                return res.status(400).json({ error: `El PDF pesa más de ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.` });
+            const bytesPdf = bytesRealesDataUrl(parsed.documentoPdf.dataUrl);
+            if (bytesPdf > LIMITE_ADJUNTO_BYTES) {
+                return res.status(400).json({ error: `El PDF pesa ${(bytesPdf / 1024 / 1024).toFixed(1)} MB — el máximo es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.` });
             }
             if (!esPdfReal(parsed.documentoPdf.dataUrl)) {
                 return res.status(400).json({ error: 'El archivo no es un PDF válido. Solo se aceptan documentos PDF.' });
             }
+            parsed.documentoPdf.size = bytesPdf;
+            parsed.documentoPdf.nombre = nombreArchivoSeguro(parsed.documentoPdf.nombre);
         }
 
         // La dirección compuesta va al inicio de la descripción (visible para
@@ -496,7 +562,7 @@ export const crearSolicitud = async (req, res) => {
         });
         res.status(201).json(detalleCliente(conActuaciones, await tiposMap()));
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: mensajeError(error) });
     }
 };
 
@@ -528,6 +594,6 @@ export const comentar = async (req, res) => {
         });
         res.status(201).json(detalleCliente(updated, await tiposMap()));
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: mensajeError(error) });
     }
 };
