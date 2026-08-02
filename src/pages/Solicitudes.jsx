@@ -9,6 +9,7 @@ import {
 } from '../utils/solicitudFlow.js';
 import { hoyISO } from '../utils/incrementoCalc';
 import { fechaCorta } from '../utils/fechaLetras';
+import { formatoCifra } from '../utils/numeroALetras';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
 } from '../components/ui';
@@ -104,6 +105,44 @@ export default function Solicitudes() {
         () => tiposActivos.filter((t) => normaliza(t.label).includes(normaliza(buscaTipo))),
         [tiposActivos, buscaTipo], // eslint-disable-line react-hooks/exhaustive-deps
     );
+
+    // ── Contrato relacionado: solo contratos VIGENTES (aprobados/enviados),
+    // con buscador; para terminaciones, solo arrendamientos. Al elegirlo se
+    // pre-llenan los datos del arrendatario (incluido el correo → la
+    // solicitud queda visible en su portal) ──
+    const [buscaContrato, setBuscaContrato] = useState('');
+    const dirContrato = (d = {}) => [
+        d.direccionInmueble,
+        d.torreInmueble && `Torre ${d.torreInmueble}`,
+        d.aptoInmueble && `Apto ${d.aptoInmueble}`,
+        d.conjuntoInmueble,
+    ].filter(Boolean).join(', ');
+    const contratosVigentes = useMemo(() => {
+        let lista = contratos.filter((c) => ['APPROVED', 'SENT'].includes(c.status));
+        if (form?.tipo === 'TERMINACION_DE_CONTRATO') lista = lista.filter((c) => c.type === 'ARRENDAMIENTO');
+        const q = normaliza(buscaContrato);
+        if (q) {
+            lista = lista.filter((c) => normaliza(
+                `#${c.id} ${c.data?.arrendatarioNombre || ''} ${c.data?.propietarioNombre || ''} ${c.data?.arrendatarioCedula || ''} ${dirContrato(c.data)}`,
+            ).includes(q));
+        }
+        return lista;
+    }, [contratos, form?.tipo, buscaContrato]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const vincularContrato = (contractId) => {
+        const c = contratos.find((x) => String(x.id) === String(contractId));
+        if (!c) return setForm((f) => ({ ...f, contractId }));
+        const d = c.data || {};
+        // Pre-llenar SOLO lo que esté vacío — no pisar lo digitado
+        setForm((f) => ({
+            ...f,
+            contractId,
+            solicitanteNombre: f.solicitanteNombre || d.arrendatarioNombre || '',
+            solicitanteTelefono: f.solicitanteTelefono || d.arrendatarioCelular || '',
+            solicitanteEmail: f.solicitanteEmail || d.arrendatarioEmail || '',
+            solicitanteTipo: f.solicitanteNombre ? f.solicitanteTipo : 'ARRENDATARIO',
+        }));
+    };
 
     // ── Bandeja (#43): mi trabajo abierto (o el del funcionario elegido) ──
     const bandeja = useMemo(() => {
@@ -216,7 +255,7 @@ export default function Solicitudes() {
                             <Settings2 className="w-4 h-4" /> Tipos
                         </Button>
                     )}
-                    <Button size="sm" onClick={() => { setBuscaTipo(''); setForm({ ...FORM_VACIO, tipo: tiposActivos[0]?.clave || '' }); }}>
+                    <Button size="sm" onClick={() => { setBuscaTipo(''); setBuscaContrato(''); setForm({ ...FORM_VACIO, tipo: tiposActivos[0]?.clave || '' }); }}>
                         <Plus className="w-4 h-4" /> Radicar solicitud
                     </Button>
                 </div>
@@ -441,17 +480,39 @@ export default function Solicitudes() {
                                     {Object.entries(PRIORIDADES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                 </Select>
                             </Field>
-                            <Field label="Contrato relacionado" hint="Necesario para terminaciones">
-                                <Select value={form.contractId} onChange={(e) => setForm({ ...form, contractId: e.target.value })}>
+                            <Field label="Contrato relacionado" hint="Necesario para terminaciones — solo contratos vigentes">
+                                <Input
+                                    value={buscaContrato}
+                                    onChange={(e) => setBuscaContrato(e.target.value)}
+                                    placeholder="🔍 Nombre, cédula o dirección…"
+                                    className="mb-1.5"
+                                />
+                                <Select value={form.contractId} onChange={(e) => vincularContrato(e.target.value)}>
                                     <option value="">Ninguno</option>
-                                    {contratos.map((c) => (
+                                    {contratosVigentes.map((c) => (
                                         <option key={c.id} value={c.id}>
-                                            #{c.id} · {c.data?.arrendatarioNombre || c.data?.propietarioNombre || c.type}
+                                            #{c.id} · {c.data?.arrendatarioNombre || c.data?.propietarioNombre || c.type}{dirContrato(c.data) ? ` — ${dirContrato(c.data)}` : ''}
                                         </option>
                                     ))}
                                 </Select>
                             </Field>
                         </div>
+                        {form.contractId && (() => {
+                            const c = contratos.find((x) => String(x.id) === String(form.contractId));
+                            if (!c) return null;
+                            const d = c.data || {};
+                            return (
+                                <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900 space-y-0.5">
+                                    <p className="font-bold">Contrato #{c.id} · {c.type === 'ARRENDAMIENTO' ? 'Arrendamiento' : 'Administración'} ({c.status === 'SENT' ? 'enviado' : 'aprobado'})</p>
+                                    {d.arrendatarioNombre && <p>Arrendatario: {d.arrendatarioNombre}{d.arrendatarioCedula ? ` · CC ${d.arrendatarioCedula}` : ''}</p>}
+                                    {dirContrato(d) && <p>Inmueble: {dirContrato(d)}{d.ciudadInmueble ? `, ${d.ciudadInmueble}` : ''}</p>}
+                                    {(d.fechaInicio || d.fechaVencimiento) && (
+                                        <p>Vigencia: {d.fechaInicio ? fechaCorta(d.fechaInicio) : '¿?'} → {d.fechaVencimiento ? fechaCorta(d.fechaVencimiento) : '¿?'}</p>
+                                    )}
+                                    {d.canon && <p>Canon: $ {formatoCifra(d.canon)}</p>}
+                                </div>
+                            );
+                        })()}
                         {isAdmin && (
                             <Field label="Responsable">
                                 <Select value={form.responsableId} onChange={(e) => setForm({ ...form, responsableId: e.target.value })}>
