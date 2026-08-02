@@ -10,6 +10,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateLiquidacionPdf, liquidacionFileName } from '../utils/liquidacionPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
+import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 
 // L1: Liquidación inicial de un contrato de arrendamiento (reemplaza el Excel).
 // Se crea DESDE un contrato ARRENDAMIENTO aprobado: `data.origen` es un snapshot
@@ -542,11 +543,6 @@ export const deletePago = async (req, res) => {
 };
 
 // ── Envío al cliente (link público / correo) — solo APPROVED o PAID ──
-
-function publicBaseUrl(req) {
-    const proto = req.get('x-forwarded-proto') || req.protocol;
-    return `${proto}://${req.get('host')}`;
-}
 
 const publicPdfPath = (token) => `/api/liquidaciones/public/${token}/pdf`;
 

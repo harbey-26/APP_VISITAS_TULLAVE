@@ -6,6 +6,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { generateContractPdf, contractFileName } from '../utils/contractPdf.js';
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
+import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { crearFichaDesdeContrato } from './incremento.controller.js';
 
 // C1: Contratos diligenciados por agentes con visto bueno del admin.
@@ -250,10 +251,6 @@ const clientNameOf = (data) => data?.propietarioNombre || data?.arrendatarioNomb
 const clientEmailOf = (data) => data?.propietarioEmail || data?.arrendatarioEmail || '';
 
 // URL base pública (Railway va detrás de proxy → x-forwarded-proto).
-function publicBaseUrl(req) {
-    const proto = req.get('x-forwarded-proto') || req.protocol;
-    return `${proto}://${req.get('host')}`;
-}
 
 const publicPdfPath = (token) => `/api/contracts/public/${token}/pdf`;
 

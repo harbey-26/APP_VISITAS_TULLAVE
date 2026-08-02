@@ -10,6 +10,7 @@ import { generateIncrementoPdf, incrementoFileName } from '../utils/incrementoPd
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
+import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 
 // I1: Módulo de incrementos de canon. FichaIncremento = contrato vivo en
 // seguimiento (auto-alta al aprobar contratos ARRENDAMIENTO, backfill de los
@@ -519,11 +520,6 @@ async function marcarEnviada(inc, req, { enviadaA = null } = {}) {
         },
         include: includeIncremento,
     });
-}
-
-function publicBaseUrl(req) {
-    const proto = req.get('x-forwarded-proto') || req.protocol;
-    return `${proto}://${req.get('host')}`;
 }
 
 const publicPdfPath = (token) => `/api/incrementos/public/${token}/pdf`;

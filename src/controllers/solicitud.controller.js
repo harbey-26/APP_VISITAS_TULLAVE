@@ -13,6 +13,7 @@ import { generateServicioPublicoPdf, servicioPublicoFileName } from '../utils/se
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
+import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 
@@ -124,6 +125,20 @@ function serialize(sol, hoy = hoyISO()) {
     return out;
 }
 
+// IDOR: un agente solo puede vincular SUS contratos (el expediente expone
+// canon y fechas del contrato vía la verificación de terminación; sin este
+// chequeo podría apuntar a cualquier contractId y leer datos ajenos).
+// Devuelve el mensaje de error o null si el vínculo es válido.
+async function validarContratoVinculado(contractId, req) {
+    if (!contractId || isAdmin(req)) return null;
+    const contract = await prisma.contract.findUnique({
+        where: { id: contractId }, select: { userId: true },
+    });
+    if (!contract) return 'El contrato vinculado no existe.';
+    if (contract.userId !== req.user.id) return 'Solo puedes vincular contratos diligenciados por ti.';
+    return null;
+}
+
 // Radicado "SOL-2026-0001": consecutivo por año. Reintenta si dos radican a la
 // vez (el @unique detecta la colisión).
 async function generarRadicado() {
@@ -210,6 +225,8 @@ export const getSolicitudes = async (req, res) => {
 export const createSolicitud = async (req, res) => {
     try {
         const parsed = solicitudSchema.parse(req.body);
+        const errorContrato = await validarContratoVinculado(parsed.contractId, req);
+        if (errorContrato) return res.status(403).json({ error: errorContrato });
 
         // Derecho de petición: el término legal nace con la radicación (#41)
         let fechaVencimiento = parsed.fechaVencimiento || null;
@@ -305,6 +322,10 @@ export const updateSolicitud = async (req, res) => {
         }
         const parsed = solicitudSchema.partial().omit({ tipo: true }).parse(req.body);
         delete parsed.responsableId; // la asignación tiene su endpoint con notificación
+        if (parsed.contractId !== undefined && parsed.contractId !== sol.contractId) {
+            const errorContrato = await validarContratoVinculado(parsed.contractId, req);
+            if (errorContrato) return res.status(403).json({ error: errorContrato });
+        }
         const updated = await prisma.solicitud.update({
             where: { id: sol.id }, data: parsed, include: includeDetalle,
         });
@@ -611,11 +632,6 @@ export const registrarRespuesta = async (req, res) => {
 };
 
 // ── Liquidación de servicios: PDF, link público y correo (#37) ──
-
-function publicBaseUrl(req) {
-    const proto = req.get('x-forwarded-proto') || req.protocol;
-    return `${proto}://${req.get('host')}`;
-}
 
 async function ensureShareToken(sol) {
     if (sol.shareToken) return sol;
