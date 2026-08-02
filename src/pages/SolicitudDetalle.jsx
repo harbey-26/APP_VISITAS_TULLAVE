@@ -71,6 +71,7 @@ export default function SolicitudDetalle() {
     const [busy, setBusy] = useState(false);
     const [nota, setNota] = useState('');
     const [notaParaCliente, setNotaParaCliente] = useState(false);
+    const [confirmEliminar, setConfirmEliminar] = useState(false);
     const [estadoModal, setEstadoModal] = useState(null); // { estado, nota }
     const [preview, setPreview] = useState(null);          // adjunto cargado
     const cerrada = sol && ['FINALIZADA', 'ARCHIVADA'].includes(sol.estado);
@@ -130,6 +131,19 @@ export default function SolicitudDetalle() {
             toast.success('Responsable actualizado');
         } catch (err) {
             toast.error(friendlyError(err));
+        }
+    };
+
+    const handleEliminar = async () => {
+        setBusy(true);
+        try {
+            await apiFetch(`/api/solicitudes/${id}`, { method: 'DELETE' });
+            toast.success(`${sol.radicado} eliminada`);
+            navigate('/solicitudes');
+        } catch (err) {
+            toast.error(friendlyError(err));
+            setBusy(false);
+            setConfirmEliminar(false);
         }
     };
 
@@ -238,6 +252,16 @@ export default function SolicitudDetalle() {
                         <Badge className={est.badge}>{est.label}</Badge>
                         <Badge className={PRIORIDADES[sol.prioridad]?.badge}>{PRIORIDADES[sol.prioridad]?.label}</Badge>
                         {sol.urgencia !== 'SIN_TERMINO' && <Badge className={urg.badge}>{urg.label}</Badge>}
+                        {/* Eliminar: misma regla del server — admin siempre; creador solo RECIBIDA */}
+                        {(isAdmin || (sol.creadaPor === user?.id && sol.estado === 'RECIBIDA')) && (
+                            <button
+                                onClick={() => setConfirmEliminar(true)}
+                                className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"
+                                title="Eliminar solicitud"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                            </button>
+                        )}
                     </div>
                     <h1 className="text-lg font-extrabold text-gray-900 mt-1.5">{sol.asunto}</h1>
                     {sol.descripcion && <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{sol.descripcion}</p>}
@@ -591,6 +615,23 @@ export default function SolicitudDetalle() {
                     </form>
                 )}
             </div>
+
+            {/* ── Modal: confirmación de eliminación ── */}
+            <Modal open={confirmEliminar} onClose={() => setConfirmEliminar(false)} title={`Eliminar ${sol.radicado}`}>
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                        Se eliminará el expediente completo con su línea de tiempo y adjuntos.
+                        <b> Esta acción no se puede deshacer.</b>
+                        {sol.medioIngreso === 'PORTAL' && ' El cliente dejará de verla en su portal.'}
+                    </p>
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="secondary" onClick={() => setConfirmEliminar(false)}>Cancelar</Button>
+                        <Button variant="danger" icon={Trash2} onClick={handleEliminar} disabled={busy}>
+                            Eliminar definitivamente
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
 
             {/* ── Modal: confirmación de cambio de estado ── */}
             <Modal open={!!estadoModal} onClose={() => setEstadoModal(null)}
