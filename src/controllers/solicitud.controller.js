@@ -162,12 +162,23 @@ export const getTipos = async (req, res) => {
     }
 };
 
-// POST /api/solicitudes/tipos — solo admin
+// POST /api/solicitudes/tipos — solo admin. Si el tipo ya existe pero está
+// DESACTIVADO, se reactiva (conserva su clave y el historial de solicitudes)
+// en vez de fallar por la clave única.
 export const createTipo = async (req, res) => {
     try {
         const parsed = z.object({ label: z.string().trim().min(1).max(80) }).parse(req.body);
         const clave = parsed.label.normalize('NFD').replace(/[̀-ͯ]/g, '')
             .toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+        const existente = await prisma.solicitudTipo.findUnique({ where: { clave } });
+        if (existente) {
+            if (existente.activo) return res.status(409).json({ error: 'Ya existe un tipo activo con ese nombre.' });
+            const tipo = await prisma.solicitudTipo.update({
+                where: { id: existente.id },
+                data: { activo: true, label: parsed.label },
+            });
+            return res.json({ ...tipo, reactivado: true });
+        }
         const max = await prisma.solicitudTipo.aggregate({ _max: { orden: true } });
         const tipo = await prisma.solicitudTipo.create({
             data: { clave, label: parsed.label, orden: (max._max.orden ?? 0) + 1 },

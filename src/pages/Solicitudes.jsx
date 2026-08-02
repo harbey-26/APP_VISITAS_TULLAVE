@@ -66,12 +66,15 @@ export default function Solicitudes() {
     const [form, setForm] = useState(null);
     const [showTipos, setShowTipos] = useState(false);
     const [nuevoTipo, setNuevoTipo] = useState('');
+    const [buscaAdmTipo, setBuscaAdmTipo] = useState('');
 
     const load = async () => {
         try {
+            // Admin: TODOS los tipos (con los inactivos, para poder
+            // reactivarlos en el modal); los formularios usan tiposActivos
             const [sols, tps, st] = await Promise.all([
                 apiFetch('/api/solicitudes'),
-                apiFetch('/api/solicitudes/tipos'),
+                apiFetch(isAdmin ? '/api/solicitudes/tipos?todas=1' : '/api/solicitudes/tipos'),
                 apiFetch('/api/solicitudes/stats'),
             ]);
             setSolicitudes(sols);
@@ -91,6 +94,16 @@ export default function Solicitudes() {
 
     const hoy = hoyISO();
     const labelTipo = (clave) => tipos.find((t) => t.clave === clave)?.label || clave;
+    const tiposActivos = useMemo(() => tipos.filter((t) => t.activo), [tipos]);
+
+    // Buscador de tipos (#35): los tipos pueden crecer — filtra la lista
+    // desplegable por texto, sin acentos
+    const [buscaTipo, setBuscaTipo] = useState('');
+    const normaliza = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const tiposFiltrados = useMemo(
+        () => tiposActivos.filter((t) => normaliza(t.label).includes(normaliza(buscaTipo))),
+        [tiposActivos, buscaTipo], // eslint-disable-line react-hooks/exhaustive-deps
+    );
 
     // ── Bandeja (#43): mi trabajo abierto (o el del funcionario elegido) ──
     const bandeja = useMemo(() => {
@@ -142,8 +155,8 @@ export default function Solicitudes() {
         e.preventDefault();
         setBusy(true);
         try {
-            await apiFetch('/api/solicitudes/tipos', { method: 'POST', body: { label: nuevoTipo } });
-            toast.success('Tipo creado');
+            const r = await apiFetch('/api/solicitudes/tipos', { method: 'POST', body: { label: nuevoTipo } });
+            toast.success(r.reactivado ? 'El tipo estaba desactivado: se reactivó con su historial' : 'Tipo creado');
             setNuevoTipo('');
             load();
         } catch (err) {
@@ -203,7 +216,7 @@ export default function Solicitudes() {
                             <Settings2 className="w-4 h-4" /> Tipos
                         </Button>
                     )}
-                    <Button size="sm" onClick={() => setForm({ ...FORM_VACIO, tipo: tipos[0]?.clave || '' })}>
+                    <Button size="sm" onClick={() => { setBuscaTipo(''); setForm({ ...FORM_VACIO, tipo: tiposActivos[0]?.clave || '' }); }}>
                         <Plus className="w-4 h-4" /> Radicar solicitud
                     </Button>
                 </div>
@@ -361,9 +374,23 @@ export default function Solicitudes() {
                     <form onSubmit={handleRadicar} className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Tipo de solicitud *">
+                                <Input
+                                    value={buscaTipo}
+                                    onChange={(e) => {
+                                        const q = e.target.value;
+                                        setBuscaTipo(q);
+                                        // Un solo tipo coincide → se selecciona solo
+                                        const match = tiposActivos.filter((t) => normaliza(t.label).includes(normaliza(q)));
+                                        if (q && match.length === 1) setForm((f) => ({ ...f, tipo: match[0].clave }));
+                                    }}
+                                    placeholder="🔍 Buscar tipo…"
+                                    className="mb-1.5"
+                                />
                                 <Select required value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
                                     <option value="" disabled>Selecciona…</option>
-                                    {tipos.map((t) => <option key={t.clave} value={t.clave}>{t.label}</option>)}
+                                    {(tiposFiltrados.length ? tiposFiltrados : tiposActivos).map((t) => (
+                                        <option key={t.clave} value={t.clave}>{t.label}</option>
+                                    ))}
                                 </Select>
                             </Field>
                             <Field label="Medio de ingreso *">
@@ -444,8 +471,13 @@ export default function Solicitudes() {
             {/* ── Modal: administrar tipos (#35) ── */}
             <Modal open={showTipos} onClose={() => setShowTipos(false)} title="Tipos de solicitud">
                 <div className="space-y-3">
+                    <Input
+                        placeholder="🔍 Buscar tipo…"
+                        value={buscaAdmTipo}
+                        onChange={(e) => setBuscaAdmTipo(e.target.value)}
+                    />
                     <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-64 overflow-y-auto">
-                        {tipos.map((t) => (
+                        {tipos.filter((t) => normaliza(t.label).includes(normaliza(buscaAdmTipo))).map((t) => (
                             <div key={t.id} className="flex items-center justify-between px-3 py-2 text-sm">
                                 <span className={cn(!t.activo && 'text-gray-400 line-through')}>{t.label}</span>
                                 <button
