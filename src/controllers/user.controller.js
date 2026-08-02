@@ -21,6 +21,10 @@ const createUserSchema = z.object({
 export const getUsers = async (req, res) => {
     try {
         const users = await prisma.user.findMany({
+            // P1: el usuario de sistema "Portal de Clientes" (rol PORTAL, firma
+            // las radicaciones del portal) no es una persona — fuera de las
+            // listas de usuarios/responsables para que nadie le asigne trabajo
+            where: { role: { not: 'PORTAL' } },
             select: {
                 id: true,
                 email: true,

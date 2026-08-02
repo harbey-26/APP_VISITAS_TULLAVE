@@ -257,7 +257,14 @@ function detalleCliente(sol, tipos) {
         solicitanteNombre: sol.solicitanteNombre,
         actuaciones,
         respuesta: data.respuesta
-            ? { texto: data.respuesta.texto, medio: data.respuesta.medio, fechaEnvio: data.respuesta.fechaEnvio }
+            ? {
+                texto: data.respuesta.texto,
+                medio: data.respuesta.medio,
+                fechaEnvio: data.respuesta.fechaEnvio,
+                // Documentos de la respuesta — descargables vía
+                // GET /solicitudes/:id/respuesta-adjuntos/:adjId
+                adjuntos: (data.respuesta.adjuntos || []).map((a) => ({ id: a.id, nombre: a.nombre })),
+            }
             : null,
         // Cierre del caso: resultado (exitosa / con novedad) + nota del
         // cierre — el banner del portal. Solo cuando el caso está cerrado.
@@ -285,6 +292,26 @@ export const getMiSolicitud = async (req, res) => {
         const sol = await loadMia(req);
         if (!sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
         res.json(detalleCliente(sol, await tiposMap()));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// GET /api/portal/solicitudes/:id/respuesta-adjuntos/:adjId — descarga de un
+// documento de la RESPUESTA (solo los que el equipo referenció al responder;
+// los demás adjuntos del expediente siguen siendo internos).
+export const getRespuestaAdjunto = async (req, res) => {
+    try {
+        const sol = await loadMia(req);
+        if (!sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
+        let data = {};
+        try { data = sol.data ? JSON.parse(sol.data) : {}; } catch { /* data corrupto */ }
+        const adjId = parseInt(req.params.adjId, 10);
+        const permitido = (data.respuesta?.adjuntos || []).some((a) => a.id === adjId);
+        if (!permitido) return res.status(404).json({ error: 'Documento no encontrado' });
+        const adj = await prisma.solicitudAdjunto.findUnique({ where: { id: adjId } });
+        if (!adj || adj.solicitudId !== sol.id) return res.status(404).json({ error: 'Documento no encontrado' });
+        res.json({ id: adj.id, nombre: adj.nombre, mimeType: adj.mimeType, dataUrl: adj.dataUrl });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -318,7 +345,17 @@ const crearSchema = z.object({
     barrioInmueble: z.string().trim().max(120).optional().nullable(),
     ciudadInmueble: z.string().trim().min(2, 'Falta la ciudad').max(80),
     adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 fotos').optional(),
+    // DP: el derecho de petición firmado — SOLO PDF (pedido del cliente)
+    documentoPdf: z.object({
+        nombre: z.string().trim().min(1).max(200),
+        size: z.coerce.number().int().positive(),
+        dataUrl: z.string().startsWith('data:application/pdf', 'El documento debe ser un PDF'),
+    }).optional().nullable(),
 });
+
+// Valida que el contenido REAL sea un PDF: los archivos PDF empiezan con
+// "%PDF" ("JVBERi" en base64) — renombrar un .jpg a .pdf no pasa.
+const esPdfReal = (dataUrl) => dataUrl.slice(dataUrl.indexOf(',') + 1, dataUrl.indexOf(',') + 7).startsWith('JVBERi');
 
 // Mismo orden de composición que buildOrigen (liquidacion.controller.js):
 // dirección, Torre X, Apto X, conjunto, barrio, ciudad.
@@ -344,6 +381,17 @@ export const crearSolicitud = async (req, res) => {
                 return res.status(400).json({
                     error: `"${f.nombre}" pesa ${(f.size / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
                 });
+            }
+        }
+        if (parsed.documentoPdf) {
+            if (parsed.tipo !== 'DERECHOS_DE_PETICION') {
+                return res.status(400).json({ error: 'El documento PDF solo aplica para derechos de petición.' });
+            }
+            if (parsed.documentoPdf.size > LIMITE_ADJUNTO_BYTES) {
+                return res.status(400).json({ error: `El PDF pesa más de ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.` });
+            }
+            if (!esPdfReal(parsed.documentoPdf.dataUrl)) {
+                return res.status(400).json({ error: 'El archivo no es un PDF válido. Solo se aceptan documentos PDF.' });
             }
         }
 
@@ -421,6 +469,20 @@ export const crearSolicitud = async (req, res) => {
                 },
             });
             await actuacionPortal(solicitud.id, 'ADJUNTO', `Adjuntó la foto "${f.nombre}"`, { portal: true, categoria: 'FOTO' });
+        }
+        if (parsed.documentoPdf) {
+            await prisma.solicitudAdjunto.create({
+                data: {
+                    solicitudId: solicitud.id,
+                    nombre: parsed.documentoPdf.nombre,
+                    mimeType: 'application/pdf',
+                    size: parsed.documentoPdf.size,
+                    categoria: 'PDF',
+                    dataUrl: parsed.documentoPdf.dataUrl,
+                    subidoPor: creadaPor,
+                },
+            });
+            await actuacionPortal(solicitud.id, 'ADJUNTO', `Adjuntó el derecho de petición "${parsed.documentoPdf.nombre}" (PDF)`, { portal: true, categoria: 'PDF' });
         }
         const nFotos = (parsed.adjuntos || []).length;
         notifyAdmins(

@@ -360,6 +360,16 @@ export default function SolicitudDetalle() {
                                 Por {sol.data.respuesta.medio.toLowerCase()} el {fechaCorta(sol.data.respuesta.fechaEnvio)}
                             </p>
                             <p className="text-gray-700 mt-2 whitespace-pre-wrap">{sol.data.respuesta.texto}</p>
+                            {sol.data.respuesta.adjuntos?.length > 0 && (
+                                <div className="mt-2 text-xs text-gray-600">
+                                    {sol.data.respuesta.adjuntos.map((a) => (
+                                        <p key={a.id} className="flex items-center gap-1">
+                                            <Paperclip className="w-3 h-3" /> {a.nombre}
+                                            <span className="text-gray-400">(en Documentos)</span>
+                                        </p>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ) : !cerrada && (
                         <RespuestaForm id={id} sol={sol} onSaved={setSol} toast={toast} />
@@ -709,7 +719,7 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
                 try {
                     const updated = await apiFetch(`/api/solicitudes/${id}/respuesta`, {
                         method: 'POST',
-                        body: { texto, medio, adjuntoIds: medio === 'CORREO' && adjuntoIds.length ? adjuntoIds : undefined },
+                        body: { texto, medio, adjuntoIds: adjuntoIds.length ? adjuntoIds : undefined },
                     });
                     onSaved(updated);
                     toast.success(medio === 'CORREO' ? `Respuesta enviada a ${email}` : 'Respuesta registrada');
@@ -731,30 +741,30 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
                     <option value="OTRO">Otro (solo registrar)</option>
                 </Select>
             </Field>
+            {sol?.adjuntos?.length > 0 && (
+                <div className="rounded-xl bg-gray-50 p-3 text-xs text-gray-700">
+                    <p className="font-semibold mb-1">Documentos de la respuesta (máx. 3) — quedan en el expediente y el cliente los descarga desde su portal:</p>
+                    {sol.adjuntos.map((a) => (
+                        <label key={a.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={adjuntoIds.includes(a.id)}
+                                disabled={!adjuntoIds.includes(a.id) && adjuntoIds.length >= 3}
+                                onChange={(e) => setAdjuntoIds(e.target.checked
+                                    ? [...adjuntoIds, a.id]
+                                    : adjuntoIds.filter((x) => x !== a.id))}
+                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                            />
+                            <span className="truncate">{a.nombre}</span>
+                        </label>
+                    ))}
+                </div>
+            )}
             {medio === 'CORREO' && (
                 email ? (
-                    <div className="rounded-xl bg-blue-50 p-3 text-xs text-blue-900 space-y-2">
-                        <p>📧 El sistema enviará este correo a <b>{email}</b>.</p>
-                        {sol?.adjuntos?.length > 0 && (
-                            <div>
-                                <p className="font-semibold mb-1">Adjuntar documentos (máx. 3):</p>
-                                {sol.adjuntos.map((a) => (
-                                    <label key={a.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={adjuntoIds.includes(a.id)}
-                                            disabled={!adjuntoIds.includes(a.id) && adjuntoIds.length >= 3}
-                                            onChange={(e) => setAdjuntoIds(e.target.checked
-                                                ? [...adjuntoIds, a.id]
-                                                : adjuntoIds.filter((x) => x !== a.id))}
-                                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-600"
-                                        />
-                                        <span className="truncate">{a.nombre}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-900">
+                        📧 El sistema enviará este correo a <b>{email}</b>{adjuntoIds.length ? ` con ${adjuntoIds.length} adjunto(s)` : ''}.
+                    </p>
                 ) : (
                     <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
                         ⚠️ El expediente no tiene correo del solicitante — agrégalo (editar solicitud) o elige otro medio.

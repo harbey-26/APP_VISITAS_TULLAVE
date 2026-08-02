@@ -665,18 +665,24 @@ export const registrarRespuesta = async (req, res) => {
             adjuntoIds: z.array(z.coerce.number().int().positive()).max(3).optional(),
         }).parse(req.body);
 
+        // Documentos que COMPONEN la respuesta (deben ser de ESTE expediente).
+        // Se guardan en data.respuesta con cualquier medio; con CORREO además
+        // viajan adjuntos en el correo.
+        const adjuntos = parsed.adjuntoIds?.length
+            ? await prisma.solicitudAdjunto.findMany({
+                where: { id: { in: parsed.adjuntoIds }, solicitudId: sol.id },
+                select: { id: true, nombre: true, mimeType: true, dataUrl: true },
+            })
+            : [];
+        if ((parsed.adjuntoIds?.length || 0) !== adjuntos.length) {
+            return res.status(400).json({ error: 'Alguno de los adjuntos elegidos no pertenece a este expediente.' });
+        }
+
         let descripcionActuacion;
         if (parsed.medio === 'CORREO') {
             const to = (sol.solicitanteEmail || '').trim();
             if (!to) {
                 return res.status(400).json({ error: 'El expediente no tiene correo del solicitante: agrégalo antes de enviar la respuesta por correo.' });
-            }
-            // Adjuntos elegidos (deben ser de ESTE expediente)
-            const adjuntos = parsed.adjuntoIds?.length
-                ? await prisma.solicitudAdjunto.findMany({ where: { id: { in: parsed.adjuntoIds }, solicitudId: sol.id } })
-                : [];
-            if ((parsed.adjuntoIds?.length || 0) !== adjuntos.length) {
-                return res.status(400).json({ error: 'Alguno de los adjuntos elegidos no pertenece a este expediente.' });
             }
             await sendEmailWithAttachments({
                 to,
@@ -709,6 +715,9 @@ export const registrarRespuesta = async (req, res) => {
             medio: parsed.medio,
             fechaEnvio: parsed.fechaEnvio || hoyISO(),
             registradaPor: req.user.id,
+            // Los documentos de la respuesta quedan referenciados en el
+            // expediente (y el cliente puede descargarlos desde su portal)
+            adjuntos: adjuntos.map((a) => ({ id: a.id, nombre: a.nombre })),
         };
         await prisma.solicitud.update({
             where: { id: sol.id },
@@ -716,7 +725,7 @@ export const registrarRespuesta = async (req, res) => {
         });
         await registrarActuacion(
             sol.id, 'RESPUESTA',
-            descripcionActuacion || `Respuesta registrada (enviada por ${parsed.medio.toLowerCase()} el ${fechaCorta(data.respuesta.fechaEnvio)}, por fuera del sistema).`,
+            descripcionActuacion || `Respuesta registrada (enviada por ${parsed.medio.toLowerCase()} el ${fechaCorta(data.respuesta.fechaEnvio)}, por fuera del sistema)${adjuntos.length ? ` — ${adjuntos.length} documento(s) referenciados` : ''}.`,
             req.user.id,
         );
         const updated = await prisma.solicitud.findUnique({ where: { id: sol.id }, include: includeDetalle });
