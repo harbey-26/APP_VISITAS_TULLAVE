@@ -14,6 +14,7 @@ import { sendEmailWithPdf } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
+import { enviarBienvenidaPortal } from '../utils/portalWelcome.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 
@@ -272,6 +273,10 @@ export const createSolicitud = async (req, res) => {
                 `Término legal calculado: vence el ${fechaCorta(fechaVencimiento)} (${DP_TIPOS[JSON.parse(solicitud.data).derechoPeticion.dpTipo].label}, días hábiles).`,
             );
         }
+        // P1: si viene con correo del cliente, avisarle que puede seguirla
+        // en el Portal de Clientes (fire-and-forget, no frena la respuesta)
+        if (solicitud.solicitanteEmail) enviarBienvenidaPortal(solicitud);
+
         // Radicada con responsable de una vez → notificarle
         if (solicitud.responsableId && solicitud.responsableId !== req.user.id) {
             sendPersonalNotification(
@@ -330,6 +335,12 @@ export const updateSolicitud = async (req, res) => {
         const updated = await prisma.solicitud.update({
             where: { id: sol.id }, data: parsed, include: includeDetalle,
         });
+        // P1: correo del cliente agregado o corregido → avisarle del portal
+        // (el caso típico: se radicó sin correo y se completa después)
+        const emailNuevo = (parsed.solicitanteEmail || '').trim();
+        if (emailNuevo && emailNuevo.toLowerCase() !== (sol.solicitanteEmail || '').trim().toLowerCase()) {
+            enviarBienvenidaPortal(updated);
+        }
         res.json(serialize(updated));
     } catch (error) {
         res.status(400).json({ error: error.message });

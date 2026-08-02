@@ -617,8 +617,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   `GET /tipos`, `GET|POST /solicitudes`, `GET /solicitudes/:id`,
   `POST /solicitudes/:id/comentario` — todos bajo `/api/portal`, auth
   `authenticatePortal` (nunca `authenticate`)
-- **Al desplegar el portal en su dominio:** agregarlo a `ALLOWED_ORIGINS`
-  (CORS). Fase 2 pendiente: Capacitor Android + iOS del portal
+- **Correo de bienvenida** (`utils/portalWelcome.js`, texto puro con tests):
+  cuando el EQUIPO radica con correo del cliente — o se lo agrega/corrige en
+  un PATCH — se le envía el radicado + link del portal (fire-and-forget, deja
+  actuación AUTOMATIZACION). La URL sale del primer origen de `PORTAL_ORIGIN`;
+  sin esa env var no se envía. Las radicadas DESDE el portal no lo mandan
+- **En producción:** portal en `https://portal.tullaveinmobiliariasas.com`
+  (servicio Railway propio, repo GitHub `harbey-26/PORTAL_CLIENTES_TULLAVE`,
+  DNS en Squarespace). `PORTAL_ORIGIN` en Railway lleva ese dominio + la URL
+  `.up.railway.app` del servicio. Fase 2 pendiente: Capacitor Android + iOS
 
 ### Otras páginas
 - `VisitExecution.jsx` — iniciar/finalizar visita con GPS + geofencing, fotos, cronómetro; muestra el conjunto/edificio bajo la dirección. **Visitas por llamada (`modality === 'PHONE'`):** ocultan el mapa y el flujo GPS; muestran resultado+comentarios y un "Desliza para registrar" que cierra la visita en un paso (`complete-call`), sin pedir ubicación
