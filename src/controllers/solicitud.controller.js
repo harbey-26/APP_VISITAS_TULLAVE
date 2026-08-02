@@ -355,6 +355,8 @@ export const cambiarEstado = async (req, res) => {
         const parsed = z.object({
             estado: z.string(),
             nota: z.string().trim().max(500).optional(),
+            // P1: resultado del cierre — visible para el cliente en su portal
+            resultado: z.enum(['EXITOSA', 'CON_NOVEDAD']).optional(),
         }).parse(req.body);
         if (!SOLICITUD_ESTADOS[parsed.estado]) {
             return res.status(400).json({ error: 'Estado desconocido.' });
@@ -364,19 +366,35 @@ export const cambiarEstado = async (req, res) => {
                 error: `No se puede pasar de "${SOLICITUD_ESTADOS[sol.estado].label}" a "${SOLICITUD_ESTADOS[parsed.estado].label}" — el flujo no permite saltar pasos.`,
             });
         }
+        // El cierre queda en data.cierre (resultado + nota); reabrir lo borra
+        let dataJson = {};
+        try { dataJson = sol.data ? JSON.parse(sol.data) : {}; } catch { /* data corrupto */ }
+        if (parsed.estado === 'FINALIZADA') {
+            dataJson.cierre = {
+                resultado: parsed.resultado || 'EXITOSA',
+                nota: parsed.nota || null,
+                fecha: new Date().toISOString(),
+            };
+        } else if (parsed.estado === 'EN_GESTION' && sol.estado === 'FINALIZADA') {
+            delete dataJson.cierre; // reabierta
+        }
         await prisma.solicitud.update({
             where: { id: sol.id },
             data: {
                 estado: parsed.estado,
+                data: JSON.stringify(dataJson),
                 finalizadaAt: parsed.estado === 'FINALIZADA' ? new Date()
                     : parsed.estado === 'EN_GESTION' && sol.estado === 'FINALIZADA' ? null // reabierta
                         : sol.finalizadaAt,
             },
             include: includeDetalle,
         });
+        const sufijoCierre = parsed.estado === 'FINALIZADA'
+            ? (parsed.resultado === 'CON_NOVEDAD' ? ' · cerrada con novedad' : ' · gestión exitosa')
+            : '';
         await registrarActuacion(
             sol.id, 'ESTADO',
-            `Estado: ${SOLICITUD_ESTADOS[sol.estado].label} → ${SOLICITUD_ESTADOS[parsed.estado].label}${parsed.nota ? ` — ${parsed.nota}` : ''}`,
+            `Estado: ${SOLICITUD_ESTADOS[sol.estado].label} → ${SOLICITUD_ESTADOS[parsed.estado].label}${sufijoCierre}${parsed.nota ? ` — ${parsed.nota}` : ''}`,
             req.user.id,
             { de: sol.estado, a: parsed.estado },
         );

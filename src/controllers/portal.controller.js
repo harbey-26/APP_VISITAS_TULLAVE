@@ -259,6 +259,14 @@ function detalleCliente(sol, tipos) {
         respuesta: data.respuesta
             ? { texto: data.respuesta.texto, medio: data.respuesta.medio, fechaEnvio: data.respuesta.fechaEnvio }
             : null,
+        // Cierre del caso: resultado (exitosa / con novedad) + nota del
+        // cierre — el banner del portal. Solo cuando el caso está cerrado.
+        cierre: ['FINALIZADA', 'ARCHIVADA'].includes(sol.estado)
+            ? {
+                resultado: data.cierre?.resultado || 'EXITOSA',
+                nota: data.cierre?.nota || null,
+            }
+            : null,
         // Reparaciones (#36): el paso actual del flujo interno alimenta el
         // stepper del portal — solo el sub-estado y la fecha de visita del
         // técnico; cotizaciones y montos NUNCA salen al cliente.

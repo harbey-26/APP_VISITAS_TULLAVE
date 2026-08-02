@@ -110,7 +110,11 @@ export default function SolicitudDetalle() {
         try {
             const updated = await apiFetch(`/api/solicitudes/${id}/estado`, {
                 method: 'PATCH',
-                body: { estado: estadoModal.estado, nota: estadoModal.nota || undefined },
+                body: {
+                    estado: estadoModal.estado,
+                    nota: estadoModal.nota || undefined,
+                    resultado: estadoModal.estado === 'FINALIZADA' ? (estadoModal.resultado || 'EXITOSA') : undefined,
+                },
             });
             setSol(updated);
             setEstadoModal(null);
@@ -638,9 +642,21 @@ export default function SolicitudDetalle() {
                 title={estadoModal ? `Pasar a "${SOLICITUD_ESTADOS[estadoModal.estado]?.label}"` : ''}>
                 {estadoModal && (
                     <div className="space-y-4">
-                        <Field label="Nota (opcional)">
+                        {/* P1: el resultado del cierre lo ve el cliente en su portal */}
+                        {estadoModal.estado === 'FINALIZADA' && (
+                            <Field label="Resultado del cierre">
+                                <Select
+                                    value={estadoModal.resultado || 'EXITOSA'}
+                                    onChange={(e) => setEstadoModal({ ...estadoModal, resultado: e.target.value })}
+                                >
+                                    <option value="EXITOSA">✅ Gestionada exitosamente</option>
+                                    <option value="CON_NOVEDAD">⚠️ Cerrada con novedad</option>
+                                </Select>
+                            </Field>
+                        )}
+                        <Field label={estadoModal.estado === 'FINALIZADA' ? 'Nota del cierre (el cliente la ve en su portal)' : 'Nota (opcional)'}>
                             <Input value={estadoModal.nota} onChange={(e) => setEstadoModal({ ...estadoModal, nota: e.target.value })}
-                                placeholder="Ej.: a la espera de la cotización del plomero" />
+                                placeholder={estadoModal.estado === 'FINALIZADA' ? 'Ej.: se reparó la fuga y quedó verificado' : 'Ej.: a la espera de la cotización del plomero'} />
                         </Field>
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setEstadoModal(null)}>Cancelar</Button>
