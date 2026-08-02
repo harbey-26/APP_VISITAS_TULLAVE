@@ -282,7 +282,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | `VITE_GOOGLE_MAPS_API_KEY` | `.env` local + Railway + GitHub Secret | Google Maps en el frontend (mapa + Places). **Se embebe en build-time**, por eso debe estar también en Railway |
 | `GOOGLE_MAPS_API_KEY` | `.env` local + Railway | Geocoding del servidor (respaldo) — `property.controller.js` |
 | `VITE_API_URL` | `.env` local (vacío = proxy) | URL del backend |
-| `PORTAL_ORIGIN` | Railway (backend) | Origen (https://dominio) del Portal de Clientes para CORS — P1 |
+| `PORTAL_ORIGIN` | Railway (backend) | Origen(es) del Portal de Clientes para CORS, separados por coma (ej. `https://portal.tullaveinmobiliariasas.com,https://….up.railway.app`) — P1 |
 
 Secreto en GitHub Actions: `VITE_GOOGLE_MAPS_API_KEY`
 

@@ -30,9 +30,10 @@ const defaultOrigins = [
 const allowedOrigins = (process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
     : defaultOrigins)
-    // P1: dominio del Portal de Clientes (frontend aparte) — se configura en
-    // Railway cuando el portal tenga su URL, sin tocar código
-    .concat(process.env.PORTAL_ORIGIN ? [process.env.PORTAL_ORIGIN.trim()] : []);
+    // P1: dominio(s) del Portal de Clientes (frontend aparte) — se configura
+    // en Railway sin tocar código. Acepta varios separados por coma (dominio
+    // propio + URL de Railway durante la transición)
+    .concat(process.env.PORTAL_ORIGIN ? process.env.PORTAL_ORIGIN.split(',').map(s => s.trim()).filter(Boolean) : []);
 
 // Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
 // CSP queda desactivada — el frontend embebe assets de Google Maps/Firebase
