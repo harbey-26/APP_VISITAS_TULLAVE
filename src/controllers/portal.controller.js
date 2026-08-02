@@ -283,16 +283,37 @@ const fotoSchema = z.object({
     dataUrl: z.string().startsWith('data:image/', 'Solo se aceptan fotos'),
 });
 
+// Dirección estructurada: MISMOS campos del contrato de arrendamiento
+// (contractTemplates.js) para identificar plenamente el inmueble — pedido
+// del cliente (ago 2026). Dirección, ciudad y celular son OBLIGATORIOS.
 const crearSchema = z.object({
     tipo: z.string().trim().min(1).max(60),
     asunto: z.string().trim().min(3, 'Cuéntanos el asunto').max(200),
     descripcion: z.string().trim().max(3000).optional().nullable(),
     nombre: z.string().trim().min(2, 'Falta tu nombre').max(160),
-    telefono: z.string().trim().max(30).optional().nullable(),
+    telefono: z.string().trim().min(7, 'Falta tu número de celular').max(30),
     solicitanteTipo: z.enum(['PROPIETARIO', 'ARRENDATARIO', 'TERCERO']).optional().nullable(),
-    direccionInmueble: z.string().trim().max(200).optional().nullable(),
+    direccionInmueble: z.string().trim().min(5, 'Falta la dirección del inmueble').max(160),
+    torreInmueble: z.string().trim().max(80).optional().nullable(),
+    aptoInmueble: z.string().trim().max(80).optional().nullable(),
+    conjuntoInmueble: z.string().trim().max(120).optional().nullable(),
+    barrioInmueble: z.string().trim().max(120).optional().nullable(),
+    ciudadInmueble: z.string().trim().min(2, 'Falta la ciudad').max(80),
     adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 fotos').optional(),
 });
+
+// Mismo orden de composición que buildOrigen (liquidacion.controller.js):
+// dirección, Torre X, Apto X, conjunto, barrio, ciudad.
+export function direccionCompletaInmueble(d) {
+    return [
+        d.direccionInmueble,
+        d.torreInmueble && `Torre ${d.torreInmueble}`,
+        d.aptoInmueble && `Apto ${d.aptoInmueble}`,
+        d.conjuntoInmueble,
+        d.barrioInmueble,
+        d.ciudadInmueble,
+    ].filter(Boolean).join(', ');
+}
 
 // POST /api/portal/solicitudes
 export const crearSolicitud = async (req, res) => {
@@ -308,24 +329,36 @@ export const crearSolicitud = async (req, res) => {
             }
         }
 
-        // La dirección va al inicio de la descripción: el expediente del
-        // equipo no tiene campo propio para "inmueble en texto libre".
+        // La dirección compuesta va al inicio de la descripción (visible para
+        // el equipo sin cambios en su UI) y los componentes sueltos quedan en
+        // data.inmueble — de ahí saldrá la referencia de pago / vínculos
+        // futuros, igual que en las liquidaciones.
+        const direccionCompleta = direccionCompletaInmueble(parsed);
         const descripcion = [
-            parsed.direccionInmueble ? `Inmueble: ${parsed.direccionInmueble}` : null,
+            `Inmueble: ${direccionCompleta}`,
             parsed.descripcion || null,
-        ].filter(Boolean).join('\n\n') || null;
+        ].filter(Boolean).join('\n\n');
 
         // Mismas automatizaciones de nacimiento que la radicación del equipo
         let fechaVencimiento = null;
-        let data = null;
+        let data = {};
         if (parsed.tipo === 'DERECHOS_DE_PETICION') {
             const fechaRadicacion = hoyISO();
             fechaVencimiento = vencimientoDP(fechaRadicacion, 'GENERAL');
-            data = { derechoPeticion: { dpTipo: 'GENERAL', fechaRadicacion, alertasEnviadas: [] } };
+            data.derechoPeticion = { dpTipo: 'GENERAL', fechaRadicacion, alertasEnviadas: [] };
         }
         if (parsed.tipo === 'REPARACIONES') {
-            data = { reparacion: { subEstado: 'CASO_CREADO', cotizaciones: [] } };
+            data.reparacion = { subEstado: 'CASO_CREADO', cotizaciones: [] };
         }
+        data.inmueble = {
+            direccionInmueble: parsed.direccionInmueble,
+            torreInmueble: parsed.torreInmueble || '',
+            aptoInmueble: parsed.aptoInmueble || '',
+            conjuntoInmueble: parsed.conjuntoInmueble || '',
+            barrioInmueble: parsed.barrioInmueble || '',
+            ciudadInmueble: parsed.ciudadInmueble,
+            direccionCompleta,
+        };
 
         const creadaPor = await portalUserId();
         let solicitud = null;

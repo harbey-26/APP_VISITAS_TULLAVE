@@ -613,6 +613,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   loguearse). Inicializa las mismas automatizaciones que el equipo (DP con
   término legal, reparaciones). Notifica a admins por FCM; los comentarios
   del cliente notifican al responsable
+- **Radicación (pedidos del cliente, ago 2026):** dirección ESTRUCTURADA con
+  los mismos campos del contrato (`direccionInmueble` + torre/apto/conjunto/
+  barrio + `ciudadInmueble`); dirección, ciudad y celular OBLIGATORIOS. La
+  dirección compuesta (mismo orden de `buildOrigen`) encabeza `descripcion`
+  ("Inmueble: …") y los componentes quedan en `data.inmueble` (para futura
+  referencia de pago / vínculo a Property). Hasta **5 fotos** por radicación
+  (solo `image/*`, 5 MB c/u, categoría FOTO, compresión client-side con el
+  mismo `imageCompress`); el cliente ve sus fotos en su timeline
+  (`meta.portal`), el equipo las ve como adjuntos normales
 - Endpoints: `POST /auth/solicitar-codigo`, `POST /auth/verificar`,
   `GET /tipos`, `GET|POST /solicitudes`, `GET /solicitudes/:id`,
   `POST /solicitudes/:id/comentario` — todos bajo `/api/portal`, auth
