@@ -36,5 +36,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # DATABASE_URL dummy: prisma.js instancia el cliente al importarse
+      # (los tests puros nunca abren la conexión, pero el constructor la exige)
       - name: Tests
         run: npm test
+        env:
+          DATABASE_URL: 'file:./dev.db'
