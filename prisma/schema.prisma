@@ -392,6 +392,17 @@ model PortalOtp {
   @@index([email])
 }
 
+// P1: constancia de aceptación de la Política de Tratamiento de Datos
+// Personales (Ley 1581 de 2012). Se registra al solicitar el código de acceso
+// del portal — una fila por correo: primera aceptación + última + contador.
+model PortalConsentimiento {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique // normalizado en minúsculas
+  aceptadaAt DateTime @default(now()) // primera aceptación (prueba del consentimiento)
+  ultimaAt   DateTime @updatedAt // última vez que marcó la casilla
+  veces      Int      @default(1)
+}
+
 // L1: Pagos (abonos) registrados contra una liquidación aprobada. Tabla propia
 // y no JSON: son movimientos financieros con auditoría (quién y cuándo).
 model LiquidacionPago {

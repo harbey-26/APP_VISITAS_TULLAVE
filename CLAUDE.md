@@ -606,6 +606,14 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   en la consola del servidor** (probar sin Gmail conectado). JWT de 30 días
   firmado con secreto DERIVADO (`JWT_SECRET + '::portal-clientes'`): un token
   del portal da 401 en la API del equipo y viceversa
+- **Política de tratamiento de datos (ago 2026, Ley 1581):** el login exige
+  marcar "He leído y acepto la Política de tratamiento de datos personales"
+  (enlace a `tullaveinmobiliaria.com.co/main-contenido-cat-6.htm`, constante
+  `POLITICA_DATOS_URL` en el `config.js` del portal) antes de pedir el código.
+  `solicitar-codigo` valida `aceptaPolitica: true` server-side (no se puede
+  saltar por API) y deja constancia en la tabla `PortalConsentimiento` (una
+  fila por correo: primera aceptación, última y contador — prueba del
+  consentimiento). Si el registro falla no bloquea el acceso
 - **Identidad = correo verificado:** el cliente solo ve expedientes cuyo
   `solicitanteEmail` coincide (ajenos → 404). Vista BLANQUEADA: timeline solo
   con CREACION/ESTADO/RESPUESTA y sus propias NOTAs (`meta.portal`); nunca

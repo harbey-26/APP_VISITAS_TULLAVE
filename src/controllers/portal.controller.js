@@ -84,10 +84,19 @@ async function portalUserId() {
 
 // ── Auth por OTP ──
 
-// POST /api/portal/auth/solicitar-codigo — { email }
+// POST /api/portal/auth/solicitar-codigo — { email, aceptaPolitica }
 export const solicitarCodigo = async (req, res) => {
     try {
-        const email = normalizarEmail(z.string().trim().min(5).max(160).email('Correo inválido').parse(req.body?.email));
+        const body = z.object({
+            email: z.string().trim().min(5).max(160).email('Correo inválido'),
+            // Ley 1581 de 2012: sin aceptar la política de tratamiento de
+            // datos no se emite el código — se valida también aquí para que
+            // no se pueda saltar la casilla llamando la API directo.
+            aceptaPolitica: z.literal(true, {
+                errorMap: () => ({ message: 'Debes aceptar la Política de tratamiento de datos personales para continuar.' }),
+            }),
+        }).parse(req.body ?? {});
+        const email = normalizarEmail(body.email);
 
         // Limpieza oportunista de códigos viejos (>1 día vencidos)
         await prisma.portalOtp.deleteMany({
@@ -110,6 +119,15 @@ export const solicitarCodigo = async (req, res) => {
             console.warn(`[Portal] Tope global de OTP alcanzado (${globalHora}/h) — posible abuso`);
             return res.status(429).json({ error: 'El servicio está recibiendo muchas solicitudes. Intenta de nuevo en unos minutos.' });
         }
+
+        // Constancia de la aceptación (prueba del consentimiento). Se registra
+        // después de los topes anti-abuso para no dejar que un atacante infle
+        // la tabla; si falla no bloquea el acceso del cliente.
+        await prisma.portalConsentimiento.upsert({
+            where: { email },
+            update: { veces: { increment: 1 } },
+            create: { email },
+        }).catch((e) => console.warn('[Portal] No se pudo registrar la aceptación de la política:', e.message));
 
         const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
         const otp = await prisma.portalOtp.create({
