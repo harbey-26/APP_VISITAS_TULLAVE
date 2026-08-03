@@ -14,6 +14,7 @@ import { compressImage } from '../utils/imageCompress.js';
 import { formatoCifra } from '../utils/numeroALetras';
 import { fechaCorta } from '../utils/fechaLetras';
 import { buildWhatsAppUrl } from '../utils/phone';
+import { mensajePortal } from '../utils/portalShare';
 import { downloadBlob } from '../utils/downloadBlob.js';
 import {
     Button, Badge, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
@@ -283,6 +284,24 @@ export default function SolicitudDetalle() {
                         {sol.fechaVencimiento && <p><span className="font-semibold">Vence:</span> {fechaCorta(sol.fechaVencimiento)}</p>}
                         <p><span className="font-semibold">Radicó:</span> {sol.creador?.name}</p>
                     </div>
+
+                    {/* Portal de Clientes por WhatsApp (ago 2026): invita al
+                        solicitante al portal. Con correo registrado el mensaje
+                        apunta a SU radicado; sin correo la invitación es
+                        general (mensajePortal decide) */}
+                    {sol.solicitanteTelefono && (
+                        <div className="mt-3">
+                            <Button variant="success" size="sm" icon={MessageCircle}
+                                title={sol.solicitanteEmail ? '' : 'Sin correo registrado, el cliente no verá este expediente en el portal'}
+                                onClick={() => window.open(buildWhatsAppUrl(sol.solicitanteTelefono, mensajePortal({
+                                    nombre: sol.solicitanteNombre,
+                                    radicado: sol.radicado,
+                                    email: sol.solicitanteEmail,
+                                })), '_blank')}>
+                                Enviar portal por WhatsApp
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Responsable (#43) */}
                     <div className="mt-3 flex items-center gap-2 flex-wrap">

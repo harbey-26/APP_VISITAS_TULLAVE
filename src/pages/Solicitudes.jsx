@@ -10,12 +10,14 @@ import {
 import { hoyISO } from '../utils/incrementoCalc';
 import { fechaCorta } from '../utils/fechaLetras';
 import { formatoCifra } from '../utils/numeroALetras';
+import { buildWhatsAppUrl } from '../utils/phone';
+import { PORTAL_URL, mensajePortal } from '../utils/portalShare';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
 } from '../components/ui';
 import {
     Inbox, Plus, Settings2, LayoutDashboard, ListTodo, AlertTriangle,
-    Clock, CheckCircle2, User, X,
+    Clock, CheckCircle2, User, X, Globe, Copy, MessageCircle,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -205,6 +207,17 @@ export default function Solicitudes() {
         }
     };
 
+    // Copiar el link del portal para pegarlo en cualquier canal (correo,
+    // WhatsApp Web, etc.). El fallback cubre WebViews sin Clipboard API.
+    const copiarPortal = async () => {
+        try {
+            await navigator.clipboard.writeText(PORTAL_URL);
+            toast.success('Link del portal copiado');
+        } catch {
+            window.prompt('Copie el link del portal:', PORTAL_URL);
+        }
+    };
+
     const CardSolicitud = ({ s }) => {
         const est = SOLICITUD_ESTADOS[s.estado] || {};
         const pri = PRIORIDADES[s.prioridad] || {};
@@ -260,6 +273,36 @@ export default function Solicitudes() {
                     </Button>
                 </div>
             </PageHeader>
+
+            {/* ── Portal de Clientes: link para compartir con los clientes
+                (pedido ago 2026). Copiar lo deja listo para pegar en cualquier
+                canal; WhatsApp abre el selector de chat con el mensaje ── */}
+            <div className="mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
+                {/* min-w alto a propósito: en móvil (390px) fuerza a los
+                    botones a bajar a su propia línea en vez de estrujar el
+                    texto */}
+                <div className="flex items-center gap-2.5 flex-1 min-w-[230px]">
+                    <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
+                        <Globe className="w-5 h-5 text-brand-600" />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900">Portal de Clientes</p>
+                        <a href={PORTAL_URL} target="_blank" rel="noreferrer"
+                            className="text-xs font-semibold text-brand-600 hover:underline truncate block">
+                            {PORTAL_URL.replace('https://', '')}
+                        </a>
+                    </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                    <Button variant="secondary" size="sm" icon={Copy} onClick={copiarPortal}>
+                        Copiar link
+                    </Button>
+                    <Button variant="success" size="sm" icon={MessageCircle}
+                        onClick={() => window.open(buildWhatsAppUrl('', mensajePortal()), '_blank')}>
+                        WhatsApp
+                    </Button>
+                </div>
+            </div>
 
             {/* KPIs de cabecera (#40) */}
             {stats && (
