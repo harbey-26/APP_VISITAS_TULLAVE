@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticate, requireAdmin, tokenVersionOk } from '../middleware/auth.middleware.js';
 import {
     getCalendarStatus,
     startCalendarOAuth,
@@ -16,12 +16,14 @@ router.get('/google/callback', calendarOAuthCallback);
 
 // Para iniciar OAuth desde una ventana nueva, aceptamos el JWT en ?token=...
 // porque el navegador no manda Authorization en una <a target="_blank">.
-router.get('/google/start', (req, res, next) => {
+router.get('/google/start', async (req, res, next) => {
     const t = req.query.token;
     if (!t) return res.status(401).json({ error: 'Falta token' });
     try {
         req.user = jwt.verify(t, process.env.JWT_SECRET);
         if (req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Solo admin' });
+        // A8: mismo chequeo de revocación que el middleware authenticate
+        if (!(await tokenVersionOk(req.user))) return res.status(401).json({ error: 'Token inválido' });
         next();
     } catch {
         res.status(401).json({ error: 'Token inválido' });

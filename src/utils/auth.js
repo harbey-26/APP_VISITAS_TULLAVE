@@ -16,8 +16,10 @@ export const comparePassword = async (password, hash) => {
 };
 
 export const generateToken = (user) => {
+    // A8: `tv` (tokenVersion) permite revocar sesiones: si la versión del
+    // token no coincide con la de la BD, el middleware rechaza con 401
     return jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, tv: user.tokenVersion ?? 0 },
         JWT_SECRET,
         { expiresIn: '7d' }
     );

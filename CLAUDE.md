@@ -100,6 +100,9 @@ APP_VISITAS_TULLAVE/
 ```prisma
 User      — id, email, password, name, phone (celular del agente — sale en
             el mensaje de confirmación al cliente), role (AGENT/ADMIN),
+            tokenVersion (revocación de sesiones: cambiar la contraseña lo
+            incrementa y el middleware rechaza los JWT con versión vieja —
+            desloguea todos los dispositivos del usuario al instante),
             lastLat, lastLng, lastSeenAt, connectedSince
 Property  — id, address, client, lat, lng
 Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,

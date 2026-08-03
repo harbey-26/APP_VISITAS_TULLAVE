@@ -185,6 +185,10 @@ export const updateUser = async (req, res) => {
         const updateData = { ...data };
         if (data.password) {
             updateData.password = await hashPassword(data.password);
+            // A8: cambiar la contraseña revoca TODAS las sesiones abiertas del
+            // usuario (sus tokens llevan la versión anterior). Si un admin se
+            // cambia su propia contraseña, su sesión actual también se cierra
+            updateData.tokenVersion = { increment: 1 };
         } else {
             delete updateData.password;
         }
