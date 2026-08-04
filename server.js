@@ -62,9 +62,10 @@ app.use(cors({
 // general para que gane en esas rutas.
 app.use(['/api/auth', '/api/portal/auth'], express.json({ limit: '16kb' }));
 // #58: las solicitudes aceptan videos de hasta 25 MB (≈33.4 MB en base64) —
-// solo esas rutas necesitan el techo alto; requieren JWT y el peso real por
-// archivo se valida en el controlador. Va ANTES del límite general.
-app.use('/api/solicitudes', express.json({ limit: '36mb' }));
+// solo esas rutas necesitan el techo alto; el peso real por archivo se valida
+// en el controlador. La radicación del portal viaja en UN solo POST (video +
+// fotos juntos), por eso 48 MB y no 36. Va ANTES del límite general.
+app.use(['/api/solicitudes', '/api/portal/solicitudes'], express.json({ limit: '48mb' }));
 // Límite explícito para evitar abuso por payloads enormes. Las fotos de visita
 // llegan como base64 (~hasta 4-5 MB cada una), así que 8 MB es holgado.
 app.use(express.json({ limit: '8mb' }));

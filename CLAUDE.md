@@ -569,10 +569,11 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   raro — deja pasar y decide el server) y el backend la verifica SIEMPRE
   parseando los átomos del contenedor (`utils/videoDuration.js`, puro e
   isomorfo, con tests: moov→mvhd, magic bytes `ftyp`, tolerancia +1 s).
-  El body de Express sube a 36 MB SOLO en `/api/solicitudes` (server.js);
-  por eso el frontend manda cada video en su propio request. Reproductor
-  `<video controls>` en el modal de vista previa. El portal NO acepta videos
-  (solo fotos) — decisión de alcance del issue
+  El body de Express sube a 48 MB SOLO en `/api/solicitudes` y
+  `/api/portal/solicitudes` (server.js); por eso el frontend del equipo manda
+  cada video en su propio request. Reproductor `<video controls>` en el modal
+  de vista previa. **El portal también acepta video** (ver Portal de Clientes):
+  máximo UNO por radicación, junto a las fotos, mismas validaciones
 - **Tipos (#35)** — tabla administrable; los 11 del epic se siembran en
   `seed.js` (idempotente, no pisa ediciones del admin). Claves derivadas del
   label: `DERECHOS_DE_PETICION`, `SERVICIOS_PUBLICOS`,
@@ -677,10 +678,13 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   barrio + `ciudadInmueble`); dirección, ciudad y celular OBLIGATORIOS. La
   dirección compuesta (mismo orden de `buildOrigen`) encabeza `descripcion`
   ("Inmueble: …") y los componentes quedan en `data.inmueble` (para futura
-  referencia de pago / vínculo a Property). Hasta **5 fotos** por radicación
-  (solo `image/*`, 5 MB c/u, categoría FOTO, compresión client-side con el
-  mismo `imageCompress`); el cliente ve sus fotos en su timeline
-  (`meta.portal`), el equipo las ve como adjuntos normales. **#57:** acepta
+  referencia de pago / vínculo a Property). Hasta **5 archivos** por
+  radicación entre fotos (`image/*`, 5 MB c/u, categoría FOTO, compresión
+  client-side con el mismo `imageCompress`) y **máximo 1 video** (#58:
+  MP4/MOV, 1 min y 25 MB, categoría VIDEO — mismas validaciones server-side
+  del equipo; uno solo porque la radicación viaja en un único POST); el
+  cliente ve sus fotos/video en su timeline (`meta.portal`), el equipo los ve
+  como adjuntos normales (video con reproductor). **#57:** acepta
   `tipos: [...]` (checkboxes en el portal, un expediente por tipo, vinculados).
   **#55:** con tipo REPORTE_DE_PAGO exige `reportePago` (valor/fecha/medio) y
   `comprobante` (foto o PDF); el detalle del cliente expone la card del pago

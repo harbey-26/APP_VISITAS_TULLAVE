@@ -5,8 +5,9 @@ import { generatePortalToken } from '../utils/portalAuth.js';
 import { hashPassword } from '../utils/auth.js';
 import { sendTextEmail } from '../utils/gmail.js';
 import { notifyAdmins, sendPersonalNotification } from '../utils/notify.js';
-import { generarRadicado, LIMITE_ADJUNTO_BYTES, initTipoData, vincularGrupo } from './solicitud.controller.js';
-import { bytesRealesDataUrl, esPdfReal, IMAGENES_PERMITIDAS, nombreArchivoSeguro } from '../utils/dataUrl.js';
+import { generarRadicado, LIMITE_ADJUNTO_BYTES, LIMITE_VIDEO_BYTES, VIDEO_DURACION_MAX_SEG, initTipoData, vincularGrupo } from './solicitud.controller.js';
+import { bytesRealesDataUrl, esPdfReal, IMAGENES_PERMITIDAS, VIDEOS_PERMITIDOS, nombreArchivoSeguro } from '../utils/dataUrl.js';
+import { esVideoMp4Real, duracionVideoSegundos, formatoDuracion } from '../utils/videoDuration.js';
 import { REPORTE_MEDIOS } from '../utils/solicitudFlow.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 
@@ -398,13 +399,16 @@ export const getRespuestaAdjunto = async (req, res) => {
 
 // ── Radicación desde el portal ──
 
-// Fotos adjuntas en la radicación: SOLO imágenes, máximo 5 (decisión del
-// cliente, ago 2026), mismo límite de peso de los adjuntos del equipo.
+// Evidencia adjunta en la radicación: fotos y video, máximo 5 archivos en
+// total (decisión del cliente, ago 2026) de los cuales a lo sumo UN video
+// (#58: MP4/MOV, máx. 1 minuto y 25 MB — la radicación viaja en un solo POST,
+// más de un video no cabría en el body). Mismos límites del equipo.
 const fotoSchema = z.object({
     nombre: z.string().trim().min(1).max(200),
-    mimeType: z.string().trim().max(100).startsWith('image/', 'Solo se aceptan fotos'),
+    mimeType: z.string().trim().max(100)
+        .refine((m) => m.startsWith('image/') || VIDEOS_PERMITIDOS.includes(m), 'Solo se aceptan fotos o videos MP4/MOV'),
     size: z.coerce.number().int().positive(),
-    dataUrl: z.string().startsWith('data:image/', 'Solo se aceptan fotos'),
+    dataUrl: z.string().startsWith('data:', 'Adjunto inválido'),
 });
 
 // Dirección estructurada: MISMOS campos del contrato de arrendamiento
@@ -426,7 +430,7 @@ const crearSchema = z.object({
     conjuntoInmueble: z.string().trim().max(120).optional().nullable(),
     barrioInmueble: z.string().trim().max(120).optional().nullable(),
     ciudadInmueble: z.string().trim().min(2, 'Falta la ciudad').max(80),
-    adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 fotos').optional(),
+    adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 archivos entre fotos y video').optional(),
     // DP: el derecho de petición firmado — SOLO PDF (pedido del cliente)
     documentoPdf: z.object({
         nombre: z.string().trim().min(1).max(200),
@@ -489,15 +493,44 @@ export const crearSolicitud = async (req, res) => {
             if (!def || !def.activo) return res.status(400).json({ error: 'Tipo de solicitud no disponible.' });
         }
         const labelDe = (clave) => defs.find((d) => d.clave === clave)?.label || clave;
+        const nVideos = (parsed.adjuntos || []).filter((f) => f.mimeType.startsWith('video/')).length;
+        if (nVideos > 1) {
+            return res.status(400).json({ error: 'Solo se puede adjuntar un video por radicación.' });
+        }
         for (const f of parsed.adjuntos || []) {
-            if (!IMAGENES_PERMITIDAS.includes(f.mimeType)) {
-                return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP.` });
-            }
             const bytes = bytesRealesDataUrl(f.dataUrl);
-            if (bytes > LIMITE_ADJUNTO_BYTES) {
-                return res.status(400).json({
-                    error: `"${f.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
-                });
+            if (f.mimeType.startsWith('video/')) {
+                // #58: mismas reglas del equipo — MP4/MOV real, máx. 1 min y
+                // 25 MB. La duración se lee de los átomos del contenedor: la
+                // metadata del navegador la controla el cliente.
+                if (!VIDEOS_PERMITIDOS.includes(f.mimeType)) {
+                    return res.status(400).json({ error: `"${f.nombre}": solo se aceptan videos MP4 o MOV.` });
+                }
+                if (bytes > LIMITE_VIDEO_BYTES) {
+                    return res.status(400).json({
+                        error: `"${f.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por video es ${LIMITE_VIDEO_BYTES / 1024 / 1024} MB.`,
+                    });
+                }
+                const buf = Buffer.from(f.dataUrl.slice(f.dataUrl.indexOf(',') + 1), 'base64');
+                if (!esVideoMp4Real(buf)) {
+                    return res.status(400).json({ error: `"${f.nombre}" no es un video MP4/MOV válido.` });
+                }
+                const duracion = duracionVideoSegundos(buf);
+                if (duracion == null) {
+                    return res.status(400).json({ error: `No pudimos leer la duración de "${f.nombre}" — usa un video MP4 o MOV estándar.` });
+                }
+                if (duracion > VIDEO_DURACION_MAX_SEG + 1) { // +1 s de tolerancia por el redondeo del último frame
+                    return res.status(400).json({ error: `"${f.nombre}" dura ${formatoDuracion(duracion)} — el máximo es 1 minuto.` });
+                }
+            } else {
+                if (!IMAGENES_PERMITIDAS.includes(f.mimeType) || !f.dataUrl.startsWith('data:image/')) {
+                    return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP.` });
+                }
+                if (bytes > LIMITE_ADJUNTO_BYTES) {
+                    return res.status(400).json({
+                        error: `"${f.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por foto es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                    });
+                }
             }
             f.size = bytes; // se guarda el peso real, no el declarado
             f.nombre = nombreArchivoSeguro(f.nombre);
@@ -615,23 +648,28 @@ export const crearSolicitud = async (req, res) => {
             );
         }
 
-        // Adjuntos: las fotos van al expediente de reparaciones si lo hay (es
-        // su destino natural), si no al primero; el PDF del DP y el
+        // Adjuntos: las fotos y el video van al expediente de reparaciones si
+        // lo hay (es su destino natural), si no al primero; el PDF del DP y el
         // comprobante de pago van a SU expediente
         const solFotos = creadas.find((s) => s.tipo === 'REPARACIONES') || creadas[0];
         for (const f of parsed.adjuntos || []) {
+            const esVideo = f.mimeType.startsWith('video/');
             await prisma.solicitudAdjunto.create({
                 data: {
                     solicitudId: solFotos.id,
                     nombre: f.nombre,
                     mimeType: f.mimeType,
                     size: f.size,
-                    categoria: 'FOTO',
+                    categoria: esVideo ? 'VIDEO' : 'FOTO',
                     dataUrl: f.dataUrl,
                     subidoPor: creadaPor,
                 },
             });
-            await actuacionPortal(solFotos.id, 'ADJUNTO', `Adjuntó la foto "${f.nombre}"`, { portal: true, categoria: 'FOTO' });
+            await actuacionPortal(
+                solFotos.id, 'ADJUNTO',
+                `Adjuntó ${esVideo ? 'el video' : 'la foto'} "${f.nombre}"`,
+                { portal: true, categoria: esVideo ? 'VIDEO' : 'FOTO' },
+            );
         }
         if (parsed.documentoPdf) {
             const solDp = creadas.find((s) => s.tipo === 'DERECHOS_DE_PETICION');
@@ -664,11 +702,12 @@ export const crearSolicitud = async (req, res) => {
             await actuacionPortal(solPago.id, 'ADJUNTO', `Adjuntó el comprobante de pago "${parsed.comprobante.nombre}"`, { portal: true, categoria: 'COMPROBANTE' });
         }
 
-        const nFotos = (parsed.adjuntos || []).length;
+        const nFotos = (parsed.adjuntos || []).length - nVideos;
         const resumenTipos = tiposSel.map(labelDe).join(' + ');
+        const resumenAdjuntos = [nFotos && `${nFotos} foto(s)`, nVideos && `${nVideos} video`].filter(Boolean).join(' + ');
         notifyAdmins(
             creadas.length > 1 ? '📥 Nuevas solicitudes del portal' : '📥 Nueva solicitud del portal',
-            `${creadas.map((s) => s.radicado).join(', ')}: ${parsed.asunto} — ${parsed.nombre} (${resumenTipos})${nFotos ? ` · ${nFotos} foto(s)` : ''}`,
+            `${creadas.map((s) => s.radicado).join(', ')}: ${parsed.asunto} — ${parsed.nombre} (${resumenTipos})${resumenAdjuntos ? ` · ${resumenAdjuntos}` : ''}`,
         );
 
         const conActuaciones = await prisma.solicitud.findUnique({
