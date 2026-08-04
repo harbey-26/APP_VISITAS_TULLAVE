@@ -53,6 +53,39 @@ function MoneyInput({ value, onChange, disabled }) {
     );
 }
 
+// Convierte archivos del input en adjuntos listos para el endpoint (#39):
+// imágenes comprimidas, el resto como data URL directo con tope de 5 MB.
+// `categoria` puede ser fija o una función por archivo. Compartido entre el
+// panel de Documentos y el formulario de respuesta.
+async function archivosAAdjuntos(files, categoria, toast) {
+    const adjuntos = [];
+    for (const file of files) {
+        let dataUrl;
+        if (file.type.startsWith('image/')) {
+            dataUrl = await compressImage(file);
+        } else {
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error(`"${file.name}" supera los 5 MB permitidos.`);
+                continue;
+            }
+            dataUrl = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result);
+                r.onerror = reject;
+                r.readAsDataURL(file);
+            });
+        }
+        adjuntos.push({
+            nombre: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            size: file.size,
+            categoria: typeof categoria === 'function' ? categoria(file) : categoria,
+            dataUrl,
+        });
+    }
+    return adjuntos;
+}
+
 const TextArea = (props) => (
     <textarea
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -178,31 +211,7 @@ export default function SolicitudDetalle() {
         if (files.length === 0) return;
         setBusy(true);
         try {
-            const adjuntos = [];
-            for (const file of files) {
-                let dataUrl;
-                if (file.type.startsWith('image/')) {
-                    dataUrl = await compressImage(file);
-                } else {
-                    if (file.size > 5 * 1024 * 1024) {
-                        toast.error(`"${file.name}" supera los 5 MB permitidos.`);
-                        continue;
-                    }
-                    dataUrl = await new Promise((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload = () => resolve(r.result);
-                        r.onerror = reject;
-                        r.readAsDataURL(file);
-                    });
-                }
-                adjuntos.push({
-                    nombre: file.name,
-                    mimeType: file.type || 'application/octet-stream',
-                    size: file.size,
-                    categoria,
-                    dataUrl,
-                });
-            }
+            const adjuntos = await archivosAAdjuntos(files, categoria, toast);
             if (adjuntos.length === 0) return;
             const updated = await apiFetch(`/api/solicitudes/${id}/adjuntos`, { method: 'POST', body: { adjuntos } });
             setSol(updated);
@@ -398,25 +407,29 @@ export default function SolicitudDetalle() {
                         </div>
                     </div>
                     {sol.data?.respuesta ? (
-                        <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm">
-                            <p className="font-bold text-emerald-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Respuesta enviada</p>
-                            <p className="text-xs text-gray-600 mt-1">
-                                Por {sol.data.respuesta.medio.toLowerCase()} el {fechaCorta(sol.data.respuesta.fechaEnvio)}
-                            </p>
-                            <p className="text-gray-700 mt-2 whitespace-pre-wrap">{sol.data.respuesta.texto}</p>
-                            {sol.data.respuesta.adjuntos?.length > 0 && (
-                                <div className="mt-2 text-xs text-gray-600">
-                                    {sol.data.respuesta.adjuntos.map((a) => (
-                                        <p key={a.id} className="flex items-center gap-1">
-                                            <Paperclip className="w-3 h-3" /> {a.nombre}
-                                            <span className="text-gray-400">(en Documentos)</span>
-                                        </p>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <RespuestaEnviada respuesta={sol.data.respuesta} />
                     ) : !cerrada && (
                         <RespuestaForm id={id} sol={sol} onSaved={setSol} toast={toast} />
+                    )}
+                </div>
+            )}
+
+            {/* ── Respuesta al solicitante — todos los tipos (en DP va dentro
+                de su panel). Las respuestas formales (PDF) se adjuntan y se
+                envían por correo igual que en el derecho de petición. ── */}
+            {!dp && (sol.data?.respuesta || !cerrada) && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <p className="font-bold text-gray-900 mb-2">📨 Respuesta al solicitante</p>
+                    {sol.data?.respuesta ? (
+                        <RespuestaEnviada respuesta={sol.data.respuesta} />
+                    ) : (
+                        <>
+                            <p className="text-sm text-gray-500">
+                                Elabora la respuesta formal del expediente: puedes adjuntar documentos (PDF)
+                                y el sistema la envía al correo del solicitante.
+                            </p>
+                            <RespuestaForm id={id} sol={sol} onSaved={setSol} toast={toast} />
+                        </>
                     )}
                 </div>
             )}
@@ -743,10 +756,35 @@ export default function SolicitudDetalle() {
     );
 }
 
-// Respuesta del derecho de petición (#41): texto + medio + registro del envío
-// P1: con medio CORREO el SISTEMA envía el correo al solicitante (con los
-// adjuntos elegidos); los demás medios solo dejan constancia del envío hecho
-// por fuera.
+// Constancia de la respuesta ya enviada (la muestran el panel del DP y el
+// panel genérico de respuesta).
+function RespuestaEnviada({ respuesta }) {
+    return (
+        <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm">
+            <p className="font-bold text-emerald-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Respuesta enviada</p>
+            <p className="text-xs text-gray-600 mt-1">
+                Por {respuesta.medio.toLowerCase()} el {fechaCorta(respuesta.fechaEnvio)}
+            </p>
+            <p className="text-gray-700 mt-2 whitespace-pre-wrap">{respuesta.texto}</p>
+            {respuesta.adjuntos?.length > 0 && (
+                <div className="mt-2 text-xs text-gray-600">
+                    {respuesta.adjuntos.map((a) => (
+                        <p key={a.id} className="flex items-center gap-1">
+                            <Paperclip className="w-3 h-3" /> {a.nombre}
+                            <span className="text-gray-400">(en Documentos)</span>
+                        </p>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Respuesta al solicitante (#41, extendida a todos los tipos): texto + medio +
+// registro del envío. P1: con medio CORREO el SISTEMA envía el correo al
+// solicitante (con los adjuntos elegidos); los demás medios solo dejan
+// constancia del envío hecho por fuera. Los documentos formales (PDF) se
+// pueden subir directo desde aquí — quedan en el expediente y se marcan solos.
 function RespuestaForm({ id, sol, onSaved, toast }) {
     const [abierto, setAbierto] = useState(false);
     const [texto, setTexto] = useState('');
@@ -754,6 +792,33 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
     const [adjuntoIds, setAdjuntoIds] = useState([]);
     const [busy, setBusy] = useState(false);
     const email = (sol?.solicitanteEmail || '').trim();
+
+    const subirDocumentos = async (e) => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (files.length === 0) return;
+        setBusy(true);
+        try {
+            const adjuntos = await archivosAAdjuntos(
+                files,
+                (f) => (f.type === 'application/pdf' ? 'PDF' : 'FOTO'),
+                toast,
+            );
+            if (adjuntos.length === 0) return;
+            const previos = new Set((sol?.adjuntos || []).map((a) => a.id));
+            const updated = await apiFetch(`/api/solicitudes/${id}/adjuntos`, { method: 'POST', body: { adjuntos } });
+            onSaved(updated);
+            // Marcar los recién subidos como parte de la respuesta (máx. 3)
+            const nuevos = (updated.adjuntos || []).filter((a) => !previos.has(a.id)).map((a) => a.id);
+            setAdjuntoIds((prev) => [...prev, ...nuevos].slice(0, 3));
+            toast.success(`${adjuntos.length} documento(s) listo(s) para la respuesta`);
+        } catch (err) {
+            toast.error(friendlyError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     if (!abierto) {
         return (
             <Button size="sm" className="mt-3" onClick={() => setAbierto(true)}>
@@ -792,10 +857,23 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
                     <option value="OTRO">Otro (solo registrar)</option>
                 </Select>
             </Field>
-            {sol?.adjuntos?.length > 0 && (
-                <div className="rounded-xl bg-gray-50 p-3 text-xs text-gray-700">
-                    <p className="font-semibold mb-1">Documentos de la respuesta (máx. 3) — quedan en el expediente y el cliente los descarga desde su portal:</p>
-                    {sol.adjuntos.map((a) => (
+            <div className="rounded-xl bg-gray-50 p-3 text-xs text-gray-700">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="font-semibold">Documentos de la respuesta (máx. 3) — quedan en el expediente y el cliente los descarga desde su portal:</p>
+                    <label className={cn(
+                        'inline-flex items-center gap-1 font-bold px-2.5 py-1.5 rounded-lg flex-shrink-0',
+                        busy ? 'bg-gray-200 text-gray-400' : 'bg-brand-600 text-white hover:bg-brand-700 cursor-pointer',
+                    )}>
+                        <Paperclip className="w-3 h-3" /> Adjuntar PDF
+                        <input
+                            type="file" multiple className="hidden" disabled={busy}
+                            accept="application/pdf,image/*"
+                            onChange={subirDocumentos}
+                        />
+                    </label>
+                </div>
+                {sol?.adjuntos?.length > 0 ? (
+                    sol.adjuntos.map((a) => (
                         <label key={a.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -808,9 +886,11 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
                             />
                             <span className="truncate">{a.nombre}</span>
                         </label>
-                    ))}
-                </div>
-            )}
+                    ))
+                ) : (
+                    <p className="text-gray-400">Sin documentos aún — adjunta el PDF de la respuesta formal si lo tienes.</p>
+                )}
+            </div>
             {medio === 'CORREO' && (
                 email ? (
                     <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-900">

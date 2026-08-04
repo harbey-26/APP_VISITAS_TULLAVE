@@ -237,7 +237,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u) → actuaciones |
 | GET | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | Contenido (dataUrl) bajo demanda — los listados NO incluyen el dataUrl |
 | PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación, reporte de pago — transiciones de conciliación validadas con `puedeTransicionarReporte`) |
-| POST | `/api/solicitudes/:id/respuesta` | JWT | DP: registrar respuesta y su envío (fecha, medio) |
+| POST | `/api/solicitudes/:id/respuesta` | JWT | Registrar la respuesta al solicitante y su envío (fecha, medio). Con medio CORREO el sistema envía el email con hasta 3 adjuntos (PDF). Nació para DP pero aplica a todos los tipos (ago 2026) |
 | POST | `/api/solicitudes/:id/servicio-share` | JWT | Link público del PDF de la liquidación de servicio |
 | POST | `/api/solicitudes/:id/servicio-email` | JWT | PDF por correo (Gmail API, anti-duplicado 1 h) |
 | GET | `/api/solicitudes/public/:token/servicio-pdf` | **No** | PDF público de la liquidación de servicio |
@@ -605,6 +605,16 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   hermanos. Las fotos van al expediente de REPARACIONES si lo hay (si no, al
   primero); el PDF del DP y el comprobante de pago van a SU expediente. El tope
   del portal (10 radicaciones/día) cuenta un expediente por tipo
+- **Respuesta al solicitante (ago 2026)** — el panel "📨 Respuesta al
+  solicitante" de `SolicitudDetalle` aparece en TODOS los tipos (antes solo en
+  el DP, dentro de su panel legal): las respuestas a un requerimiento a veces
+  son documentos formales. El formulario permite **subir el PDF directamente**
+  ("Adjuntar PDF" — va al expediente con categoría PDF/FOTO y queda marcado
+  solo como documento de la respuesta, máx. 3) y con medio CORREO el sistema
+  envía el email al solicitante con los adjuntos. El backend
+  (`registrarRespuesta`) siempre fue genérico; la restricción era solo del
+  frontend. El portal ya mostraba `data.respuesta` con sus adjuntos
+  descargables para cualquier tipo
 - **Reporte de pago (#55, ago 2026)** — tipo `REPORTE_DE_PAGO` (sembrado):
   el arrendatario reporta un pago (valor, fecha, medio Nequi/Davivienda/
   transferencia/efectivo/otro, referencia) con **comprobante obligatorio**

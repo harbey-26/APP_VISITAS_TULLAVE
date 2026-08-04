@@ -735,7 +735,10 @@ export const updateData = async (req, res) => {
     }
 };
 
-// POST /api/solicitudes/:id/respuesta — DP (#41): registrar la respuesta.
+// POST /api/solicitudes/:id/respuesta — registrar la respuesta al solicitante.
+// Nació para el DP (#41) pero aplica a TODOS los tipos (ago 2026): las
+// respuestas a un requerimiento a veces son documentos formales (PDF) que se
+// adjuntan y se envían por correo.
 // P1: con medio CORREO el sistema ENVÍA el correo de verdad al solicitante
 // (con los adjuntos elegidos vía adjuntoIds) — antes solo dejaba constancia
 // y el envío era manual, lo que hacía creer que el sistema lo había mandado.
