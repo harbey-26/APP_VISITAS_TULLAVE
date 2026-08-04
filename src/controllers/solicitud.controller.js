@@ -5,6 +5,7 @@ import {
     puedeTransicionar, SOLICITUD_ESTADOS, ESTADOS_ABIERTOS,
     DP_TIPOS, DP_ALERTAS, vencimientoDP, nivelAlertaDP, urgenciaVencimiento,
     REPARACION_ORDEN,
+    REPORTE_MEDIOS, REPORTE_PAGO_ESTADOS, puedeTransicionarReporte,
 } from '../utils/solicitudFlow.js';
 import { hoyISO } from '../utils/incrementoCalc.js';
 import { calcularServicioPublico, validarServicioPublico } from '../utils/servicioPublicoCalc.js';
@@ -31,7 +32,9 @@ import { fechaCorta } from '../utils/fechaLetras.js';
 export const LIMITE_ADJUNTO_BYTES = 5 * 1024 * 1024;
 
 const solicitudSchema = z.object({
-    tipo: z.string().trim().min(1).max(60),
+    tipo: z.string().trim().min(1).max(60).optional(),
+    // #57: radicación múltiple — un expediente por tipo, vinculados (data.grupo)
+    tipos: z.array(z.string().trim().min(1).max(60)).min(1).max(5).optional(),
     prioridad: z.enum(['ALTA', 'MEDIA', 'BAJA']).optional(),
     medioIngreso: z.enum(['WHATSAPP', 'CORREO', 'LLAMADA', 'PRESENCIAL', 'PORTAL', 'OTRO']),
     asunto: z.string().trim().min(1, 'Falta el asunto').max(200),
@@ -239,73 +242,117 @@ export const getSolicitudes = async (req, res) => {
     }
 };
 
-// POST /api/solicitudes — radicar. Cualquier usuario autenticado.
+// Automatizaciones de NACIMIENTO por tipo: término legal del DP (#41), caso de
+// reparación (#36) y reporte de pago (#55). Exportada: la radicación del
+// Portal de Clientes usa las mismas. `extras` trae campos del tipo que llegan
+// con la radicación (dpTipo, reportePago).
+export function initTipoData(tipo, extras = {}) {
+    if (tipo === 'DERECHOS_DE_PETICION') {
+        const dpTipo = DP_TIPOS[extras?.dpTipo] ? extras.dpTipo : 'GENERAL';
+        const fechaRadicacion = hoyISO();
+        return {
+            fechaVencimiento: vencimientoDP(fechaRadicacion, dpTipo),
+            data: { derechoPeticion: { dpTipo, fechaRadicacion, alertasEnviadas: [] } },
+        };
+    }
+    if (tipo === 'REPARACIONES') {
+        return { fechaVencimiento: null, data: { reparacion: { subEstado: 'CASO_CREADO', cotizaciones: [] } } };
+    }
+    if (tipo === 'REPORTE_DE_PAGO') {
+        return { fechaVencimiento: null, data: { reportePago: { estado: 'REPORTADO', ...(extras?.reportePago || {}) } } };
+    }
+    return { fechaVencimiento: null, data: null };
+}
+
+// #57: enlaza los expedientes de una radicación múltiple — cada uno guarda el
+// grupo completo en data.grupo.radicados (incluido él mismo; el frontend se
+// filtra). Devuelve la descripción del vínculo para las actuaciones.
+export async function vincularGrupo(solicitudes) {
+    if (solicitudes.length < 2) return;
+    const radicados = solicitudes.map((s) => ({ id: s.id, radicado: s.radicado, tipo: s.tipo }));
+    for (const s of solicitudes) {
+        let data = {};
+        try { data = s.data ? JSON.parse(s.data) : {}; } catch { /* data corrupto */ }
+        data.grupo = { radicados };
+        await prisma.solicitud.update({ where: { id: s.id }, data: { data: JSON.stringify(data) } });
+        s.data = JSON.stringify(data);
+    }
+}
+
+// POST /api/solicitudes — radicar. Cualquier usuario autenticado. Con `tipos`
+// (#57) crea UN expediente por tipo — cada uno con su radicado, su máquina de
+// estados y sus términos propios — vinculados entre sí via data.grupo.
 export const createSolicitud = async (req, res) => {
     try {
         const parsed = solicitudSchema.parse(req.body);
+        const { tipos: tiposRaw, tipo: tipoUnico, ...base } = parsed;
+        const tipos = [...new Set((tiposRaw?.length ? tiposRaw : [tipoUnico]).filter(Boolean))];
+        if (!tipos.length) return res.status(400).json({ error: 'Falta el tipo de solicitud.' });
         const errorContrato = await validarContratoVinculado(parsed.contractId, req);
         if (errorContrato) return res.status(403).json({ error: errorContrato });
 
-        // Derecho de petición: el término legal nace con la radicación (#41)
-        let fechaVencimiento = parsed.fechaVencimiento || null;
-        let data = null;
-        if (parsed.tipo === 'DERECHOS_DE_PETICION') {
-            const dpTipo = DP_TIPOS[req.body?.dpTipo] ? req.body.dpTipo : 'GENERAL';
-            const fechaRadicacion = hoyISO();
-            fechaVencimiento = vencimientoDP(fechaRadicacion, dpTipo);
-            data = { derechoPeticion: { dpTipo, fechaRadicacion, alertasEnviadas: [] } };
-        }
-        if (parsed.tipo === 'REPARACIONES') {
-            data = { reparacion: { subEstado: 'CASO_CREADO', cotizaciones: [] } };
-        }
-
-        // Reintento por colisión del consecutivo (dos radicando a la vez)
-        let solicitud = null;
-        for (let intento = 0; intento < 5 && !solicitud; intento++) {
-            try {
-                solicitud = await prisma.solicitud.create({
-                    data: {
-                        ...parsed,
-                        radicado: await generarRadicado(),
-                        creadaPor: req.user.id,
-                        fechaVencimiento,
-                        data: data ? JSON.stringify(data) : null,
-                    },
-                    include: includeDetalle,
-                });
-            } catch (e) {
-                if (e.code !== 'P2002' || intento === 4) throw e;
+        const creadas = [];
+        for (const tipo of tipos) {
+            const init = initTipoData(tipo, req.body);
+            // Reintento por colisión del consecutivo (dos radicando a la vez)
+            let solicitud = null;
+            for (let intento = 0; intento < 5 && !solicitud; intento++) {
+                try {
+                    solicitud = await prisma.solicitud.create({
+                        data: {
+                            ...base,
+                            tipo,
+                            radicado: await generarRadicado(),
+                            creadaPor: req.user.id,
+                            // El término calculado del tipo (DP) manda sobre el manual
+                            fechaVencimiento: init.fechaVencimiento || base.fechaVencimiento || null,
+                            data: init.data ? JSON.stringify(init.data) : null,
+                        },
+                        include: includeDetalle,
+                    });
+                } catch (e) {
+                    if (e.code !== 'P2002' || intento === 4) throw e;
+                }
             }
+            creadas.push(solicitud);
         }
+        await vincularGrupo(creadas);
 
-        await registrarActuacion(
-            solicitud.id, 'CREACION',
-            `Solicitud radicada (${solicitud.radicado}) — ${solicitud.asunto}`,
-            req.user.id,
-        );
-        if (fechaVencimiento && parsed.tipo === 'DERECHOS_DE_PETICION') {
+        for (const solicitud of creadas) {
+            const hermanos = creadas.filter((s) => s.id !== solicitud.id).map((s) => s.radicado);
             await registrarActuacion(
-                solicitud.id, 'AUTOMATIZACION',
-                `Término legal calculado: vence el ${fechaCorta(fechaVencimiento)} (${DP_TIPOS[JSON.parse(solicitud.data).derechoPeticion.dpTipo].label}, días hábiles).`,
-            );
-        }
-        // P1: si viene con correo del cliente, avisarle que puede seguirla
-        // en el Portal de Clientes (fire-and-forget, no frena la respuesta)
-        if (solicitud.solicitanteEmail) enviarBienvenidaPortal(solicitud);
-
-        // Radicada con responsable de una vez → notificarle
-        if (solicitud.responsableId && solicitud.responsableId !== req.user.id) {
-            sendPersonalNotification(
-                solicitud.responsableId, '📋 Solicitud asignada',
-                `${solicitud.radicado}: ${solicitud.asunto} (${solicitud.solicitanteNombre})`,
-            ).catch(() => {});
-            await registrarActuacion(
-                solicitud.id, 'ASIGNACION',
-                `Asignada a ${solicitud.responsable?.name || 'un funcionario'}`,
+                solicitud.id, 'CREACION',
+                `Solicitud radicada (${solicitud.radicado}) — ${solicitud.asunto}` +
+                (hermanos.length ? ` · junto con ${hermanos.join(', ')}` : ''),
                 req.user.id,
             );
+            if (solicitud.tipo === 'DERECHOS_DE_PETICION' && solicitud.fechaVencimiento) {
+                const dpTipo = JSON.parse(solicitud.data).derechoPeticion.dpTipo;
+                await registrarActuacion(
+                    solicitud.id, 'AUTOMATIZACION',
+                    `Término legal calculado: vence el ${fechaCorta(solicitud.fechaVencimiento)} (${DP_TIPOS[dpTipo].label}, días hábiles).`,
+                );
+            }
         }
-        const conActuaciones = await prisma.solicitud.findUnique({ where: { id: solicitud.id }, include: includeDetalle });
+        // P1: si viene con correo del cliente, avisarle que puede seguirla en
+        // el Portal de Clientes (fire-and-forget; UNA bienvenida por radicación)
+        if (creadas[0].solicitanteEmail) enviarBienvenidaPortal(creadas[0]);
+
+        // Radicada con responsable de una vez → notificarle (un solo FCM)
+        if (base.responsableId && base.responsableId !== req.user.id) {
+            sendPersonalNotification(
+                base.responsableId, creadas.length > 1 ? '📋 Solicitudes asignadas' : '📋 Solicitud asignada',
+                `${creadas.map((s) => s.radicado).join(', ')}: ${creadas[0].asunto} (${creadas[0].solicitanteNombre})`,
+            ).catch(() => {});
+            for (const solicitud of creadas) {
+                await registrarActuacion(
+                    solicitud.id, 'ASIGNACION',
+                    `Asignada a ${solicitud.responsable?.name || 'un funcionario'}`,
+                    req.user.id,
+                );
+            }
+        }
+        const conActuaciones = await prisma.solicitud.findUnique({ where: { id: creadas[0].id }, include: includeDetalle });
         res.status(201).json(serialize(conActuaciones));
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -642,6 +689,36 @@ export const updateData = async (req, res) => {
             }).parse(req.body.terminacion);
             data.terminacion = { ...(data.terminacion || {}), ...cfg };
             cambios.push('Verificación de terminación actualizada.');
+        }
+
+        // #55: datos del pago reportado + ciclo de conciliación. El estado
+        // avanza solo por transiciones válidas (reportado → en verificación →
+        // conciliado/rechazado); el resultado queda con auditoría de quién.
+        if (req.body?.reportePago) {
+            const cfg = z.object({
+                valor: z.coerce.number().min(0).optional(),
+                fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+                medioPago: z.enum(Object.keys(REPORTE_MEDIOS)).optional(),
+                referencia: z.string().trim().max(80).optional().nullable(),
+                estado: z.enum(Object.keys(REPORTE_PAGO_ESTADOS)).optional(),
+                nota: z.string().trim().max(500).optional().nullable(),
+            }).parse(req.body.reportePago);
+            const prev = data.reportePago || { estado: 'REPORTADO' };
+            if (cfg.estado && cfg.estado !== prev.estado) {
+                if (!puedeTransicionarReporte(prev.estado || 'REPORTADO', cfg.estado)) {
+                    const de = REPORTE_PAGO_ESTADOS[prev.estado]?.label || prev.estado;
+                    const a = REPORTE_PAGO_ESTADOS[cfg.estado].label;
+                    return res.status(400).json({ error: `El reporte no puede pasar de "${de}" a "${a}".` });
+                }
+                cambios.push(`Reporte de pago: ${REPORTE_PAGO_ESTADOS[cfg.estado].label}${cfg.nota ? ` — ${cfg.nota}` : ''}.`);
+            }
+            data.reportePago = { ...prev, ...cfg };
+            if (cfg.estado && ['CONCILIADO', 'RECHAZADO'].includes(cfg.estado)) {
+                // El JWT no trae el nombre — buscarlo para la auditoría
+                const quien = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+                data.reportePago.resueltoPor = quien?.name || 'el equipo';
+                data.reportePago.resueltoAt = new Date().toISOString();
+            }
         }
 
         await prisma.solicitud.update({

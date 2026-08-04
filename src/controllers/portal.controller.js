@@ -5,11 +5,9 @@ import { generatePortalToken } from '../utils/portalAuth.js';
 import { hashPassword } from '../utils/auth.js';
 import { sendTextEmail } from '../utils/gmail.js';
 import { notifyAdmins, sendPersonalNotification } from '../utils/notify.js';
-import { generarRadicado, LIMITE_ADJUNTO_BYTES } from './solicitud.controller.js';
+import { generarRadicado, LIMITE_ADJUNTO_BYTES, initTipoData, vincularGrupo } from './solicitud.controller.js';
 import { bytesRealesDataUrl, esPdfReal, IMAGENES_PERMITIDAS, nombreArchivoSeguro } from '../utils/dataUrl.js';
-import { permitir, ipDe } from '../utils/rateLimit.js';
-import { DP_TIPOS, vencimientoDP } from '../utils/solicitudFlow.js';
-import { hoyISO } from '../utils/incrementoCalc.js';
+import { REPORTE_MEDIOS } from '../utils/solicitudFlow.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 
 // P1: Portal de Clientes — módulo AISLADO del resto de la API. Los clientes
@@ -347,6 +345,23 @@ function detalleCliente(sol, tipos) {
                 fechaVisitaTecnico: data.reparacion?.tecnico?.fechaProgramada || null,
             }
             : null,
+        // #57: expedientes radicados juntos — seguros de exponer: todos
+        // pertenecen al mismo correo verificado
+        grupo: (data.grupo?.radicados || [])
+            .filter((r) => r.id !== sol.id)
+            .map((r) => ({ id: r.id, radicado: r.radicado, tipoLabel: tipos[r.tipo] || r.tipo })),
+        // #55: el pago que el propio cliente reportó + su estado de
+        // conciliación. La nota del equipo solo sale si fue rechazado (motivo).
+        reportePago: sol.tipo === 'REPORTE_DE_PAGO' && data.reportePago
+            ? {
+                valor: data.reportePago.valor,
+                fechaPago: data.reportePago.fechaPago,
+                medioPago: data.reportePago.medioPago,
+                referencia: data.reportePago.referencia || null,
+                estado: data.reportePago.estado || 'REPORTADO',
+                nota: data.reportePago.estado === 'RECHAZADO' ? (data.reportePago.nota || null) : null,
+            }
+            : null,
     };
 }
 
@@ -396,7 +411,10 @@ const fotoSchema = z.object({
 // (contractTemplates.js) para identificar plenamente el inmueble — pedido
 // del cliente (ago 2026). Dirección, ciudad y celular son OBLIGATORIOS.
 const crearSchema = z.object({
-    tipo: z.string().trim().min(1).max(60),
+    tipo: z.string().trim().min(1).max(60).optional(),
+    // #57: radicación múltiple — el cliente marca varios tipos y se crea un
+    // expediente por cada uno, vinculados entre sí
+    tipos: z.array(z.string().trim().min(1).max(60)).min(1, 'Selecciona al menos un tipo').max(5, 'Máximo 5 tipos por radicación').optional(),
     asunto: z.string().trim().min(3, 'Cuéntanos el asunto').max(200),
     descripcion: z.string().trim().max(3000).optional().nullable(),
     nombre: z.string().trim().min(2, 'Falta tu nombre').max(160),
@@ -414,6 +432,18 @@ const crearSchema = z.object({
         nombre: z.string().trim().min(1).max(200),
         size: z.coerce.number().int().positive(),
         dataUrl: z.string().startsWith('data:application/pdf', 'El documento debe ser un PDF'),
+    }).optional().nullable(),
+    // #55: reporte de pago del arrendatario — datos del pago + comprobante
+    reportePago: z.object({
+        valor: z.coerce.number().positive('Falta el valor pagado'),
+        fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Falta la fecha del pago'),
+        medioPago: z.enum(Object.keys(REPORTE_MEDIOS), { errorMap: () => ({ message: 'Falta el medio de pago' }) }),
+        referencia: z.string().trim().max(80).optional().nullable(),
+    }).optional().nullable(),
+    comprobante: z.object({
+        nombre: z.string().trim().min(1).max(200),
+        size: z.coerce.number().int().positive(),
+        dataUrl: z.string().startsWith('data:', 'Comprobante inválido'),
     }).optional().nullable(),
 });
 
@@ -441,16 +471,24 @@ export function direccionCompletaInmueble(d) {
 export const crearSolicitud = async (req, res) => {
     try {
         const parsed = crearSchema.parse(req.body);
-        // Anti-abuso: tope de radicaciones por cliente en 24 h
+        // #57: uno o varios tipos → un expediente por tipo
+        const tiposSel = [...new Set((parsed.tipos?.length ? parsed.tipos : [parsed.tipo]).filter(Boolean))];
+        if (!tiposSel.length) return res.status(400).json({ error: 'Selecciona al menos un tipo de solicitud.' });
+        // Anti-abuso: tope de radicaciones por cliente en 24 h — la radicación
+        // múltiple cuenta un expediente por tipo
         const ultimas24h = (await solicitudesDe(req.portal.email))
             .filter((s) => new Date(s.createdAt) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length;
-        if (ultimas24h >= MAX_SOLICITUDES_DIA) {
+        if (ultimas24h + tiposSel.length > MAX_SOLICITUDES_DIA) {
             return res.status(429).json({
-                error: `Ya radicaste ${MAX_SOLICITUDES_DIA} solicitudes hoy. Si necesitas registrar otra, comunícate con nosotros.`,
+                error: `Con esta radicación superarías las ${MAX_SOLICITUDES_DIA} solicitudes por día. Si necesitas registrar otra, comunícate con nosotros.`,
             });
         }
-        const tipoDef = await prisma.solicitudTipo.findUnique({ where: { clave: parsed.tipo } });
-        if (!tipoDef || !tipoDef.activo) return res.status(400).json({ error: 'Tipo de solicitud no disponible.' });
+        const defs = await prisma.solicitudTipo.findMany({ where: { clave: { in: tiposSel } } });
+        for (const t of tiposSel) {
+            const def = defs.find((d) => d.clave === t);
+            if (!def || !def.activo) return res.status(400).json({ error: 'Tipo de solicitud no disponible.' });
+        }
+        const labelDe = (clave) => defs.find((d) => d.clave === clave)?.label || clave;
         for (const f of parsed.adjuntos || []) {
             if (!IMAGENES_PERMITIDAS.includes(f.mimeType)) {
                 return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP.` });
@@ -465,7 +503,7 @@ export const crearSolicitud = async (req, res) => {
             f.nombre = nombreArchivoSeguro(f.nombre);
         }
         if (parsed.documentoPdf) {
-            if (parsed.tipo !== 'DERECHOS_DE_PETICION') {
+            if (!tiposSel.includes('DERECHOS_DE_PETICION')) {
                 return res.status(400).json({ error: 'El documento PDF solo aplica para derechos de petición.' });
             }
             const bytesPdf = bytesRealesDataUrl(parsed.documentoPdf.dataUrl);
@@ -479,6 +517,31 @@ export const crearSolicitud = async (req, res) => {
             parsed.documentoPdf.nombre = nombreArchivoSeguro(parsed.documentoPdf.nombre);
         }
 
+        // #55: el reporte de pago exige los datos del pago y su comprobante
+        // (imagen JPG/PNG/WEBP o PDF real, mismo límite de peso)
+        const esReporte = tiposSel.includes('REPORTE_DE_PAGO');
+        if (esReporte && !parsed.reportePago) {
+            return res.status(400).json({ error: 'Faltan los datos del pago (valor, fecha y medio de pago).' });
+        }
+        if (esReporte && !parsed.comprobante) {
+            return res.status(400).json({ error: 'Adjunta el comprobante del pago (foto o PDF).' });
+        }
+        if (parsed.comprobante) {
+            if (!esReporte) return res.status(400).json({ error: 'El comprobante solo aplica para reportes de pago.' });
+            const bytes = bytesRealesDataUrl(parsed.comprobante.dataUrl);
+            if (bytes > LIMITE_ADJUNTO_BYTES) {
+                return res.status(400).json({ error: `El comprobante pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.` });
+            }
+            const mime = parsed.comprobante.dataUrl.slice(5, parsed.comprobante.dataUrl.indexOf(';'));
+            const esPdf = mime === 'application/pdf' && esPdfReal(parsed.comprobante.dataUrl);
+            if (!esPdf && !IMAGENES_PERMITIDAS.includes(mime)) {
+                return res.status(400).json({ error: 'El comprobante debe ser una foto (JPG, PNG o WEBP) o un PDF.' });
+            }
+            parsed.comprobante.size = bytes;
+            parsed.comprobante.mimeType = esPdf ? 'application/pdf' : mime;
+            parsed.comprobante.nombre = nombreArchivoSeguro(parsed.comprobante.nombre);
+        }
+
         // La dirección compuesta va al inicio de la descripción (visible para
         // el equipo sin cambios en su UI) y los componentes sueltos quedan en
         // data.inmueble — de ahí saldrá la referencia de pago / vínculos
@@ -489,18 +552,7 @@ export const crearSolicitud = async (req, res) => {
             parsed.descripcion || null,
         ].filter(Boolean).join('\n\n');
 
-        // Mismas automatizaciones de nacimiento que la radicación del equipo
-        let fechaVencimiento = null;
-        let data = {};
-        if (parsed.tipo === 'DERECHOS_DE_PETICION') {
-            const fechaRadicacion = hoyISO();
-            fechaVencimiento = vencimientoDP(fechaRadicacion, 'GENERAL');
-            data.derechoPeticion = { dpTipo: 'GENERAL', fechaRadicacion, alertasEnviadas: [] };
-        }
-        if (parsed.tipo === 'REPARACIONES') {
-            data.reparacion = { subEstado: 'CASO_CREADO', cotizaciones: [] };
-        }
-        data.inmueble = {
+        const inmueble = {
             direccionInmueble: parsed.direccionInmueble,
             torreInmueble: parsed.torreInmueble || '',
             aptoInmueble: parsed.aptoInmueble || '',
@@ -510,40 +562,67 @@ export const crearSolicitud = async (req, res) => {
             direccionCompleta,
         };
 
+        // Un expediente por tipo, con las MISMAS automatizaciones de
+        // nacimiento de la radicación del equipo (initTipoData)
         const creadaPor = await portalUserId();
-        let solicitud = null;
-        for (let intento = 0; intento < 5 && !solicitud; intento++) {
-            try {
-                solicitud = await prisma.solicitud.create({
-                    data: {
-                        radicado: await generarRadicado(),
-                        tipo: parsed.tipo,
-                        medioIngreso: 'PORTAL',
-                        asunto: parsed.asunto,
-                        descripcion,
-                        solicitanteNombre: parsed.nombre,
-                        solicitanteTipo: parsed.solicitanteTipo || null,
-                        solicitanteTelefono: parsed.telefono || null,
-                        solicitanteEmail: req.portal.email,
-                        creadaPor,
-                        fechaVencimiento,
-                        data: data ? JSON.stringify(data) : null,
-                    },
-                });
-            } catch (e) {
-                if (e.code !== 'P2002' || intento === 4) throw e;
+        const creadas = [];
+        for (const tipo of tiposSel) {
+            const init = initTipoData(tipo, {
+                reportePago: parsed.reportePago
+                    ? {
+                        valor: parsed.reportePago.valor,
+                        fechaPago: parsed.reportePago.fechaPago,
+                        medioPago: parsed.reportePago.medioPago,
+                        referencia: parsed.reportePago.referencia || null,
+                    }
+                    : undefined,
+            });
+            const data = { ...(init.data || {}), inmueble };
+            let solicitud = null;
+            for (let intento = 0; intento < 5 && !solicitud; intento++) {
+                try {
+                    solicitud = await prisma.solicitud.create({
+                        data: {
+                            radicado: await generarRadicado(),
+                            tipo,
+                            medioIngreso: 'PORTAL',
+                            asunto: parsed.asunto,
+                            descripcion,
+                            solicitanteNombre: parsed.nombre,
+                            solicitanteTipo: parsed.solicitanteTipo || null,
+                            solicitanteTelefono: parsed.telefono || null,
+                            solicitanteEmail: req.portal.email,
+                            creadaPor,
+                            fechaVencimiento: init.fechaVencimiento || null,
+                            data: JSON.stringify(data),
+                        },
+                    });
+                } catch (e) {
+                    if (e.code !== 'P2002' || intento === 4) throw e;
+                }
             }
+            creadas.push(solicitud);
+        }
+        await vincularGrupo(creadas);
+
+        for (const solicitud of creadas) {
+            const hermanos = creadas.filter((s) => s.id !== solicitud.id).map((s) => s.radicado);
+            await actuacionPortal(
+                solicitud.id, 'CREACION',
+                `Solicitud radicada (${solicitud.radicado}) desde el Portal de Clientes — ${solicitud.asunto}` +
+                (hermanos.length ? ` · junto con ${hermanos.join(', ')}` : ''),
+                { portal: true },
+            );
         }
 
-        await actuacionPortal(
-            solicitud.id, 'CREACION',
-            `Solicitud radicada (${solicitud.radicado}) desde el Portal de Clientes — ${solicitud.asunto}`,
-            { portal: true },
-        );
+        // Adjuntos: las fotos van al expediente de reparaciones si lo hay (es
+        // su destino natural), si no al primero; el PDF del DP y el
+        // comprobante de pago van a SU expediente
+        const solFotos = creadas.find((s) => s.tipo === 'REPARACIONES') || creadas[0];
         for (const f of parsed.adjuntos || []) {
             await prisma.solicitudAdjunto.create({
                 data: {
-                    solicitudId: solicitud.id,
+                    solicitudId: solFotos.id,
                     nombre: f.nombre,
                     mimeType: f.mimeType,
                     size: f.size,
@@ -552,12 +631,13 @@ export const crearSolicitud = async (req, res) => {
                     subidoPor: creadaPor,
                 },
             });
-            await actuacionPortal(solicitud.id, 'ADJUNTO', `Adjuntó la foto "${f.nombre}"`, { portal: true, categoria: 'FOTO' });
+            await actuacionPortal(solFotos.id, 'ADJUNTO', `Adjuntó la foto "${f.nombre}"`, { portal: true, categoria: 'FOTO' });
         }
         if (parsed.documentoPdf) {
+            const solDp = creadas.find((s) => s.tipo === 'DERECHOS_DE_PETICION');
             await prisma.solicitudAdjunto.create({
                 data: {
-                    solicitudId: solicitud.id,
+                    solicitudId: solDp.id,
                     nombre: parsed.documentoPdf.nombre,
                     mimeType: 'application/pdf',
                     size: parsed.documentoPdf.size,
@@ -566,16 +646,33 @@ export const crearSolicitud = async (req, res) => {
                     subidoPor: creadaPor,
                 },
             });
-            await actuacionPortal(solicitud.id, 'ADJUNTO', `Adjuntó el derecho de petición "${parsed.documentoPdf.nombre}" (PDF)`, { portal: true, categoria: 'PDF' });
+            await actuacionPortal(solDp.id, 'ADJUNTO', `Adjuntó el derecho de petición "${parsed.documentoPdf.nombre}" (PDF)`, { portal: true, categoria: 'PDF' });
         }
+        if (parsed.comprobante) {
+            const solPago = creadas.find((s) => s.tipo === 'REPORTE_DE_PAGO');
+            await prisma.solicitudAdjunto.create({
+                data: {
+                    solicitudId: solPago.id,
+                    nombre: parsed.comprobante.nombre,
+                    mimeType: parsed.comprobante.mimeType,
+                    size: parsed.comprobante.size,
+                    categoria: 'COMPROBANTE',
+                    dataUrl: parsed.comprobante.dataUrl,
+                    subidoPor: creadaPor,
+                },
+            });
+            await actuacionPortal(solPago.id, 'ADJUNTO', `Adjuntó el comprobante de pago "${parsed.comprobante.nombre}"`, { portal: true, categoria: 'COMPROBANTE' });
+        }
+
         const nFotos = (parsed.adjuntos || []).length;
+        const resumenTipos = tiposSel.map(labelDe).join(' + ');
         notifyAdmins(
-            '📥 Nueva solicitud del portal',
-            `${solicitud.radicado}: ${solicitud.asunto} — ${parsed.nombre} (${tipoDef.label})${nFotos ? ` · ${nFotos} foto(s)` : ''}`,
+            creadas.length > 1 ? '📥 Nuevas solicitudes del portal' : '📥 Nueva solicitud del portal',
+            `${creadas.map((s) => s.radicado).join(', ')}: ${parsed.asunto} — ${parsed.nombre} (${resumenTipos})${nFotos ? ` · ${nFotos} foto(s)` : ''}`,
         );
 
         const conActuaciones = await prisma.solicitud.findUnique({
-            where: { id: solicitud.id },
+            where: { id: creadas[0].id },
             include: { actuaciones: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
         });
         res.status(201).json(detalleCliente(conActuaciones, await tiposMap()));

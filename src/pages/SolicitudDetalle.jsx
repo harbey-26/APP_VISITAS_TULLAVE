@@ -7,6 +7,7 @@ import {
     SOLICITUD_ESTADOS, TRANSICIONES, PRIORIDADES, MEDIOS_INGRESO,
     SOLICITANTE_TIPOS, ACTUACION_TIPOS, ADJUNTO_CATEGORIAS, DP_TIPOS, DP_ALERTAS,
     URGENCIAS, REPARACION_PASOS,
+    REPORTE_MEDIOS, REPORTE_PAGO_ESTADOS, TRANSICIONES_REPORTE,
 } from '../utils/solicitudFlow.js';
 import { calcularServicioPublico } from '../utils/servicioPublicoCalc.js';
 import { downloadServicioPublicoPdf } from '../utils/servicioPublicoPdf.js';
@@ -243,6 +244,8 @@ export default function SolicitudDetalle() {
     const rep = sol.data?.reparacion;
     const sp = sol.data?.servicioPublico || {};
     const spCalc = calcularServicioPublico(sp);
+    const rp = sol.tipo === 'REPORTE_DE_PAGO' ? (sol.data?.reportePago || { estado: 'REPORTADO' }) : null;
+    const grupo = (sol.data?.grupo?.radicados || []).filter((r) => r.id !== sol.id);
 
     return (
         <div className="p-4 lg:p-8 max-w-4xl mx-auto pb-24 lg:pb-8 space-y-4">
@@ -284,6 +287,19 @@ export default function SolicitudDetalle() {
                         {sol.fechaVencimiento && <p><span className="font-semibold">Vence:</span> {fechaCorta(sol.fechaVencimiento)}</p>}
                         <p><span className="font-semibold">Radicó:</span> {sol.creador?.name}</p>
                     </div>
+
+                    {/* #57: expedientes de la misma radicación múltiple */}
+                    {grupo.length > 0 && (
+                        <div className="mt-3 flex items-center gap-2 flex-wrap text-xs text-gray-500">
+                            <span className="font-semibold">Radicada junto con:</span>
+                            {grupo.map((g) => (
+                                <Link key={g.id} to={`/solicitudes/${g.id}`}
+                                    className="font-mono font-bold text-brand-600 hover:text-brand-800 bg-brand-50 rounded-lg px-2 py-0.5">
+                                    {g.radicado}
+                                </Link>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Portal de Clientes por WhatsApp (ago 2026): invita al
                         solicitante al portal. Con correo registrado el mensaje
@@ -337,6 +353,15 @@ export default function SolicitudDetalle() {
                     )}
                 </div>
             </div>
+
+            {/* ── Automatización: Reporte de pago (#55) ── */}
+            {rp && (
+                <ReportePagoPanel
+                    rp={rp}
+                    disabled={cerrada || busy}
+                    onSave={(valores) => patchData('reportePago', valores)}
+                />
+            )}
 
             {/* ── Automatización: Derechos de petición (#41) ── */}
             {dp && (
@@ -807,6 +832,102 @@ function RespuestaForm({ id, sol, onSaved, toast }) {
 }
 
 // Cotizaciones de la reparación (#36)
+// #55: datos del pago reportado + ciclo de conciliación. Guardado explícito
+// (mismo criterio del formulario de servicios: guardar en blur pierde campos).
+// Las transiciones de estado van con los botones; conciliar o rechazar pide
+// una nota opcional (obligatoria de facto al rechazar: es el motivo que ve el
+// cliente en el portal).
+function ReportePagoPanel({ rp, disabled, onSave }) {
+    const [f, setF] = useState({
+        valor: rp.valor ?? '',
+        fechaPago: rp.fechaPago || '',
+        medioPago: rp.medioPago || 'OTRO',
+        referencia: rp.referencia || '',
+    });
+    const [accion, setAccion] = useState(null); // { estado, nota } — conciliar/rechazar
+    const est = REPORTE_PAGO_ESTADOS[rp.estado] || REPORTE_PAGO_ESTADOS.REPORTADO;
+    const destinos = TRANSICIONES_REPORTE[rp.estado] || [];
+    const editado = String(f.valor) !== String(rp.valor ?? '') || f.fechaPago !== (rp.fechaPago || '')
+        || f.medioPago !== (rp.medioPago || 'OTRO') || f.referencia !== (rp.referencia || '');
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="font-bold text-gray-900">🧾 Reporte de pago</p>
+                <Badge className={est.badge}>{est.label}</Badge>
+            </div>
+            <div className="grid sm:grid-cols-4 gap-3">
+                <Field label="Valor pagado">
+                    <MoneyInput disabled={disabled} value={f.valor} onChange={(v) => setF({ ...f, valor: v })} />
+                </Field>
+                <Field label="Fecha del pago">
+                    <Input type="date" disabled={disabled} value={f.fechaPago} onChange={(e) => setF({ ...f, fechaPago: e.target.value })} />
+                </Field>
+                <Field label="Medio de pago">
+                    <Select disabled={disabled} value={f.medioPago} onChange={(e) => setF({ ...f, medioPago: e.target.value })}>
+                        {Object.entries(REPORTE_MEDIOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </Select>
+                </Field>
+                <Field label="N° referencia">
+                    <Input disabled={disabled} maxLength={80} value={f.referencia} onChange={(e) => setF({ ...f, referencia: e.target.value })} />
+                </Field>
+            </div>
+            {editado && !disabled && (
+                <Button size="sm" className="mt-2" onClick={() => onSave({
+                    valor: Number(f.valor) || 0,
+                    fechaPago: f.fechaPago || undefined,
+                    medioPago: f.medioPago,
+                    referencia: f.referencia || null,
+                })}>
+                    Guardar datos del pago
+                </Button>
+            )}
+
+            {rp.resueltoPor && (
+                <p className="mt-3 text-xs text-gray-500">
+                    {est.label} por <b>{rp.resueltoPor}</b> el {formatDateTime(rp.resueltoAt)}
+                    {rp.nota ? <> — {rp.nota}</> : null}
+                </p>
+            )}
+
+            {!disabled && destinos.length > 0 && (
+                accion ? (
+                    <div className="mt-3 bg-gray-50 rounded-xl p-3">
+                        <Field label={accion.estado === 'RECHAZADO'
+                            ? 'Motivo del rechazo (el cliente lo verá en el portal)'
+                            : 'Nota de la conciliación (opcional)'}>
+                            <TextArea rows={2} maxLength={500} value={accion.nota} autoFocus
+                                onChange={(e) => setAccion({ ...accion, nota: e.target.value })} />
+                        </Field>
+                        <div className="flex gap-2 mt-2">
+                            <Button size="sm" variant={accion.estado === 'RECHAZADO' ? 'danger' : 'primary'}
+                                disabled={accion.estado === 'RECHAZADO' && !accion.nota.trim()}
+                                onClick={() => { onSave({ estado: accion.estado, nota: accion.nota.trim() || null }); setAccion(null); }}>
+                                Confirmar {REPORTE_PAGO_ESTADOS[accion.estado].label.toLowerCase()}
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => setAccion(null)}>Cancelar</Button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {destinos.map((destino) => (
+                            <Button key={destino} size="sm"
+                                variant={destino === 'CONCILIADO' ? 'primary' : destino === 'RECHAZADO' ? 'danger' : 'secondary'}
+                                onClick={() => ['CONCILIADO', 'RECHAZADO'].includes(destino)
+                                    ? setAccion({ estado: destino, nota: '' })
+                                    : onSave({ estado: destino })}>
+                                {destino === 'EN_VERIFICACION' && ['CONCILIADO', 'RECHAZADO'].includes(rp.estado)
+                                    ? 'Reabrir verificación'
+                                    : REPORTE_PAGO_ESTADOS[destino].label}
+                            </Button>
+                        ))}
+                    </div>
+                )
+            )}
+        </div>
+    );
+}
+
 function CotizacionesEditor({ rep, disabled, onSave }) {
     const [nueva, setNueva] = useState(null); // { proveedor, monto }
     const cotizaciones = rep.cotizaciones || [];

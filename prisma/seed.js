@@ -25,6 +25,7 @@ async function seedSolicitudTipos() {
         'Reparaciones', 'Servicios públicos', 'Derechos de petición', 'PQRS',
         'Terminación de contrato', 'Cobro de penalidades', 'Autorizaciones',
         'Certificaciones', 'Quejas', 'Consultas generales', 'Otras',
+        'Reporte de pago', // #55: el arrendatario reporta un pago con comprobante
     ];
     const clavePara = (label) => label
         .normalize('NFD').replace(/[̀-ͯ]/g, '')

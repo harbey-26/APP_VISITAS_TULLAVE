@@ -3,6 +3,7 @@ import {
     TRANSICIONES, puedeTransicionar, ESTADOS_ABIERTOS, SOLICITUD_ESTADOS,
     vencimientoDP, nivelAlertaDP, urgenciaVencimiento, compararBandeja,
     pasoReparacionSiguiente,
+    REPORTE_PAGO_ESTADOS, TRANSICIONES_REPORTE, puedeTransicionarReporte,
 } from '../src/utils/solicitudFlow.js';
 
 describe('máquina de estados (#33)', () => {
@@ -81,5 +82,27 @@ describe('pasos de reparación (#36)', () => {
         expect(pasoReparacionSiguiente('CASO_CREADO')).toBe('FOTOS_ADJUNTAS');
         expect(pasoReparacionSiguiente('TECNICO_ASIGNADO')).toBe('REPARACION_FINALIZADA');
         expect(pasoReparacionSiguiente('REPARACION_FINALIZADA')).toBeNull();
+    });
+});
+
+describe('reporte de pago (#55)', () => {
+    it('el flujo feliz avanza en orden', () => {
+        expect(puedeTransicionarReporte('REPORTADO', 'EN_VERIFICACION')).toBe(true);
+        expect(puedeTransicionarReporte('EN_VERIFICACION', 'CONCILIADO')).toBe(true);
+        expect(puedeTransicionarReporte('EN_VERIFICACION', 'RECHAZADO')).toBe(true);
+    });
+    it('no permite saltar de reportado al resultado', () => {
+        expect(puedeTransicionarReporte('REPORTADO', 'CONCILIADO')).toBe(false);
+        expect(puedeTransicionarReporte('REPORTADO', 'RECHAZADO')).toBe(false);
+    });
+    it('una conciliación equivocada se corrige volviendo a verificación', () => {
+        expect(puedeTransicionarReporte('CONCILIADO', 'EN_VERIFICACION')).toBe(true);
+        expect(puedeTransicionarReporte('RECHAZADO', 'EN_VERIFICACION')).toBe(true);
+        expect(puedeTransicionarReporte('CONCILIADO', 'RECHAZADO')).toBe(false);
+    });
+    it('todo destino declarado existe en el catálogo', () => {
+        for (const destinos of Object.values(TRANSICIONES_REPORTE)) {
+            for (const d of destinos) expect(REPORTE_PAGO_ESTADOS[d]).toBeDefined();
+        }
     });
 });

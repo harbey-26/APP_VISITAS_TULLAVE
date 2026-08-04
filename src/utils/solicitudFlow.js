@@ -64,6 +64,7 @@ export const ADJUNTO_CATEGORIAS = {
     ACTA: 'Acta',
     CORREO: 'Correo',
     PDF: 'Documento PDF',
+    COMPROBANTE: 'Comprobante de pago', // #55
     OTRO: 'Otro',
 };
 
@@ -159,6 +160,37 @@ export function compararBandeja(a, b, hoy) {
     if (fa !== fb) return fa.localeCompare(fb);
     return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
 }
+
+// ── Reporte de pago del arrendatario (#55) ──
+// El arrendatario reporta un pago con su comprobante; el equipo lo verifica y
+// lo concilia contra la cartera. El ciclo vive en data.reportePago.estado,
+// sobre la máquina de estados general del expediente.
+export const REPORTE_MEDIOS = {
+    NEQUI: 'Nequi',
+    DAVIVIENDA: 'Davivienda',
+    TRANSFERENCIA: 'Transferencia bancaria',
+    EFECTIVO: 'Efectivo',
+    OTRO: 'Otro',
+};
+
+export const REPORTE_PAGO_ESTADOS = {
+    REPORTADO: { label: 'Reportado', badge: 'bg-yellow-100 text-yellow-700', orden: 0 },
+    EN_VERIFICACION: { label: 'En verificación', badge: 'bg-blue-100 text-blue-700', orden: 1 },
+    CONCILIADO: { label: 'Conciliado', badge: 'bg-emerald-100 text-emerald-700', orden: 2 },
+    RECHAZADO: { label: 'Rechazado', badge: 'bg-red-100 text-red-700', orden: 2 },
+};
+
+// Mismo criterio de la máquina general: avanzar en orden, retroceder un paso
+// (corregir una conciliación equivocada vuelve a "En verificación"), sin saltos.
+export const TRANSICIONES_REPORTE = {
+    REPORTADO: ['EN_VERIFICACION'],
+    EN_VERIFICACION: ['CONCILIADO', 'RECHAZADO', 'REPORTADO'],
+    CONCILIADO: ['EN_VERIFICACION'],
+    RECHAZADO: ['EN_VERIFICACION'],
+};
+
+export const puedeTransicionarReporte = (desde, hacia) =>
+    (TRANSICIONES_REPORTE[desde] || []).includes(hacia);
 
 // ── Sub-estados del flujo de reparaciones (#36) ──
 export const REPARACION_PASOS = [

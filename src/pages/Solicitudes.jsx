@@ -36,7 +36,7 @@ function formatDateTime(iso) {
 }
 
 const FORM_VACIO = {
-    tipo: '', prioridad: 'MEDIA', medioIngreso: 'WHATSAPP', asunto: '',
+    tipos: [], prioridad: 'MEDIA', medioIngreso: 'WHATSAPP', asunto: '',
     descripcion: '', solicitanteNombre: '', solicitanteTipo: 'ARRENDATARIO',
     solicitanteTelefono: '', solicitanteEmail: '', propertyId: '', contractId: '',
     responsableId: '', dpTipo: 'GENERAL',
@@ -121,7 +121,7 @@ export default function Solicitudes() {
     ].filter(Boolean).join(', ');
     const contratosVigentes = useMemo(() => {
         let lista = contratos.filter((c) => ['APPROVED', 'SENT'].includes(c.status));
-        if (form?.tipo === 'TERMINACION_DE_CONTRATO') lista = lista.filter((c) => c.type === 'ARRENDAMIENTO');
+        if (form?.tipos?.includes('TERMINACION_DE_CONTRATO')) lista = lista.filter((c) => c.type === 'ARRENDAMIENTO');
         const q = normaliza(buscaContrato);
         if (q) {
             lista = lista.filter((c) => normaliza(
@@ -129,7 +129,7 @@ export default function Solicitudes() {
             ).includes(q));
         }
         return lista;
-    }, [contratos, form?.tipo, buscaContrato]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [contratos, form?.tipos, buscaContrato]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const vincularContrato = (contractId) => {
         const c = contratos.find((x) => String(x.id) === String(contractId));
@@ -180,9 +180,11 @@ export default function Solicitudes() {
             for (const k of ['propertyId', 'contractId', 'responsableId']) {
                 body[k] = body[k] ? Number(body[k]) : null;
             }
-            if (form.tipo !== 'DERECHOS_DE_PETICION') delete body.dpTipo;
+            if (!form.tipos.includes('DERECHOS_DE_PETICION')) delete body.dpTipo;
             const creada = await apiFetch('/api/solicitudes', { method: 'POST', body });
-            toast.success(`Radicada: ${creada.radicado}`);
+            toast.success(form.tipos.length > 1
+                ? `Radicadas ${form.tipos.length} solicitudes (${creada.radicado} y más)`
+                : `Radicada: ${creada.radicado}`);
             setForm(null);
             navigate(`/solicitudes/${creada.id}`);
         } catch (err) {
@@ -268,7 +270,7 @@ export default function Solicitudes() {
                             <Settings2 className="w-4 h-4" /> Tipos
                         </Button>
                     )}
-                    <Button size="sm" onClick={() => { setBuscaTipo(''); setBuscaContrato(''); setForm({ ...FORM_VACIO, tipo: tiposActivos[0]?.clave || '' }); }}>
+                    <Button size="sm" onClick={() => { setBuscaTipo(''); setBuscaContrato(''); setForm({ ...FORM_VACIO }); }}>
                         <Plus className="w-4 h-4" /> Radicar solicitud
                     </Button>
                 </div>
@@ -454,34 +456,49 @@ export default function Solicitudes() {
             <Modal open={!!form} onClose={() => setForm(null)} title="Radicar solicitud" maxWidth="max-w-lg">
                 {form && (
                     <form onSubmit={handleRadicar} className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Tipo de solicitud *">
-                                <Input
-                                    value={buscaTipo}
-                                    onChange={(e) => {
-                                        const q = e.target.value;
-                                        setBuscaTipo(q);
-                                        // Un solo tipo coincide → se selecciona solo
-                                        const match = tiposActivos.filter((t) => normaliza(t.label).includes(normaliza(q)));
-                                        if (q && match.length === 1) setForm((f) => ({ ...f, tipo: match[0].clave }));
-                                    }}
-                                    placeholder="🔍 Buscar tipo…"
-                                    className="mb-1.5"
-                                />
-                                <Select required value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-                                    <option value="" disabled>Selecciona…</option>
-                                    {(tiposFiltrados.length ? tiposFiltrados : tiposActivos).map((t) => (
-                                        <option key={t.clave} value={t.clave}>{t.label}</option>
-                                    ))}
-                                </Select>
-                            </Field>
-                            <Field label="Medio de ingreso *">
-                                <Select value={form.medioIngreso} onChange={(e) => setForm({ ...form, medioIngreso: e.target.value })}>
-                                    {Object.entries(MEDIOS_INGRESO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                                </Select>
-                            </Field>
-                        </div>
-                        {form.tipo === 'DERECHOS_DE_PETICION' && (
+                        <Field label="Tipo de solicitud *" hint="Marca varios para radicar un expediente por cada uno (#57)">
+                            <Input
+                                value={buscaTipo}
+                                onChange={(e) => {
+                                    const q = e.target.value;
+                                    setBuscaTipo(q);
+                                    // Un solo tipo coincide → se marca solo
+                                    const match = tiposActivos.filter((t) => normaliza(t.label).includes(normaliza(q)));
+                                    if (q && match.length === 1 && !form.tipos.includes(match[0].clave)) {
+                                        setForm((f) => ({ ...f, tipos: [...f.tipos, match[0].clave] }));
+                                    }
+                                }}
+                                placeholder="🔍 Buscar tipo…"
+                                className="mb-1.5"
+                            />
+                            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-gray-200 p-2">
+                                {(tiposFiltrados.length ? tiposFiltrados : tiposActivos).map((t) => (
+                                    <label key={t.clave} className={cn(
+                                        'flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm',
+                                        form.tipos.includes(t.clave) ? 'bg-brand-50 font-medium text-brand-800' : 'text-gray-700 hover:bg-gray-50',
+                                    )}>
+                                        <input
+                                            type="checkbox"
+                                            checked={form.tipos.includes(t.clave)}
+                                            onChange={() => setForm((f) => ({
+                                                ...f,
+                                                tipos: f.tipos.includes(t.clave)
+                                                    ? f.tipos.filter((x) => x !== t.clave)
+                                                    : [...f.tipos, t.clave],
+                                            }))}
+                                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                                        />
+                                        {t.label}
+                                    </label>
+                                ))}
+                            </div>
+                        </Field>
+                        <Field label="Medio de ingreso *">
+                            <Select value={form.medioIngreso} onChange={(e) => setForm({ ...form, medioIngreso: e.target.value })}>
+                                {Object.entries(MEDIOS_INGRESO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </Select>
+                        </Field>
+                        {form.tipos.includes('DERECHOS_DE_PETICION') && (
                             <Field label="Clase de petición" hint="Define el término legal en días hábiles">
                                 <Select value={form.dpTipo} onChange={(e) => setForm({ ...form, dpTipo: e.target.value })}>
                                     {Object.entries(DP_TIPOS).map(([k, v]) => (
@@ -566,7 +583,9 @@ export default function Solicitudes() {
                         )}
                         <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="secondary" onClick={() => setForm(null)}>Cancelar</Button>
-                            <Button type="submit" disabled={busy}>Radicar</Button>
+                            <Button type="submit" disabled={busy || !form.tipos.length}>
+                                {form.tipos.length > 1 ? `Radicar ${form.tipos.length} expedientes` : 'Radicar'}
+                            </Button>
                         </div>
                     </form>
                 )}

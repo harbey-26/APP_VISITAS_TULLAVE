@@ -150,16 +150,18 @@ Solicitud  — id, radicado (@unique "SOL-2026-0001", consecutivo por año), tip
             propietario y arrendatario NO son entidades), propertyId?,
             contractId?, creadaPor, responsableId? (bandeja), fechaVencimiento?
             ("YYYY-MM-DD"), data (JSON del tipo: reparacion / servicioPublico /
-            derechoPeticion / terminacion / respuesta / alertasEnviadas),
+            derechoPeticion / terminacion / respuesta / alertasEnviadas /
+            reportePago (#55) / grupo (#57: radicados de la radicación múltiple)),
             shareToken?, emailedAt?, finalizadaAt? (métrica de respuesta)
 SolicitudActuacion — línea de tiempo INMUTABLE (sin update/delete): tipo
             (CREACION/ESTADO/ASIGNACION/NOTA/ADJUNTO/AUTOMATIZACION/RESPUESTA/
             ALERTA), descripcion, userId? (null = sistema/cron), meta JSON
 SolicitudAdjunto — nombre, mimeType, size, categoria (FOTO/FOTO_ANTES/
-            FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/OTRO), dataUrl
-            (base64 en BD, como las fotos de visita — máx. 5 MB/archivo)
+            FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/COMPROBANTE/OTRO),
+            dataUrl (base64 en BD, como las fotos de visita — máx. 5 MB/archivo)
 SolicitudTipo — clave (@unique), label, activo, orden — administrable; el seed
-            siembra los 11 del epic (idempotente, corre en cada deploy)
+            siembra los 11 del epic + "Reporte de pago" (#55) (idempotente,
+            corre en cada deploy)
 ```
 
 ---
@@ -225,7 +227,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | GET | `/api/incrementos/public/:token/pdf` | **No** | PDF público de la carta (solo enviadas) |
 | PATCH | `/api/incrementos/:id/aplicar` | JWT+Admin | Aplica el nuevo canon a la ficha (transacción) y cierra el ciclo → APLICADA |
 | PATCH | `/api/incrementos/:id/anular` | JWT+Admin | Anular con `{motivo}` obligatorio |
-| GET/POST | `/api/solicitudes` | JWT | Expedientes (admin todos; usuario los suyos: asignados + radicados). POST radica con radicado automático; tipo DERECHOS_DE_PETICION calcula el vencimiento legal (días hábiles, `dpTipo`) |
+| GET/POST | `/api/solicitudes` | JWT | Expedientes (admin todos; usuario los suyos: asignados + radicados). POST radica con radicado automático; tipo DERECHOS_DE_PETICION calcula el vencimiento legal (días hábiles, `dpTipo`). **#57:** `tipos: [...]` (máx. 5) crea un expediente por tipo, vinculados en `data.grupo` — `tipo` (singular) sigue funcionando |
 | GET/POST/PATCH | `/api/solicitudes/tipos(/:id)` | JWT (escribir admin) | Tipos administrables |
 | GET | `/api/solicitudes/stats` | JWT | KPIs del dashboard: abiertas, cerradas, vencidas, promedio de respuesta, por tipo/estado, tendencia |
 | GET/PATCH/DELETE | `/api/solicitudes/:id` | JWT | Detalle con timeline / editar base / eliminar (admin, o creador solo RECIBIDA) |
@@ -234,7 +236,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | POST | `/api/solicitudes/:id/notas` | JWT | Nota manual en la línea de tiempo |
 | POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u) → actuaciones |
 | GET | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | Contenido (dataUrl) bajo demanda — los listados NO incluyen el dataUrl |
-| PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación) |
+| PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación, reporte de pago — transiciones de conciliación validadas con `puedeTransicionarReporte`) |
 | POST | `/api/solicitudes/:id/respuesta` | JWT | DP: registrar respuesta y su envío (fecha, medio) |
 | POST | `/api/solicitudes/:id/servicio-share` | JWT | Link público del PDF de la liquidación de servicio |
 | POST | `/api/solicitudes/:id/servicio-email` | JWT | PDF por correo (Gmail API, anti-duplicado 1 h) |
@@ -593,6 +595,30 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Dashboard (#40)** — KPIs (abiertas, cerradas, vencidas con alerta visual,
   tiempo promedio de respuesta vía `finalizadaAt`), distribución por
   tipo/estado y tendencia por mes
+- **Radicación múltiple (#57, ago 2026)** — un cliente con varias solicitudes
+  a la vez marca VARIOS tipos en una sola radicación (equipo y portal:
+  checkboxes en vez de select). Decisión: opción 2 del issue — se crea UN
+  expediente por tipo (cada uno conserva su radicado, su máquina de estados,
+  sus términos legales y automatizaciones), vinculados en `data.grupo.radicados`
+  (`vincularGrupo` en solicitud.controller.js). El detalle muestra "Radicada
+  junto con: SOL-…" (equipo y portal); las actuaciones de creación citan a los
+  hermanos. Las fotos van al expediente de REPARACIONES si lo hay (si no, al
+  primero); el PDF del DP y el comprobante de pago van a SU expediente. El tope
+  del portal (10 radicaciones/día) cuenta un expediente por tipo
+- **Reporte de pago (#55, ago 2026)** — tipo `REPORTE_DE_PAGO` (sembrado):
+  el arrendatario reporta un pago (valor, fecha, medio Nequi/Davivienda/
+  transferencia/efectivo/otro, referencia) con **comprobante obligatorio**
+  (foto o PDF, categoría COMPROBANTE) desde el portal. Ciclo de conciliación
+  propio en `data.reportePago.estado` — REPORTADO → EN_VERIFICACION →
+  CONCILIADO | RECHAZADO (transiciones en `solicitudFlow.js`
+  `TRANSICIONES_REPORTE`, sin saltos, retroceso para corregir) — encima de la
+  máquina de estados general del expediente. El equipo concilia desde el panel
+  🧾 de `SolicitudDetalle` (`ReportePagoPanel`): editar datos, verificar,
+  conciliar (nota opcional) o rechazar (motivo obligatorio, el cliente LO VE
+  en el portal); auditoría `resueltoPor/resueltoAt`. El portal muestra la card
+  "Pago reportado" con estado en lenguaje de cliente (`REPORTE_ESTADOS` en su
+  estados.jsx). La conciliación contra cartera queda pendiente del módulo de
+  cartera (no existe aún)
 
 ### Portal de Clientes (backend `/api/portal`) — módulo P1 (ago 2026)
 - **El frontend vive en otro repo:** `../PORTAL_CLIENTES_TULLAVE` (React+Vite+
@@ -633,7 +659,11 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   referencia de pago / vínculo a Property). Hasta **5 fotos** por radicación
   (solo `image/*`, 5 MB c/u, categoría FOTO, compresión client-side con el
   mismo `imageCompress`); el cliente ve sus fotos en su timeline
-  (`meta.portal`), el equipo las ve como adjuntos normales
+  (`meta.portal`), el equipo las ve como adjuntos normales. **#57:** acepta
+  `tipos: [...]` (checkboxes en el portal, un expediente por tipo, vinculados).
+  **#55:** con tipo REPORTE_DE_PAGO exige `reportePago` (valor/fecha/medio) y
+  `comprobante` (foto o PDF); el detalle del cliente expone la card del pago
+  con su estado de conciliación y el `grupo` de la radicación
 - Endpoints: `POST /auth/solicitar-codigo`, `POST /auth/verificar`,
   `GET /tipos`, `GET|POST /solicitudes`, `GET /solicitudes/:id`,
   `POST /solicitudes/:id/comentario` — todos bajo `/api/portal`, auth
