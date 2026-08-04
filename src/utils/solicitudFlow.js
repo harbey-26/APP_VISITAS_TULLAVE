@@ -65,6 +65,7 @@ export const ADJUNTO_CATEGORIAS = {
     CORREO: 'Correo',
     PDF: 'Documento PDF',
     COMPROBANTE: 'Comprobante de pago', // #55
+    VIDEO: 'Video', // #58 — máx. 1 minuto
     OTRO: 'Otro',
 };
 

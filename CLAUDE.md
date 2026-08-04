@@ -157,8 +157,9 @@ SolicitudActuacion — línea de tiempo INMUTABLE (sin update/delete): tipo
             (CREACION/ESTADO/ASIGNACION/NOTA/ADJUNTO/AUTOMATIZACION/RESPUESTA/
             ALERTA), descripcion, userId? (null = sistema/cron), meta JSON
 SolicitudAdjunto — nombre, mimeType, size, categoria (FOTO/FOTO_ANTES/
-            FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/COMPROBANTE/OTRO),
-            dataUrl (base64 en BD, como las fotos de visita — máx. 5 MB/archivo)
+            FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/COMPROBANTE/
+            VIDEO/OTRO), dataUrl (base64 en BD, como las fotos de visita —
+            máx. 5 MB/archivo; videos #58: máx. 25 MB y 1 minuto)
 SolicitudTipo — clave (@unique), label, activo, orden — administrable; el seed
             siembra los 11 del epic + "Reporte de pago" (#55) (idempotente,
             corre en cada deploy)
@@ -234,7 +235,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | PATCH | `/api/solicitudes/:id/estado` | JWT | Transición validada por la máquina de estados (no salta pasos; permite retroceder y reabrir) → actuación + FCM |
 | PATCH | `/api/solicitudes/:id/asignar` | JWT+Admin | Asignar responsable → FCM |
 | POST | `/api/solicitudes/:id/notas` | JWT | Nota manual en la línea de tiempo |
-| POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u) → actuaciones |
+| POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u; videos #58: MP4/MOV, máx. 25 MB y 1 min — duración validada server-side) → actuaciones |
 | GET | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | Contenido (dataUrl) bajo demanda — los listados NO incluyen el dataUrl |
 | PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación, reporte de pago — transiciones de conciliación validadas con `puedeTransicionarReporte`) |
 | POST | `/api/solicitudes/:id/respuesta` | JWT | Registrar la respuesta al solicitante y su envío (fecha, medio). Con medio CORREO el sistema envía el email con hasta 3 adjuntos (PDF). Nació para DP pero aplica a todos los tipos (ago 2026) |
@@ -561,7 +562,17 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   fotos de visita, sin storage externo; migrar a S3 después no cambia la API).
   Máx. 5 MB/archivo, 10 por subida; imágenes pasan por `compressImage`. El
   dataUrl solo viaja en `GET /:id/adjuntos/:adjId` (los listados no lo cargan).
-  Preview de imágenes y PDF en modal
+  Preview de imágenes, PDF y videos en modal
+- **Videos (#58, ago 2026)** — adjuntos MP4/MOV de **máx. 1 minuto y 25 MB**
+  (categoría VIDEO). Doble validación de duración: el frontend la lee de la
+  metadata del `<video>` antes de subir (si el navegador no puede — códec MOV
+  raro — deja pasar y decide el server) y el backend la verifica SIEMPRE
+  parseando los átomos del contenedor (`utils/videoDuration.js`, puro e
+  isomorfo, con tests: moov→mvhd, magic bytes `ftyp`, tolerancia +1 s).
+  El body de Express sube a 36 MB SOLO en `/api/solicitudes` (server.js);
+  por eso el frontend manda cada video en su propio request. Reproductor
+  `<video controls>` en el modal de vista previa. El portal NO acepta videos
+  (solo fotos) — decisión de alcance del issue
 - **Tipos (#35)** — tabla administrable; los 11 del epic se siembran en
   `seed.js` (idempotente, no pisa ediciones del admin). Claves derivadas del
   label: `DERECHOS_DE_PETICION`, `SERVICIOS_PUBLICOS`,

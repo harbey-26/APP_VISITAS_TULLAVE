@@ -12,6 +12,7 @@ import {
 import { calcularServicioPublico } from '../utils/servicioPublicoCalc.js';
 import { downloadServicioPublicoPdf } from '../utils/servicioPublicoPdf.js';
 import { compressImage } from '../utils/imageCompress.js';
+import { formatoDuracion } from '../utils/videoDuration.js';
 import { formatoCifra } from '../utils/numeroALetras';
 import { fechaCorta } from '../utils/fechaLetras';
 import { buildWhatsAppUrl } from '../utils/phone';
@@ -53,33 +54,68 @@ function MoneyInput({ value, onChange, disabled }) {
     );
 }
 
+function leerDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+    });
+}
+
+// #58: duración del video con la metadata del elemento <video>, sin subirlo.
+// NaN si el navegador no puede leerla (p. ej. MOV con códec no soportado) —
+// en ese caso se deja pasar y el servidor decide (valida los átomos del MP4).
+function duracionVideo(file) {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
+        v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
+        v.src = url;
+    });
+}
+
 // Convierte archivos del input en adjuntos listos para el endpoint (#39):
-// imágenes comprimidas, el resto como data URL directo con tope de 5 MB.
-// `categoria` puede ser fija o una función por archivo. Compartido entre el
-// panel de Documentos y el formulario de respuesta.
+// imágenes comprimidas, videos validados (#58: MP4/MOV, máx. 1 min y 25 MB),
+// el resto como data URL directo con tope de 5 MB. `categoria` puede ser fija
+// o una función por archivo. Compartido entre el panel de Documentos y el
+// formulario de respuesta.
 async function archivosAAdjuntos(files, categoria, toast) {
     const adjuntos = [];
     for (const file of files) {
         let dataUrl;
+        const esVideo = file.type.startsWith('video/');
         if (file.type.startsWith('image/')) {
             dataUrl = await compressImage(file);
+        } else if (esVideo) {
+            if (!['video/mp4', 'video/quicktime'].includes(file.type)) {
+                toast.error(`"${file.name}": solo se aceptan videos MP4 o MOV.`);
+                continue;
+            }
+            if (file.size > 25 * 1024 * 1024) {
+                toast.error(`"${file.name}" pesa ${(file.size / 1024 / 1024).toFixed(1)} MB — el máximo para videos es 25 MB.`);
+                continue;
+            }
+            const dur = await duracionVideo(file);
+            if (Number.isFinite(dur) && dur > 61) { // misma tolerancia de 1 s del backend
+                toast.error(`"${file.name}" dura ${formatoDuracion(dur)} — el máximo es 1 minuto.`);
+                continue;
+            }
+            dataUrl = await leerDataUrl(file);
         } else {
             if (file.size > 5 * 1024 * 1024) {
                 toast.error(`"${file.name}" supera los 5 MB permitidos.`);
                 continue;
             }
-            dataUrl = await new Promise((resolve, reject) => {
-                const r = new FileReader();
-                r.onload = () => resolve(r.result);
-                r.onerror = reject;
-                r.readAsDataURL(file);
-            });
+            dataUrl = await leerDataUrl(file);
         }
         adjuntos.push({
             nombre: file.name,
             mimeType: file.type || 'application/octet-stream',
             size: file.size,
-            categoria: typeof categoria === 'function' ? categoria(file) : categoria,
+            categoria: esVideo ? 'VIDEO' : (typeof categoria === 'function' ? categoria(file) : categoria),
             dataUrl,
         });
     }
@@ -213,7 +249,15 @@ export default function SolicitudDetalle() {
         try {
             const adjuntos = await archivosAAdjuntos(files, categoria, toast);
             if (adjuntos.length === 0) return;
-            const updated = await apiFetch(`/api/solicitudes/${id}/adjuntos`, { method: 'POST', body: { adjuntos } });
+            // #58: cada video viaja en su propio request (hasta 25 MB en
+            // base64); los demás archivos van juntos como siempre
+            const lotes = adjuntos.filter((a) => a.mimeType.startsWith('video/')).map((a) => [a]);
+            const resto = adjuntos.filter((a) => !a.mimeType.startsWith('video/'));
+            if (resto.length) lotes.unshift(resto);
+            let updated;
+            for (const lote of lotes) {
+                updated = await apiFetch(`/api/solicitudes/${id}/adjuntos`, { method: 'POST', body: { adjuntos: lote } });
+            }
             setSol(updated);
             toast.success(`${adjuntos.length} archivo(s) adjuntados`);
         } catch (err) {
@@ -617,7 +661,7 @@ export default function SolicitudDetalle() {
                     </label>
                 </div>
                 {sol.adjuntos.length === 0 ? (
-                    <p className="text-sm text-gray-400">Sin documentos. Adjunta fotos, facturas, cotizaciones o PDFs (máx. 5 MB c/u).</p>
+                    <p className="text-sm text-gray-400">Sin documentos. Adjunta fotos, facturas, cotizaciones o PDFs (máx. 5 MB c/u) y videos de hasta 1 minuto (MP4/MOV, máx. 25 MB).</p>
                 ) : (
                     <div className="divide-y divide-gray-50">
                         {sol.adjuntos.map((a) => (
@@ -629,7 +673,7 @@ export default function SolicitudDetalle() {
                                     </p>
                                 </div>
                                 <div className="flex gap-1">
-                                    {(a.mimeType.startsWith('image/') || a.mimeType === 'application/pdf') && (
+                                    {(a.mimeType.startsWith('image/') || a.mimeType.startsWith('video/') || a.mimeType === 'application/pdf') && (
                                         <Button variant="ghost" size="sm" title="Ver" onClick={() => abrirAdjunto(a)}>
                                             <Eye className="w-4 h-4" />
                                         </Button>
@@ -745,6 +789,9 @@ export default function SolicitudDetalle() {
                 {preview && (
                     preview.mimeType.startsWith('image/') ? (
                         <img src={preview.dataUrl} alt={preview.nombre} className="max-h-[70vh] mx-auto rounded-xl" />
+                    ) : preview.mimeType.startsWith('video/') ? (
+                        // #58: reproductor del video dentro de la app
+                        <video src={preview.dataUrl} controls autoPlay className="max-h-[70vh] w-full rounded-xl bg-black" />
                     ) : preview.mimeType === 'application/pdf' ? (
                         <iframe src={preview.dataUrl} title={preview.nombre} className="w-full h-[70vh] rounded-xl border border-gray-100" />
                     ) : (

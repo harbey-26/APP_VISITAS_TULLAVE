@@ -16,7 +16,8 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { enviarBienvenidaPortal, enviarAvisoEstado } from '../utils/portalWelcome.js';
-import { bytesRealesDataUrl, nombreArchivoSeguro } from '../utils/dataUrl.js';
+import { bytesRealesDataUrl, nombreArchivoSeguro, VIDEOS_PERMITIDOS } from '../utils/dataUrl.js';
+import { esVideoMp4Real, duracionVideoSegundos, formatoDuracion } from '../utils/videoDuration.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 
@@ -30,6 +31,13 @@ import { fechaCorta } from '../utils/fechaLetras.js';
 // Límite por adjunto (bytes del archivo original). El body de Express admite
 // 8 MB, así que un archivo de 5 MB en base64 (~6.7 MB) todavía cabe.
 export const LIMITE_ADJUNTO_BYTES = 5 * 1024 * 1024;
+
+// #58 — Videos: hasta 1 minuto y 25 MB (1 min de cámara de celular en 1080p
+// comprimido). El body de /api/solicitudes se amplió a 36 MB en server.js
+// (25 MB en base64 ≈ 33.4 MB); el frontend sube cada video en su propio
+// request para no toparse con ese techo al combinar archivos.
+export const LIMITE_VIDEO_BYTES = 25 * 1024 * 1024;
+export const VIDEO_DURACION_MAX_SEG = 60;
 
 const solicitudSchema = z.object({
     tipo: z.string().trim().min(1).max(60).optional(),
@@ -542,12 +550,38 @@ export const agregarAdjuntos = async (req, res) => {
         if (error) return res.status(status).json({ error });
         const adjuntos = z.array(adjuntoSchema).min(1).max(10).parse(req.body?.adjuntos);
         for (const a of adjuntos) {
+            const esVideo = String(a.mimeType).startsWith('video/');
             // El peso REAL manda: `size` lo declara el cliente y puede mentir
             const bytes = bytesRealesDataUrl(a.dataUrl);
-            if (bytes > LIMITE_ADJUNTO_BYTES) {
+            const limite = esVideo ? LIMITE_VIDEO_BYTES : LIMITE_ADJUNTO_BYTES;
+            if (bytes > limite) {
                 return res.status(400).json({
-                    error: `"${a.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por archivo es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                    error: `"${a.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por ${esVideo ? 'video' : 'archivo'} es ${limite / 1024 / 1024} MB.`,
                 });
+            }
+            if (esVideo) {
+                // #58: solo MP4/MOV reales y de máximo 1 minuto. La duración se
+                // verifica aquí por seguridad: la metadata que lee el navegador
+                // la controla el cliente y se puede saltar por API.
+                if (!VIDEOS_PERMITIDOS.includes(a.mimeType)) {
+                    return res.status(400).json({ error: `"${a.nombre}": solo se aceptan videos MP4 o MOV.` });
+                }
+                const buf = Buffer.from(a.dataUrl.slice(a.dataUrl.indexOf(',') + 1), 'base64');
+                if (!esVideoMp4Real(buf)) {
+                    return res.status(400).json({ error: `"${a.nombre}" no es un video MP4/MOV válido.` });
+                }
+                const duracion = duracionVideoSegundos(buf);
+                if (duracion == null) {
+                    return res.status(400).json({ error: `No se pudo leer la duración de "${a.nombre}" — usa un video MP4 o MOV estándar.` });
+                }
+                // +1 s de tolerancia: un video "de 1 minuto" del celular suele
+                // reportar 60.x s por el redondeo del último frame
+                if (duracion > VIDEO_DURACION_MAX_SEG + 1) {
+                    return res.status(400).json({
+                        error: `"${a.nombre}" dura ${formatoDuracion(duracion)} — el máximo permitido es 1 minuto.`,
+                    });
+                }
+                if (!a.categoria) a.categoria = 'VIDEO';
             }
             a.size = bytes;
             a.nombre = nombreArchivoSeguro(a.nombre);

@@ -23,6 +23,11 @@ export function esPdfReal(dataUrl) {
 // a propósito: puede llevar scripts embebidos.
 export const IMAGENES_PERMITIDAS = ['image/jpeg', 'image/png', 'image/webp'];
 
+// #58 — Formatos de video aceptados en las solicitudes. MP4 y MOV comparten
+// contenedor (ISO BMFF / QuickTime): los valida el mismo parser de
+// videoDuration.js por magic bytes y duración.
+export const VIDEOS_PERMITIDOS = ['video/mp4', 'video/quicktime'];
+
 // Nombre de archivo limpio antes de guardarlo: sin saltos de línea ni
 // caracteres de control (el nombre viaja a cabeceras MIME al enviarlo por
 // correo y a Content-Disposition al descargarlo) y sin rutas.
