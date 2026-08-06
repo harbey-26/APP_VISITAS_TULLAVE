@@ -35,6 +35,10 @@ router.get('/solicitudes', authenticatePortal, getMisSolicitudes);
 router.post('/solicitudes', limiteEscritura, authenticatePortal, crearSolicitud);
 router.get('/solicitudes/:id', authenticatePortal, getMiSolicitud);
 router.post('/solicitudes/:id/comentario', limiteEscritura, authenticatePortal, comentar);
+// #60: descarga de documentos visibles para el cliente (publicados por el
+// equipo o referenciados en la respuesta). La ruta vieja se conserva por
+// compatibilidad con portales ya cargados en el navegador.
+router.get('/solicitudes/:id/documentos/:adjId', authenticatePortal, getRespuestaAdjunto);
 router.get('/solicitudes/:id/respuesta-adjuntos/:adjId', authenticatePortal, getRespuestaAdjunto);
 
 export default router;

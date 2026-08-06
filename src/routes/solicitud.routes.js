@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
     getSolicitudes, createSolicitud, getSolicitud, updateSolicitud,
     cambiarEstado, asignarSolicitud, agregarNota,
-    agregarAdjuntos, getAdjunto, deleteSolicitud,
+    agregarAdjuntos, getAdjunto, toggleAdjuntoCliente, deleteSolicitud,
     getTipos, createTipo, updateTipo,
     updateData, registrarRespuesta,
     shareServicioPdf, emailServicioPdf, publicServicioPdf,
@@ -39,6 +39,7 @@ router.post('/:id/notas', agregarNota);
 // Adjuntos (#39)
 router.post('/:id/adjuntos', agregarAdjuntos);
 router.get('/:id/adjuntos/:adjId', getAdjunto);
+router.patch('/:id/adjuntos/:adjId', toggleAdjuntoCliente); // #60: publicar/retirar del portal
 
 // Automatizaciones (#36, #37, #41, #42)
 router.patch('/:id/data', updateData);

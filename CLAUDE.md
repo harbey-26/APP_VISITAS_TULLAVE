@@ -159,7 +159,10 @@ SolicitudActuacion — línea de tiempo INMUTABLE (sin update/delete): tipo
 SolicitudAdjunto — nombre, mimeType, size, categoria (FOTO/FOTO_ANTES/
             FOTO_DESPUES/FACTURA/COTIZACION/ACTA/CORREO/PDF/COMPROBANTE/
             VIDEO/OTRO), dataUrl (base64 en BD, como las fotos de visita —
-            máx. 5 MB/archivo; videos #58: máx. 25 MB y 1 minuto)
+            máx. 5 MB/archivo; videos #58: máx. 25 MB y 1 minuto),
+            paraCliente (#60: visible en el portal del solicitante — lo marca
+            el equipo con el globo 🌐; los archivos subidos por el propio
+            cliente y los referenciados en la respuesta nacen/quedan en true)
 SolicitudTipo — clave (@unique), label, activo, orden — administrable; el seed
             siembra los 11 del epic + "Reporte de pago" (#55) (idempotente,
             corre en cada deploy)
@@ -237,6 +240,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | POST | `/api/solicitudes/:id/notas` | JWT | Nota manual en la línea de tiempo |
 | POST | `/api/solicitudes/:id/adjuntos` | JWT | Subida múltiple `{adjuntos:[…]}` (máx. 5 MB c/u; videos #58: MP4/MOV, máx. 25 MB y 1 min — duración validada server-side) → actuaciones |
 | GET | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | Contenido (dataUrl) bajo demanda — los listados NO incluyen el dataUrl |
+| PATCH | `/api/solicitudes/:id/adjuntos/:adjId` | JWT | **#60:** publicar/retirar el documento del portal del cliente (`{paraCliente}`) → actuación en la línea de tiempo. El estado del expediente (cerrado o no) no afecta el acceso |
 | PATCH | `/api/solicitudes/:id/data` | JWT | Actualiza el JSON del tipo con recálculo server-side (reparación, servicio público, DP, terminación, reporte de pago — transiciones de conciliación validadas con `puedeTransicionarReporte`) |
 | POST | `/api/solicitudes/:id/respuesta` | JWT | Registrar la respuesta al solicitante y su envío (fecha, medio). Con medio CORREO el sistema envía el email con hasta 3 adjuntos (PDF). Nació para DP pero aplica a todos los tipos (ago 2026) |
 | POST | `/api/solicitudes/:id/servicio-share` | JWT | Link público del PDF de la liquidación de servicio |
@@ -562,7 +566,10 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   fotos de visita, sin storage externo; migrar a S3 después no cambia la API).
   Máx. 5 MB/archivo, 10 por subida; imágenes pasan por `compressImage`. El
   dataUrl solo viaja en `GET /:id/adjuntos/:adjId` (los listados no lo cargan).
-  Preview de imágenes, PDF y videos en modal
+  Preview de imágenes, PDF y videos en modal. **#60 (ago 2026):** cada adjunto
+  tiene un botón 🌐 para publicarlo/retirarlo del portal del cliente (flag
+  `paraCliente` + badge "Visible en el portal" + actuación); los documentos de
+  la respuesta se publican solos al registrarla
 - **Videos (#58, ago 2026)** — adjuntos MP4/MOV de **máx. 1 minuto y 25 MB**
   (categoría VIDEO). Doble validación de duración: el frontend la lee de la
   metadata del `<video>` antes de subir (si el navegador no puede — códec MOV
@@ -606,7 +613,11 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   bandeja de cualquier funcionario (las sin asignar aparecen en la suya)
 - **Dashboard (#40)** — KPIs (abiertas, cerradas, vencidas con alerta visual,
   tiempo promedio de respuesta vía `finalizadaAt`), distribución por
-  tipo/estado y tendencia por mes
+  tipo/estado y tendencia por mes. **#61 (ago 2026):** las tarjetas Abiertas/
+  Cerradas/Vencidas son clicables — filtran el tab "Todas" (misma definición
+  del backend: vencida = abierta con `urgencia === 'VENCIDA'`), resaltan la
+  activa con ring, muestran chip "✕" para quitar el filtro y el mismo clic
+  vuelve a quitarlo; "Respuesta promedio" sigue siendo informativa
 - **Radicación múltiple (#57, ago 2026)** — un cliente con varias solicitudes
   a la vez marca VARIOS tipos en una sola radicación (equipo y portal:
   checkboxes en vez de select). Decisión: opción 2 del issue — se crea UN
@@ -665,7 +676,12 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Identidad = correo verificado:** el cliente solo ve expedientes cuyo
   `solicitanteEmail` coincide (ajenos → 404). Vista BLANQUEADA: timeline solo
   con CREACION/ESTADO/RESPUESTA y sus propias NOTAs (`meta.portal`); nunca
-  notas internas, responsable, data del tipo ni adjuntos
+  notas internas, responsable, data del tipo ni adjuntos internos. **#60:** el
+  detalle expone `documentos` (adjuntos con `paraCliente` o referenciados en
+  la respuesta) descargables vía `GET /solicitudes/:id/documentos/:adjId`
+  (la ruta vieja `/respuesta-adjuntos/:adjId` se conserva); el portal los
+  muestra en la card "Documentos de tu solicitud" **también con el caso
+  cerrado/archivado** — cerrar nunca restringe la lectura
 - **Radicación:** mismo consecutivo `SOL-AAAA-NNNN` (se exportó
   `generarRadicado`), `medioIngreso: 'PORTAL'` (agregado al enum y a
   `MEDIOS_INGRESO`), `creadaPor` = usuario sistema "Portal de Clientes"

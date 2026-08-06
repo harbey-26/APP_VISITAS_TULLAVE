@@ -352,6 +352,9 @@ model SolicitudAdjunto {
   categoria   String   @default("OTRO") // FOTO, FOTO_ANTES, FOTO_DESPUES, FACTURA, COTIZACION, ACTA, CORREO, PDF, OTRO
   dataUrl     String   // data:mime;base64,...
   subidoPor   Int
+  // #60: visible para el solicitante en su portal (lo marca el equipo; los
+  // archivos subidos por el propio cliente y los de la respuesta nacen en true)
+  paraCliente Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   solicitud Solicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)

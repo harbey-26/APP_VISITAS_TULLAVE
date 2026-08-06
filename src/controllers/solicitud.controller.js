@@ -75,7 +75,7 @@ const includeRefs = {
     property: { select: { id: true, address: true, client: true } },
     contract: { select: { id: true, type: true, status: true, data: true } },
     // dataUrl NO va en los listados/detalle (pesado) — se descarga aparte
-    adjuntos: { select: { id: true, nombre: true, mimeType: true, size: true, categoria: true, subidoPor: true, createdAt: true } },
+    adjuntos: { select: { id: true, nombre: true, mimeType: true, size: true, categoria: true, subidoPor: true, paraCliente: true, createdAt: true } },
 };
 
 const includeDetalle = {
@@ -607,6 +607,34 @@ export const agregarAdjuntos = async (req, res) => {
     }
 };
 
+// PATCH /api/solicitudes/:id/adjuntos/:adjId — publicar/retirar el documento
+// del portal del cliente (#60). Cerrar la solicitud no toca este flag: el
+// cliente conserva el acceso de lectura a lo publicado.
+export const toggleAdjuntoCliente = async (req, res) => {
+    try {
+        const { sol, error, status } = await loadOwned(req);
+        if (error) return res.status(status).json({ error });
+        const paraCliente = z.boolean({ required_error: 'Falta paraCliente' }).parse(req.body?.paraCliente);
+        const adjId = parseId(req.params.adjId);
+        const adj = await prisma.solicitudAdjunto.findUnique({ where: { id: adjId } });
+        if (!adj || adj.solicitudId !== sol.id) return res.status(404).json({ error: 'Adjunto no encontrado' });
+        if (adj.paraCliente !== paraCliente) {
+            await prisma.solicitudAdjunto.update({ where: { id: adjId }, data: { paraCliente } });
+            await registrarActuacion(
+                sol.id, 'ADJUNTO',
+                paraCliente
+                    ? `Publicó "${adj.nombre}" en el portal del cliente`
+                    : `Retiró "${adj.nombre}" del portal del cliente`,
+                req.user.id, { categoria: adj.categoria },
+            );
+        }
+        const updated = await prisma.solicitud.findUnique({ where: { id: sol.id }, include: includeDetalle });
+        res.json(serialize(updated));
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
 // GET /api/solicitudes/:id/adjuntos/:adjId — contenido (dataUrl) bajo demanda
 export const getAdjunto = async (req, res) => {
     try {
@@ -799,6 +827,14 @@ export const registrarRespuesta = async (req, res) => {
             : [];
         if ((parsed.adjuntoIds?.length || 0) !== adjuntos.length) {
             return res.status(400).json({ error: 'Alguno de los adjuntos elegidos no pertenece a este expediente.' });
+        }
+        // #60: los documentos de la respuesta quedan publicados en el portal —
+        // la carta que dice "vea el documento adjunto" debe poder cumplirse
+        if (adjuntos.length) {
+            await prisma.solicitudAdjunto.updateMany({
+                where: { id: { in: adjuntos.map((a) => a.id) } },
+                data: { paraCliente: true },
+            });
         }
 
         let descripcionActuacion;

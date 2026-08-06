@@ -23,7 +23,7 @@ import {
 } from '../components/ui';
 import {
     ArrowLeft, Paperclip, Send, User, Download, MessageCircle, Mail,
-    Plus, Trash2, CheckCircle, FileText, Eye, StickyNote,
+    Plus, Trash2, CheckCircle, FileText, Eye, StickyNote, Globe,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -264,6 +264,22 @@ export default function SolicitudDetalle() {
             toast.error(friendlyError(err));
         } finally {
             setBusy(false);
+        }
+    };
+
+    // #60: publicar/retirar un documento del portal del cliente. El acceso de
+    // lectura del cliente NO depende del estado del expediente (cerrado o no).
+    const togglePortalAdjunto = async (adj) => {
+        try {
+            const updated = await apiFetch(`/api/solicitudes/${id}/adjuntos/${adj.id}`, {
+                method: 'PATCH', body: { paraCliente: !adj.paraCliente },
+            });
+            setSol(updated);
+            toast.success(adj.paraCliente
+                ? `"${adj.nombre}" ya no es visible en el portal`
+                : `"${adj.nombre}" quedó visible en el portal del cliente`);
+        } catch (err) {
+            toast.error(friendlyError(err));
         }
     };
 
@@ -670,9 +686,20 @@ export default function SolicitudDetalle() {
                                     <p className="text-sm font-semibold text-gray-800 truncate">{a.nombre}</p>
                                     <p className="text-[11px] text-gray-400">
                                         {ADJUNTO_CATEGORIAS[a.categoria] || a.categoria} · {(a.size / 1024).toFixed(0)} KB · {formatDateTime(a.createdAt)}
+                                        {a.paraCliente && (
+                                            <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-px text-[10px] font-medium text-blue-700">
+                                                <Globe className="w-2.5 h-2.5" /> Visible en el portal
+                                            </span>
+                                        )}
                                     </p>
                                 </div>
                                 <div className="flex gap-1">
+                                    {/* #60: el solicitante lo ve/descarga en su portal, aun con el caso cerrado */}
+                                    <Button variant="ghost" size="sm"
+                                        title={a.paraCliente ? 'Retirar del portal del cliente' : 'Publicar en el portal del cliente'}
+                                        onClick={() => togglePortalAdjunto(a)}>
+                                        <Globe className={cn('w-4 h-4', a.paraCliente ? 'text-blue-600' : 'text-gray-300')} />
+                                    </Button>
                                     {(a.mimeType.startsWith('image/') || a.mimeType.startsWith('video/') || a.mimeType === 'application/pdf') && (
                                         <Button variant="ghost" size="sm" title="Ver" onClick={() => abrirAdjunto(a)}>
                                             <Eye className="w-4 h-4" />

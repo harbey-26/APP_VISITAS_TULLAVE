@@ -65,6 +65,9 @@ export default function Solicitudes() {
 
     const [filtroEstado, setFiltroEstado] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('');
+    // #61: filtro por tarjeta KPI (abiertas | cerradas | vencidas) — clic en
+    // la tarjeta salta al listado filtrado; clic de nuevo lo quita
+    const [filtroKpi, setFiltroKpi] = useState('');
     const [bandejaDe, setBandejaDe] = useState(''); // admin: ver bandeja de otro
     const [form, setForm] = useState(null);
     const [showTipos, setShowTipos] = useState(false);
@@ -165,12 +168,27 @@ export default function Solicitudes() {
         return Object.entries(grupos).sort((a, b) => b[1].length - a[1].length);
     }, [bandeja]);
 
+    // Misma definición del backend (getStats): abierta = estado abierto,
+    // cerrada = finalizada/archivada, vencida = abierta con término vencido
+    const KPI_FILTROS = {
+        abiertas: (s) => ESTADOS_ABIERTOS.includes(s.estado),
+        cerradas: (s) => ['FINALIZADA', 'ARCHIVADA'].includes(s.estado),
+        vencidas: (s) => ESTADOS_ABIERTOS.includes(s.estado) && s.urgencia === 'VENCIDA',
+    };
+    const KPI_LABELS = { abiertas: 'Abiertas', cerradas: 'Cerradas', vencidas: 'Vencidas' };
+
+    const clickKpi = (kpi) => {
+        setFiltroKpi((prev) => (prev === kpi ? '' : kpi));
+        setTab('listado');
+    };
+
     const visibles = useMemo(() => {
         let lista = [...solicitudes];
+        if (filtroKpi && KPI_FILTROS[filtroKpi]) lista = lista.filter(KPI_FILTROS[filtroKpi]);
         if (filtroEstado) lista = lista.filter((s) => s.estado === filtroEstado);
         if (filtroTipo) lista = lista.filter((s) => s.tipo === filtroTipo);
         return lista;
-    }, [solicitudes, filtroEstado, filtroTipo]);
+    }, [solicitudes, filtroEstado, filtroTipo, filtroKpi]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleRadicar = async (e) => {
         e.preventDefault();
@@ -306,21 +324,30 @@ export default function Solicitudes() {
                 </div>
             </div>
 
-            {/* KPIs de cabecera (#40) */}
+            {/* KPIs de cabecera (#40). #61: las tres primeras tarjetas filtran
+                el listado al hacer clic (clic de nuevo quita el filtro) */}
             {stats && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                    <button onClick={() => clickKpi('abiertas')} title="Filtrar el listado por abiertas"
+                        className={cn('text-left bg-white rounded-2xl border p-4 shadow-sm transition hover:shadow-md',
+                            filtroKpi === 'abiertas' ? 'border-brand-600 ring-2 ring-brand-600/30' : 'border-gray-100')}>
                         <p className="text-2xl font-extrabold text-gray-900">{stats.abiertas}</p>
                         <p className="text-xs font-semibold text-gray-500 mt-0.5 flex items-center gap-1"><Inbox className="w-3.5 h-3.5" /> Abiertas</p>
-                    </div>
-                    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                    </button>
+                    <button onClick={() => clickKpi('cerradas')} title="Filtrar el listado por cerradas"
+                        className={cn('text-left bg-white rounded-2xl border p-4 shadow-sm transition hover:shadow-md',
+                            filtroKpi === 'cerradas' ? 'border-brand-600 ring-2 ring-brand-600/30' : 'border-gray-100')}>
                         <p className="text-2xl font-extrabold text-gray-900">{stats.cerradas}</p>
                         <p className="text-xs font-semibold text-gray-500 mt-0.5 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Cerradas</p>
-                    </div>
-                    <div className={cn('rounded-2xl border p-4 shadow-sm', stats.vencidas > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100')}>
+                    </button>
+                    <button onClick={() => clickKpi('vencidas')} title="Filtrar el listado por vencidas"
+                        className={cn('text-left rounded-2xl border p-4 shadow-sm transition hover:shadow-md',
+                            stats.vencidas > 0 ? 'bg-red-50' : 'bg-white',
+                            filtroKpi === 'vencidas' ? 'border-brand-600 ring-2 ring-brand-600/30'
+                                : stats.vencidas > 0 ? 'border-red-200' : 'border-gray-100')}>
                         <p className={cn('text-2xl font-extrabold', stats.vencidas > 0 ? 'text-red-700' : 'text-gray-900')}>{stats.vencidas}</p>
                         <p className="text-xs font-semibold text-gray-500 mt-0.5 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Vencidas</p>
-                    </div>
+                    </button>
                     <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                         <p className="text-2xl font-extrabold text-gray-900">
                             {stats.promedioHoras == null ? '—' : stats.promedioHoras < 48 ? `${stats.promedioHoras} h` : `${Math.round(stats.promedioHoras / 24)} d`}
@@ -381,7 +408,15 @@ export default function Solicitudes() {
             {/* ── Listado completo ── */}
             {tab === 'listado' && (
                 <>
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                        {/* #61: chip del filtro de la tarjeta KPI activa */}
+                        {filtroKpi && (
+                            <button onClick={() => setFiltroKpi('')}
+                                className="inline-flex items-center gap-1 rounded-full bg-brand-600 text-white text-xs font-bold px-3 py-1.5 hover:bg-brand-700"
+                                title="Quitar filtro">
+                                {KPI_LABELS[filtroKpi]} <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                         <Select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="w-auto text-sm">
                             <option value="">Todos los estados</option>
                             {Object.entries(SOLICITUD_ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -393,7 +428,9 @@ export default function Solicitudes() {
                     </div>
                     {visibles.length === 0 ? (
                         <EmptyState icon={Inbox} title="Sin solicitudes"
-                            description="Radica la primera solicitud con el botón de arriba." />
+                            description={filtroKpi || filtroEstado || filtroTipo
+                                ? 'Ninguna solicitud coincide con el filtro aplicado.'
+                                : 'Radica la primera solicitud con el botón de arriba.'} />
                     ) : (
                         <div className="space-y-2">
                             {visibles.map((s) => <CardSolicitud key={s.id} s={s} />)}

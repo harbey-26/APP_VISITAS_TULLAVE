@@ -281,12 +281,29 @@ export const getMisSolicitudes = async (req, res) => {
 async function loadMia(req) {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id) || id <= 0) return null;
-    const sol = await prisma.solicitud.findUnique({
-        where: { id },
-        include: { actuaciones: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
-    });
+    const sol = await prisma.solicitud.findUnique({ where: { id }, include: INCLUDE_DETALLE });
     if (!sol || normalizarEmail(sol.solicitanteEmail) !== req.portal.email) return null;
     return sol;
+}
+
+// Lo que necesita detalleCliente: la línea de tiempo y los metadatos de los
+// adjuntos (#60: solo metadatos — el dataUrl se descarga aparte, y al cliente
+// únicamente le salen los marcados paraCliente o los de la respuesta).
+const INCLUDE_DETALLE = {
+    actuaciones: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+    adjuntos: { select: { id: true, nombre: true, mimeType: true, size: true, categoria: true, paraCliente: true, createdAt: true } },
+};
+
+// #60: adjuntos que el cliente puede ver/descargar — los publicados por el
+// equipo (paraCliente) y los referenciados en la respuesta (cubre expedientes
+// respondidos antes de que existiera el flag). Cerrar/archivar la solicitud
+// NO restringe este acceso de lectura.
+function idsAdjuntosVisibles(sol, data) {
+    const deRespuesta = (data.respuesta?.adjuntos || []).map((a) => a.id);
+    return new Set([
+        ...deRespuesta,
+        ...(sol.adjuntos || []).filter((a) => a.paraCliente).map((a) => a.id),
+    ]);
 }
 
 function detalleCliente(sol, tipos) {
@@ -311,11 +328,17 @@ function detalleCliente(sol, tipos) {
             createdAt: a.createdAt,
             propia: !!a.meta?.portal,
         }));
+    const visibles = idsAdjuntosVisibles(sol, data);
     return {
         ...itemCliente(sol, tipos),
         descripcion: sol.descripcion,
         solicitanteNombre: sol.solicitanteNombre,
         actuaciones,
+        // #60: apartado "Documentos" del portal — descargables vía
+        // GET /solicitudes/:id/documentos/:adjId, aun con el caso cerrado
+        documentos: (sol.adjuntos || [])
+            .filter((a) => visibles.has(a.id))
+            .map((a) => ({ id: a.id, nombre: a.nombre, mimeType: a.mimeType, size: a.size, createdAt: a.createdAt })),
         respuesta: data.respuesta
             ? {
                 texto: data.respuesta.texto,
@@ -377,9 +400,11 @@ export const getMiSolicitud = async (req, res) => {
     }
 };
 
-// GET /api/portal/solicitudes/:id/respuesta-adjuntos/:adjId — descarga de un
-// documento de la RESPUESTA (solo los que el equipo referenció al responder;
-// los demás adjuntos del expediente siguen siendo internos).
+// GET /api/portal/solicitudes/:id/documentos/:adjId — descarga de un documento
+// visible para el cliente (#60): los publicados por el equipo (paraCliente) y
+// los de la respuesta. Los demás adjuntos del expediente siguen siendo
+// internos, y el estado del caso (cerrado/archivado) no restringe la descarga.
+// La ruta vieja /respuesta-adjuntos/:adjId apunta aquí (compatibilidad).
 export const getRespuestaAdjunto = async (req, res) => {
     try {
         const sol = await loadMia(req);
@@ -387,8 +412,7 @@ export const getRespuestaAdjunto = async (req, res) => {
         let data = {};
         try { data = sol.data ? JSON.parse(sol.data) : {}; } catch { /* data corrupto */ }
         const adjId = parseInt(req.params.adjId, 10);
-        const permitido = (data.respuesta?.adjuntos || []).some((a) => a.id === adjId);
-        if (!permitido) return res.status(404).json({ error: 'Documento no encontrado' });
+        if (!idsAdjuntosVisibles(sol, data).has(adjId)) return res.status(404).json({ error: 'Documento no encontrado' });
         const adj = await prisma.solicitudAdjunto.findUnique({ where: { id: adjId } });
         if (!adj || adj.solicitudId !== sol.id) return res.status(404).json({ error: 'Documento no encontrado' });
         res.json({ id: adj.id, nombre: adj.nombre, mimeType: adj.mimeType, dataUrl: adj.dataUrl });
@@ -663,6 +687,7 @@ export const crearSolicitud = async (req, res) => {
                     categoria: esVideo ? 'VIDEO' : 'FOTO',
                     dataUrl: f.dataUrl,
                     subidoPor: creadaPor,
+                    paraCliente: true, // #60: lo subió el propio cliente
                 },
             });
             await actuacionPortal(
@@ -682,6 +707,7 @@ export const crearSolicitud = async (req, res) => {
                     categoria: 'PDF',
                     dataUrl: parsed.documentoPdf.dataUrl,
                     subidoPor: creadaPor,
+                    paraCliente: true, // #60: lo subió el propio cliente
                 },
             });
             await actuacionPortal(solDp.id, 'ADJUNTO', `Adjuntó el derecho de petición "${parsed.documentoPdf.nombre}" (PDF)`, { portal: true, categoria: 'PDF' });
@@ -697,6 +723,7 @@ export const crearSolicitud = async (req, res) => {
                     categoria: 'COMPROBANTE',
                     dataUrl: parsed.comprobante.dataUrl,
                     subidoPor: creadaPor,
+                    paraCliente: true, // #60: lo subió el propio cliente
                 },
             });
             await actuacionPortal(solPago.id, 'ADJUNTO', `Adjuntó el comprobante de pago "${parsed.comprobante.nombre}"`, { portal: true, categoria: 'COMPROBANTE' });
@@ -712,7 +739,7 @@ export const crearSolicitud = async (req, res) => {
 
         const conActuaciones = await prisma.solicitud.findUnique({
             where: { id: creadas[0].id },
-            include: { actuaciones: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+            include: INCLUDE_DETALLE,
         });
         res.status(201).json(detalleCliente(conActuaciones, await tiposMap()));
     } catch (error) {
@@ -744,7 +771,7 @@ export const comentar = async (req, res) => {
 
         const updated = await prisma.solicitud.findUnique({
             where: { id: sol.id },
-            include: { actuaciones: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+            include: INCLUDE_DETALLE,
         });
         res.status(201).json(detalleCliente(updated, await tiposMap()));
     } catch (error) {
