@@ -20,6 +20,7 @@ import { bytesRealesDataUrl, nombreArchivoSeguro, VIDEOS_PERMITIDOS } from '../u
 import { esVideoMp4Real, duracionVideoSegundos, formatoDuracion } from '../utils/videoDuration.js';
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
+import { siguienteRadicado } from '../utils/radicado.js';
 
 // S1: Centro de Solicitudes (epic #32). Cada solicitud es un expediente con
 // radicado único, máquina de estados (solicitudFlow.js), línea de tiempo
@@ -156,13 +157,17 @@ async function validarContratoVinculado(contractId, req) {
     return null;
 }
 
-// Radicado "SOL-2026-0001": consecutivo por año. Reintenta si dos radican a la
-// vez (el @unique detecta la colisión). Exportado: el Portal de Clientes (P1)
-// radica con el mismo consecutivo.
+// Radicado "SOL-2026-0001": consecutivo por año, desde el mayor número usado
+// (contar filas colisionaba tras eliminar un expediente). Reintenta si dos
+// radican a la vez (el @unique detecta la colisión). Exportado: el Portal de
+// Clientes (P1) radica con el mismo consecutivo.
 export async function generarRadicado() {
     const anio = new Date().getFullYear();
-    const count = await prisma.solicitud.count({ where: { radicado: { startsWith: `SOL-${anio}-` } } });
-    return `SOL-${anio}-${String(count + 1).padStart(4, '0')}`;
+    const existentes = await prisma.solicitud.findMany({
+        where: { radicado: { startsWith: `SOL-${anio}-` } },
+        select: { radicado: true },
+    });
+    return siguienteRadicado(anio, existentes.map((s) => s.radicado));
 }
 
 // ── Tipos (#35) ──
