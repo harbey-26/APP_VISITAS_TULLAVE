@@ -696,7 +696,9 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   ("Inmueble: …") y los componentes quedan en `data.inmueble` (para futura
   referencia de pago / vínculo a Property). Hasta **5 archivos** por
   radicación entre fotos (`image/*`, 5 MB c/u, categoría FOTO, compresión
-  client-side con el mismo `imageCompress`) y **máximo 1 video** (#58:
+  client-side con el mismo `imageCompress`), **documentos PDF** (#62:
+  cotizaciones, facturas, actas… — 5 MB c/u, categoría PDF, magic bytes
+  verificados con `esPdfReal`) y **máximo 1 video** (#58:
   MP4/MOV, 1 min y 25 MB, categoría VIDEO — mismas validaciones server-side
   del equipo; uno solo porque la radicación viaja en un único POST); el
   cliente ve sus fotos/video en su timeline (`meta.portal`), el equipo los ve

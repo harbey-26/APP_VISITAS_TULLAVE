@@ -423,14 +423,16 @@ export const getRespuestaAdjunto = async (req, res) => {
 
 // ── Radicación desde el portal ──
 
-// Evidencia adjunta en la radicación: fotos y video, máximo 5 archivos en
-// total (decisión del cliente, ago 2026) de los cuales a lo sumo UN video
-// (#58: MP4/MOV, máx. 1 minuto y 25 MB — la radicación viaja en un solo POST,
-// más de un video no cabría en el body). Mismos límites del equipo.
+// Evidencia adjunta en la radicación: fotos, documentos PDF y video, máximo
+// 5 archivos en total (decisión del cliente, ago 2026) de los cuales a lo
+// sumo UN video (#58: MP4/MOV, máx. 1 minuto y 25 MB — la radicación viaja
+// en un solo POST, más de un video no cabría en el body). #62: documentos
+// PDF (cotizaciones, facturas, actas…) con el mismo límite de las fotos.
+// Mismos límites del equipo.
 const fotoSchema = z.object({
     nombre: z.string().trim().min(1).max(200),
     mimeType: z.string().trim().max(100)
-        .refine((m) => m.startsWith('image/') || VIDEOS_PERMITIDOS.includes(m), 'Solo se aceptan fotos o videos MP4/MOV'),
+        .refine((m) => m.startsWith('image/') || m === 'application/pdf' || VIDEOS_PERMITIDOS.includes(m), 'Solo se aceptan fotos, documentos PDF o videos MP4/MOV'),
     size: z.coerce.number().int().positive(),
     dataUrl: z.string().startsWith('data:', 'Adjunto inválido'),
 });
@@ -454,7 +456,7 @@ const crearSchema = z.object({
     conjuntoInmueble: z.string().trim().max(120).optional().nullable(),
     barrioInmueble: z.string().trim().max(120).optional().nullable(),
     ciudadInmueble: z.string().trim().min(2, 'Falta la ciudad').max(80),
-    adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 archivos entre fotos y video').optional(),
+    adjuntos: z.array(fotoSchema).max(5, 'Máximo 5 archivos entre fotos, documentos y video').optional(),
     // DP: el derecho de petición firmado — SOLO PDF (pedido del cliente)
     documentoPdf: z.object({
         nombre: z.string().trim().min(1).max(200),
@@ -546,9 +548,20 @@ export const crearSolicitud = async (req, res) => {
                 if (duracion > VIDEO_DURACION_MAX_SEG + 1) { // +1 s de tolerancia por el redondeo del último frame
                     return res.status(400).json({ error: `"${f.nombre}" dura ${formatoDuracion(duracion)} — el máximo es 1 minuto.` });
                 }
+            } else if (f.mimeType === 'application/pdf') {
+                // #62: documentos PDF — mismo límite de las fotos y contenido
+                // real verificado (el mimeType declarado lo controla el cliente)
+                if (bytes > LIMITE_ADJUNTO_BYTES) {
+                    return res.status(400).json({
+                        error: `"${f.nombre}" pesa ${(bytes / 1024 / 1024).toFixed(1)} MB — el máximo por documento es ${LIMITE_ADJUNTO_BYTES / 1024 / 1024} MB.`,
+                    });
+                }
+                if (!esPdfReal(f.dataUrl)) {
+                    return res.status(400).json({ error: `"${f.nombre}" no es un PDF válido.` });
+                }
             } else {
                 if (!IMAGENES_PERMITIDAS.includes(f.mimeType) || !f.dataUrl.startsWith('data:image/')) {
-                    return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP.` });
+                    return res.status(400).json({ error: `"${f.nombre}": solo se aceptan fotos JPG, PNG o WEBP, documentos PDF o videos MP4/MOV.` });
                 }
                 if (bytes > LIMITE_ADJUNTO_BYTES) {
                     return res.status(400).json({
@@ -672,19 +685,21 @@ export const crearSolicitud = async (req, res) => {
             );
         }
 
-        // Adjuntos: las fotos y el video van al expediente de reparaciones si
-        // lo hay (es su destino natural), si no al primero; el PDF del DP y el
-        // comprobante de pago van a SU expediente
+        // Adjuntos: las fotos, documentos y el video van al expediente de
+        // reparaciones si lo hay (es su destino natural), si no al primero;
+        // el PDF del DP y el comprobante de pago van a SU expediente
         const solFotos = creadas.find((s) => s.tipo === 'REPARACIONES') || creadas[0];
         for (const f of parsed.adjuntos || []) {
             const esVideo = f.mimeType.startsWith('video/');
+            const esPdf = f.mimeType === 'application/pdf';
+            const categoria = esVideo ? 'VIDEO' : esPdf ? 'PDF' : 'FOTO';
             await prisma.solicitudAdjunto.create({
                 data: {
                     solicitudId: solFotos.id,
                     nombre: f.nombre,
                     mimeType: f.mimeType,
                     size: f.size,
-                    categoria: esVideo ? 'VIDEO' : 'FOTO',
+                    categoria,
                     dataUrl: f.dataUrl,
                     subidoPor: creadaPor,
                     paraCliente: true, // #60: lo subió el propio cliente
@@ -692,8 +707,8 @@ export const crearSolicitud = async (req, res) => {
             });
             await actuacionPortal(
                 solFotos.id, 'ADJUNTO',
-                `Adjuntó ${esVideo ? 'el video' : 'la foto'} "${f.nombre}"`,
-                { portal: true, categoria: esVideo ? 'VIDEO' : 'FOTO' },
+                `Adjuntó ${esVideo ? 'el video' : esPdf ? 'el documento' : 'la foto'} "${f.nombre}"`,
+                { portal: true, categoria },
             );
         }
         if (parsed.documentoPdf) {
@@ -729,9 +744,10 @@ export const crearSolicitud = async (req, res) => {
             await actuacionPortal(solPago.id, 'ADJUNTO', `Adjuntó el comprobante de pago "${parsed.comprobante.nombre}"`, { portal: true, categoria: 'COMPROBANTE' });
         }
 
-        const nFotos = (parsed.adjuntos || []).length - nVideos;
+        const nDocs = (parsed.adjuntos || []).filter((f) => f.mimeType === 'application/pdf').length;
+        const nFotos = (parsed.adjuntos || []).length - nVideos - nDocs;
         const resumenTipos = tiposSel.map(labelDe).join(' + ');
-        const resumenAdjuntos = [nFotos && `${nFotos} foto(s)`, nVideos && `${nVideos} video`].filter(Boolean).join(' + ');
+        const resumenAdjuntos = [nFotos && `${nFotos} foto(s)`, nDocs && `${nDocs} documento(s)`, nVideos && `${nVideos} video`].filter(Boolean).join(' + ');
         notifyAdmins(
             creadas.length > 1 ? '📥 Nuevas solicitudes del portal' : '📥 Nueva solicitud del portal',
             `${creadas.map((s) => s.radicado).join(', ')}: ${parsed.asunto} — ${parsed.nombre} (${resumenTipos})${resumenAdjuntos ? ` · ${resumenAdjuntos}` : ''}`,
