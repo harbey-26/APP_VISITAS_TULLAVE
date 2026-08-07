@@ -5,7 +5,7 @@ import { generatePortalToken } from '../utils/portalAuth.js';
 import { hashPassword } from '../utils/auth.js';
 import { sendTextEmail } from '../utils/gmail.js';
 import { notifyAdmins, sendPersonalNotification } from '../utils/notify.js';
-import { generarRadicado, LIMITE_ADJUNTO_BYTES, LIMITE_VIDEO_BYTES, VIDEO_DURACION_MAX_SEG, initTipoData, vincularGrupo } from './solicitud.controller.js';
+import { generarRadicado, LIMITE_ADJUNTO_BYTES, LIMITE_VIDEO_BYTES, VIDEO_DURACION_MAX_SEG, initTipoData, vincularGrupo, direccionCompletaInmueble } from './solicitud.controller.js';
 import { bytesRealesDataUrl, esPdfReal, IMAGENES_PERMITIDAS, VIDEOS_PERMITIDOS, nombreArchivoSeguro } from '../utils/dataUrl.js';
 import { esVideoMp4Real, duracionVideoSegundos, formatoDuracion } from '../utils/videoDuration.js';
 import { REPORTE_MEDIOS } from '../utils/solicitudFlow.js';
@@ -482,19 +482,6 @@ const crearSchema = z.object({
 function mensajeError(error) {
     if (error?.issues?.length) return error.issues[0].message;
     return error?.message || 'No se pudo procesar la solicitud.';
-}
-
-// Mismo orden de composición que buildOrigen (liquidacion.controller.js):
-// dirección, Torre X, Apto X, conjunto, barrio, ciudad.
-export function direccionCompletaInmueble(d) {
-    return [
-        d.direccionInmueble,
-        d.torreInmueble && `Torre ${d.torreInmueble}`,
-        d.aptoInmueble && `Apto ${d.aptoInmueble}`,
-        d.conjuntoInmueble,
-        d.barrioInmueble,
-        d.ciudadInmueble,
-    ].filter(Boolean).join(', ');
 }
 
 // POST /api/portal/solicitudes

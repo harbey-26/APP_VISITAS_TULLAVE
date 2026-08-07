@@ -40,6 +40,9 @@ const FORM_VACIO = {
     descripcion: '', solicitanteNombre: '', solicitanteTipo: 'ARRENDATARIO',
     solicitanteTelefono: '', solicitanteEmail: '', propertyId: '', contractId: '',
     responsableId: '', dpTipo: 'GENERAL',
+    // #63: inmueble no registrado — ingreso manual (mismos campos del portal)
+    inmuebleManual: false, direccionInmueble: '', conjuntoInmueble: '',
+    torreInmueble: '', aptoInmueble: '', barrioInmueble: '', ciudadInmueble: '',
 };
 
 function UrgenciaBadge({ urgencia }) {
@@ -59,6 +62,7 @@ export default function Solicitudes() {
     const [tipos, setTipos] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [contratos, setContratos] = useState([]);
+    const [inmuebles, setInmuebles] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
@@ -90,6 +94,7 @@ export default function Solicitudes() {
                 apiFetch('/api/users').then(setUsuarios).catch(() => {});
             }
             apiFetch('/api/contracts').then(setContratos).catch(() => {});
+            apiFetch('/api/properties').then(setInmuebles).catch(() => {});
         } catch (err) {
             toast.error(friendlyError(err));
         } finally {
@@ -133,6 +138,15 @@ export default function Solicitudes() {
         }
         return lista;
     }, [contratos, form?.tipos, buscaContrato]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Inmueble (#63): buscar uno registrado (propertyId) o, si no está en
+    // la base, ingresarlo manualmente con los mismos campos del portal ──
+    const [buscaInmueble, setBuscaInmueble] = useState('');
+    const inmueblesFiltrados = useMemo(() => {
+        const q = normaliza(buscaInmueble);
+        if (!q) return inmuebles;
+        return inmuebles.filter((p) => normaliza(`${p.address} ${p.client || ''}`).includes(q));
+    }, [inmuebles, buscaInmueble]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const vincularContrato = (contractId) => {
         const c = contratos.find((x) => String(x.id) === String(contractId));
@@ -199,6 +213,21 @@ export default function Solicitudes() {
                 body[k] = body[k] ? Number(body[k]) : null;
             }
             if (!form.tipos.includes('DERECHOS_DE_PETICION')) delete body.dpTipo;
+            // #63: los campos del inmueble manual viajan como objeto `inmueble`
+            delete body.inmuebleManual;
+            for (const k of ['direccionInmueble', 'conjuntoInmueble', 'torreInmueble', 'aptoInmueble', 'barrioInmueble', 'ciudadInmueble']) {
+                delete body[k];
+            }
+            if (form.inmuebleManual && form.direccionInmueble.trim()) {
+                body.inmueble = {
+                    direccionInmueble: form.direccionInmueble,
+                    conjuntoInmueble: form.conjuntoInmueble || null,
+                    torreInmueble: form.torreInmueble || null,
+                    aptoInmueble: form.aptoInmueble || null,
+                    barrioInmueble: form.barrioInmueble || null,
+                    ciudadInmueble: form.ciudadInmueble,
+                };
+            }
             const creada = await apiFetch('/api/solicitudes', { method: 'POST', body });
             toast.success(form.tipos.length > 1
                 ? `Radicadas ${form.tipos.length} solicitudes (${creada.radicado} y más)`
@@ -288,7 +317,7 @@ export default function Solicitudes() {
                             <Settings2 className="w-4 h-4" /> Tipos
                         </Button>
                     )}
-                    <Button size="sm" onClick={() => { setBuscaTipo(''); setBuscaContrato(''); setForm({ ...FORM_VACIO }); }}>
+                    <Button size="sm" onClick={() => { setBuscaTipo(''); setBuscaContrato(''); setBuscaInmueble(''); setForm({ ...FORM_VACIO }); }}>
                         <Plus className="w-4 h-4" /> Radicar solicitud
                     </Button>
                 </div>
@@ -571,6 +600,62 @@ export default function Solicitudes() {
                             <Field label="Teléfono"><Input value={form.solicitanteTelefono} onChange={(e) => setForm({ ...form, solicitanteTelefono: e.target.value })} /></Field>
                             <Field label="Correo"><Input type="email" value={form.solicitanteEmail} onChange={(e) => setForm({ ...form, solicitanteEmail: e.target.value })} /></Field>
                         </div>
+                        {/* ── Inmueble (#63): registrado o ingreso manual ── */}
+                        {!form.inmuebleManual ? (
+                            <Field label="Inmueble">
+                                <Input
+                                    value={buscaInmueble}
+                                    onChange={(e) => setBuscaInmueble(e.target.value)}
+                                    placeholder="🔍 Dirección o conjunto…"
+                                    className="mb-1.5"
+                                />
+                                <Select value={form.propertyId} onChange={(e) => setForm({ ...form, propertyId: e.target.value })}>
+                                    <option value="">Ninguno</option>
+                                    {inmueblesFiltrados.map((p) => (
+                                        <option key={p.id} value={p.id}>{p.address}{p.client ? ` — ${p.client}` : ''}</option>
+                                    ))}
+                                </Select>
+                                <button
+                                    type="button"
+                                    className="mt-1.5 text-xs font-bold text-brand-600 hover:underline"
+                                    onClick={() => setForm((f) => ({ ...f, inmuebleManual: true, propertyId: '' }))}
+                                >
+                                    ¿No está registrado? Ingresar los datos manualmente
+                                </button>
+                            </Field>
+                        ) : (
+                            <Field label="Inmueble — ingreso manual" hint="Queda en el expediente aunque el inmueble no exista en la base">
+                                <div className="space-y-2">
+                                    <Input required maxLength={160} placeholder="Dirección (calle) *"
+                                        value={form.direccionInmueble}
+                                        onChange={(e) => setForm({ ...form, direccionInmueble: e.target.value })} />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input maxLength={120} placeholder="Conjunto / Edificio"
+                                            value={form.conjuntoInmueble}
+                                            onChange={(e) => setForm({ ...form, conjuntoInmueble: e.target.value })} />
+                                        <Input maxLength={80} placeholder="Torre / Bloque"
+                                            value={form.torreInmueble}
+                                            onChange={(e) => setForm({ ...form, torreInmueble: e.target.value })} />
+                                        <Input maxLength={80} placeholder="Apartamento / Interior"
+                                            value={form.aptoInmueble}
+                                            onChange={(e) => setForm({ ...form, aptoInmueble: e.target.value })} />
+                                        <Input maxLength={120} placeholder="Barrio"
+                                            value={form.barrioInmueble}
+                                            onChange={(e) => setForm({ ...form, barrioInmueble: e.target.value })} />
+                                    </div>
+                                    <Input required maxLength={80} placeholder="Ciudad *"
+                                        value={form.ciudadInmueble}
+                                        onChange={(e) => setForm({ ...form, ciudadInmueble: e.target.value })} />
+                                </div>
+                                <button
+                                    type="button"
+                                    className="mt-1.5 text-xs font-bold text-brand-600 hover:underline"
+                                    onClick={() => setForm((f) => ({ ...f, inmuebleManual: false }))}
+                                >
+                                    ← Volver a buscar un inmueble registrado
+                                </button>
+                            </Field>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Prioridad">
                                 <Select value={form.prioridad} onChange={(e) => setForm({ ...form, prioridad: e.target.value })}>

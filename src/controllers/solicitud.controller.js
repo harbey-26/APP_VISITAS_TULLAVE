@@ -60,7 +60,31 @@ const solicitudSchema = z.object({
     contractId: z.coerce.number().int().positive().optional().nullable(),
     responsableId: z.coerce.number().int().positive().optional().nullable(),
     fechaVencimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    // #63: inmueble NO registrado en la base — mismos campos estructurados de
+    // la radicación del portal (dirección y ciudad obligatorias)
+    inmueble: z.object({
+        direccionInmueble: z.string().trim().min(5, 'Falta la dirección del inmueble').max(160),
+        torreInmueble: z.string().trim().max(80).optional().nullable(),
+        aptoInmueble: z.string().trim().max(80).optional().nullable(),
+        conjuntoInmueble: z.string().trim().max(120).optional().nullable(),
+        barrioInmueble: z.string().trim().max(120).optional().nullable(),
+        ciudadInmueble: z.string().trim().min(2, 'Falta la ciudad del inmueble').max(80),
+    }).optional().nullable(),
 });
+
+// Mismo orden de composición que buildOrigen (liquidacion.controller.js):
+// dirección, Torre X, Apto X, conjunto, barrio, ciudad. La usa también la
+// radicación del portal (portal.controller.js).
+export function direccionCompletaInmueble(d) {
+    return [
+        d.direccionInmueble,
+        d.torreInmueble && `Torre ${d.torreInmueble}`,
+        d.aptoInmueble && `Apto ${d.aptoInmueble}`,
+        d.conjuntoInmueble,
+        d.barrioInmueble,
+        d.ciudadInmueble,
+    ].filter(Boolean).join(', ');
+}
 
 function parseId(raw) {
     const n = parseInt(raw, 10);
@@ -298,15 +322,35 @@ export async function vincularGrupo(solicitudes) {
 export const createSolicitud = async (req, res) => {
     try {
         const parsed = solicitudSchema.parse(req.body);
-        const { tipos: tiposRaw, tipo: tipoUnico, ...base } = parsed;
+        const { tipos: tiposRaw, tipo: tipoUnico, inmueble, ...base } = parsed;
         const tipos = [...new Set((tiposRaw?.length ? tiposRaw : [tipoUnico]).filter(Boolean))];
         if (!tipos.length) return res.status(400).json({ error: 'Falta el tipo de solicitud.' });
         const errorContrato = await validarContratoVinculado(parsed.contractId, req);
         if (errorContrato) return res.status(403).json({ error: errorContrato });
 
+        // #63: inmueble no registrado — misma mecánica del portal: la dirección
+        // compuesta encabeza la descripción (visible en toda la UI sin cambios)
+        // y los componentes sueltos quedan en data.inmueble
+        let inmuebleData = null;
+        if (inmueble) {
+            const direccionCompleta = direccionCompletaInmueble(inmueble);
+            inmuebleData = {
+                direccionInmueble: inmueble.direccionInmueble,
+                torreInmueble: inmueble.torreInmueble || '',
+                aptoInmueble: inmueble.aptoInmueble || '',
+                conjuntoInmueble: inmueble.conjuntoInmueble || '',
+                barrioInmueble: inmueble.barrioInmueble || '',
+                ciudadInmueble: inmueble.ciudadInmueble,
+                direccionCompleta,
+            };
+            base.descripcion = [`Inmueble: ${direccionCompleta}`, base.descripcion || null]
+                .filter(Boolean).join('\n\n');
+        }
+
         const creadas = [];
         for (const tipo of tipos) {
             const init = initTipoData(tipo, req.body);
+            const data = inmuebleData ? { ...(init.data || {}), inmueble: inmuebleData } : init.data;
             // Reintento por colisión del consecutivo (dos radicando a la vez)
             let solicitud = null;
             for (let intento = 0; intento < 5 && !solicitud; intento++) {
@@ -319,7 +363,7 @@ export const createSolicitud = async (req, res) => {
                             creadaPor: req.user.id,
                             // El término calculado del tipo (DP) manda sobre el manual
                             fechaVencimiento: init.fechaVencimiento || base.fechaVencimiento || null,
-                            data: init.data ? JSON.stringify(init.data) : null,
+                            data: data ? JSON.stringify(data) : null,
                         },
                         include: includeDetalle,
                     });
@@ -404,6 +448,7 @@ export const updateSolicitud = async (req, res) => {
         }
         const parsed = solicitudSchema.partial().omit({ tipo: true }).parse(req.body);
         delete parsed.responsableId; // la asignación tiene su endpoint con notificación
+        delete parsed.inmueble; // #63: el inmueble manual solo entra al radicar (vive en data)
         if (parsed.contractId !== undefined && parsed.contractId !== sol.contractId) {
             const errorContrato = await validarContratoVinculado(parsed.contractId, req);
             if (errorContrato) return res.status(403).json({ error: errorContrato });

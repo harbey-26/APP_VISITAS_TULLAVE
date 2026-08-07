@@ -231,7 +231,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | GET | `/api/incrementos/public/:token/pdf` | **No** | PDF público de la carta (solo enviadas) |
 | PATCH | `/api/incrementos/:id/aplicar` | JWT+Admin | Aplica el nuevo canon a la ficha (transacción) y cierra el ciclo → APLICADA |
 | PATCH | `/api/incrementos/:id/anular` | JWT+Admin | Anular con `{motivo}` obligatorio |
-| GET/POST | `/api/solicitudes` | JWT | Expedientes (admin todos; usuario los suyos: asignados + radicados). POST radica con radicado automático; tipo DERECHOS_DE_PETICION calcula el vencimiento legal (días hábiles, `dpTipo`). **#57:** `tipos: [...]` (máx. 5) crea un expediente por tipo, vinculados en `data.grupo` — `tipo` (singular) sigue funcionando |
+| GET/POST | `/api/solicitudes` | JWT | Expedientes (admin todos; usuario los suyos: asignados + radicados). POST radica con radicado automático; tipo DERECHOS_DE_PETICION calcula el vencimiento legal (días hábiles, `dpTipo`). **#57:** `tipos: [...]` (máx. 5) crea un expediente por tipo, vinculados en `data.grupo` — `tipo` (singular) sigue funcionando. **#63:** `inmueble: {…}` opcional (inmueble NO registrado — mismos campos del portal): la dirección compuesta encabeza `descripcion` y los componentes quedan en `data.inmueble` |
 | GET/POST/PATCH | `/api/solicitudes/tipos(/:id)` | JWT (escribir admin) | Tipos administrables |
 | GET | `/api/solicitudes/stats` | JWT | KPIs del dashboard: abiertas, cerradas, vencidas, promedio de respuesta, por tipo/estado, tendencia |
 | GET/PATCH/DELETE | `/api/solicitudes/:id` | JWT | Detalle con timeline / editar base / eliminar (admin, o creador solo RECIBIDA) |
@@ -618,6 +618,16 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   del backend: vencida = abierta con `urgencia === 'VENCIDA'`), resaltan la
   activa con ring, muestran chip "✕" para quitar el filtro y el mismo clic
   vuelve a quitarlo; "Respuesta promedio" sigue siendo informativa
+- **Inmueble en la radicación del equipo (#63, ago 2026)** — el modal "Radicar
+  solicitud" tiene sección Inmueble con dos modos: buscar uno registrado
+  (select con buscador → `propertyId`) o "¿No está registrado? Ingresar los
+  datos manualmente" — los mismos 6 campos estructurados del portal
+  (dirección* / conjunto / torre / apto / barrio / ciudad*). El manual usa la
+  MISMA mecánica de la radicación del portal: "Inmueble: …" encabeza la
+  descripción (visible en toda la UI sin cambios) y los componentes quedan en
+  `data.inmueble`. El helper `direccionCompletaInmueble` vive en
+  solicitud.controller.js (el portal lo importa de ahí). Crear el Property
+  desde esos datos quedó por fuera (opcional del issue)
 - **Radicación múltiple (#57, ago 2026)** — un cliente con varias solicitudes
   a la vez marca VARIOS tipos en una sola radicación (equipo y portal:
   checkboxes en vez de select). Decisión: opción 2 del issue — se crea UN
