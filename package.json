@@ -33,7 +33,7 @@
         "@capacitor/local-notifications": "^8.0.2",
         "@capgo/capacitor-updater": "^8.51.3",
         "@googlemaps/markerclusterer": "^2.6.2",
-        "adm-zip": "^0.5.16",
+        "adm-zip": "^0.6.0",
         "@prisma/client": "^5.21.1",
         "@react-google-maps/api": "^2.20.8",
         "bcryptjs": "^2.4.3",
