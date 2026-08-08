@@ -24,10 +24,15 @@ export default function UpdateBanner() {
                 if (!res.ok) return;
                 const remote = await res.json();
                 if (cancelled) return;
-                if (installed.version !== remote.latest) {
+                // #67: desde el OTA hay dos versiones — este banner solo avisa
+                // cambios del cascarón NATIVO (apkVersion = package.json, que se
+                // sube solo en cambios de plugins/permisos). Los cambios de UI
+                // llegan solos por otaUpdater.js sin reinstalar.
+                const apkLatest = remote.apkVersion || remote.latest;
+                if (installed.version !== apkLatest) {
                     const dismissed = localStorage.getItem(DISMISSED_KEY);
-                    if (dismissed === remote.latest) return; // ya lo cerró para esta versión
-                    setInfo({ current: installed.version, latest: remote.latest, apkUrl: remote.apkUrl });
+                    if (dismissed === apkLatest) return; // ya lo cerró para esta versión
+                    setInfo({ current: installed.version, latest: apkLatest, apkUrl: remote.apkUrl });
                 }
             } catch { /* silencioso */ }
         })();

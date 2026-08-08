@@ -1,6 +1,6 @@
 {
     "name": "app-visitas-tullave",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Real Estate Visit Tracking Application",
     "main": "server.js",
     "type": "module",
@@ -31,7 +31,9 @@
         "@capacitor/core": "^8.1.0",
         "@capacitor/geolocation": "^8.1.0",
         "@capacitor/local-notifications": "^8.0.2",
+        "@capgo/capacitor-updater": "^8.51.3",
         "@googlemaps/markerclusterer": "^2.6.2",
+        "adm-zip": "^0.5.16",
         "@prisma/client": "^5.21.1",
         "@react-google-maps/api": "^2.20.8",
         "bcryptjs": "^2.4.3",
