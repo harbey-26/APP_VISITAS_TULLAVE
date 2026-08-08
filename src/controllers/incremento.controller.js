@@ -11,6 +11,7 @@ import { sendEmailWithPdf } from '../utils/gmail.js';
 import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
+import { esStaff } from '../utils/roles.js';
 
 // I1: Módulo de incrementos de canon. FichaIncremento = contrato vivo en
 // seguimiento (auto-alta al aprobar contratos ARRENDAMIENTO, backfill de los
@@ -46,6 +47,7 @@ function parseId(raw) {
 }
 
 const isAdmin = (req) => req.user.role === 'ADMIN';
+const isStaff = (req) => esStaff(req.user.role); // admin o asistente: solo VISIBILIDAD
 
 const includeFicha = {
     user: { select: { id: true, name: true } },
@@ -152,7 +154,7 @@ export async function crearFichaDesdeContrato(contract) {
 export const getFichas = async (req, res) => {
     try {
         const where = {};
-        if (!isAdmin(req)) where.userId = req.user.id;
+        if (!isStaff(req)) where.userId = req.user.id;
         if (req.query.activa !== 'todas') where.activa = true;
         const [fichas, indices] = await Promise.all([
             prisma.fichaIncremento.findMany({
@@ -422,7 +424,7 @@ export const procesarMes = async (req, res) => {
 export const getIncrementos = async (req, res) => {
     try {
         const where = {};
-        if (!isAdmin(req)) where.ficha = { userId: req.user.id };
+        if (!isStaff(req)) where.ficha = { userId: req.user.id };
         if (req.query.status) where.status = String(req.query.status);
         if (req.query.periodo) where.periodo = parseId(req.query.periodo);
         const [incrementos, indices] = await Promise.all([
@@ -440,12 +442,14 @@ export const getIncrementos = async (req, res) => {
     }
 };
 
-// Carga + permiso dueño/admin. Devuelve { inc } o { error, status }.
-async function loadOwnedIncremento(req) {
+// Carga + permiso dueño/admin (con { lectura: true }, también asistente:
+// puede VER la carta pero no enviarla ni aplicarla). Devuelve { inc } o { error, status }.
+async function loadOwnedIncremento(req, { lectura = false } = {}) {
     const id = parseId(req.params.id);
     const inc = await prisma.incremento.findUnique({ where: { id }, include: includeIncremento });
     if (!inc) return { error: 'Incremento no encontrado', status: 404 };
-    if (!isAdmin(req) && inc.ficha.userId !== req.user.id) {
+    const autorizado = lectura ? isStaff(req) : isAdmin(req);
+    if (!autorizado && inc.ficha.userId !== req.user.id) {
         return { error: 'No tienes permiso sobre este incremento.', status: 403 };
     }
     return { inc };
@@ -454,7 +458,7 @@ async function loadOwnedIncremento(req) {
 // GET /api/incrementos/:id — detalle con snapshot (vista previa de la carta)
 export const getIncremento = async (req, res) => {
     try {
-        const { inc, error, status } = await loadOwnedIncremento(req);
+        const { inc, error, status } = await loadOwnedIncremento(req, { lectura: true });
         if (error) return res.status(status).json({ error });
         res.json(serializeIncremento(inc, await mapaIndices()));
     } catch (error) {

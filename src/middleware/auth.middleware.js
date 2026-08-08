@@ -1,5 +1,6 @@
 import { verifyToken } from '../utils/auth.js';
 import prisma from '../utils/prisma.js';
+import { esStaff } from '../utils/roles.js';
 
 // A8: ¿la versión de sesión del token sigue vigente en BD? (false si el
 // usuario ya no existe). Para validadores de token fuera de este middleware.
@@ -44,6 +45,24 @@ export const authenticate = async (req, res, next) => {
 export const requireAdmin = (req, res, next) => {
     if (!req.user || req.user.role !== 'ADMIN') {
         return res.status(403).json({ error: 'Acceso denegado: Se requieren permisos de administrador' });
+    }
+    next();
+};
+
+// Staff = ADMIN o ASISTENTE: visibilidad de administrador (dashboard, rastreo,
+// listados globales). Las acciones que autorizan siguen bajo requireAdmin.
+export const requireStaff = (req, res, next) => {
+    if (!req.user || !esStaff(req.user.role)) {
+        return res.status(403).json({ error: 'Acceso denegado: Se requieren permisos de administrador o asistente' });
+    }
+    next();
+};
+
+// El ASISTENTE solo VE la agenda: cualquier mutación de visitas le queda
+// prohibida aunque el endpoint esté abierto a agentes y admins.
+export const forbidAsistente = (req, res, next) => {
+    if (req.user?.role === 'ASISTENTE') {
+        return res.status(403).json({ error: 'El rol asistente solo puede consultar la agenda, no gestionar visitas.' });
     }
     next();
 };

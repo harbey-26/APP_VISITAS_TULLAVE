@@ -21,6 +21,7 @@ import { esVideoMp4Real, duracionVideoSegundos, formatoDuracion } from '../utils
 import { EMPRESA } from '../utils/contractTemplates.js';
 import { fechaCorta } from '../utils/fechaLetras.js';
 import { siguienteRadicado } from '../utils/radicado.js';
+import { esStaff } from '../utils/roles.js';
 
 // S1: Centro de Solicitudes (epic #32). Cada solicitud es un expediente con
 // radicado único, máquina de estados (solicitudFlow.js), línea de tiempo
@@ -93,6 +94,9 @@ function parseId(raw) {
 }
 
 const isAdmin = (req) => req.user.role === 'ADMIN';
+// Staff (admin o asistente): ve y gestiona todos los expedientes. Lo que es
+// exclusivo del admin (eliminar en trámite, administrar tipos) sigue en isAdmin.
+const isStaff = (req) => esStaff(req.user.role);
 
 const includeRefs = {
     creador: { select: { id: true, name: true } },
@@ -172,7 +176,7 @@ function serialize(sol, hoy = hoyISO()) {
 // chequeo podría apuntar a cualquier contractId y leer datos ajenos).
 // Devuelve el mensaje de error o null si el vínculo es válido.
 async function validarContratoVinculado(contractId, req) {
-    if (!contractId || isAdmin(req)) return null;
+    if (!contractId || isStaff(req)) return null;
     const contract = await prisma.contract.findUnique({
         where: { id: contractId }, select: { userId: true },
     });
@@ -199,7 +203,7 @@ export async function generarRadicado() {
 // GET /api/solicitudes/tipos — activos para el formulario; ?todas=1 (admin)
 export const getTipos = async (req, res) => {
     try {
-        const where = req.query.todas === '1' && isAdmin(req) ? {} : { activo: true };
+        const where = req.query.todas === '1' && isStaff(req) ? {} : { activo: true };
         const tipos = await prisma.solicitudTipo.findMany({ where, orderBy: { orden: 'asc' } });
         res.json(tipos);
     } catch (error) {
@@ -259,7 +263,7 @@ export const updateTipo = async (req, res) => {
 export const getSolicitudes = async (req, res) => {
     try {
         const where = {};
-        if (!isAdmin(req)) {
+        if (!isStaff(req)) {
             where.OR = [{ responsableId: req.user.id }, { creadaPor: req.user.id }];
         } else if (req.query.responsableId) {
             where.responsableId = parseId(req.query.responsableId);
@@ -421,7 +425,7 @@ async function loadOwned(req, include = includeDetalle) {
     const id = parseId(req.params.id);
     const sol = await prisma.solicitud.findUnique({ where: { id }, include });
     if (!sol) return { error: 'Solicitud no encontrada', status: 404 };
-    if (!isAdmin(req) && sol.responsableId !== req.user.id && sol.creadaPor !== req.user.id) {
+    if (!isStaff(req) && sol.responsableId !== req.user.id && sol.creadaPor !== req.user.id) {
         return { error: 'No tienes permiso sobre esta solicitud.', status: 403 };
     }
     return { sol };
@@ -1065,7 +1069,7 @@ export const publicServicioPdf = async (req, res) => {
 // GET /api/solicitudes/stats — indicadores (admin; un agente ve los suyos)
 export const getStats = async (req, res) => {
     try {
-        const where = isAdmin(req) ? {} : { OR: [{ responsableId: req.user.id }, { creadaPor: req.user.id }] };
+        const where = isStaff(req) ? {} : { OR: [{ responsableId: req.user.id }, { creadaPor: req.user.id }] };
         const solicitudes = await prisma.solicitud.findMany({
             where,
             select: {

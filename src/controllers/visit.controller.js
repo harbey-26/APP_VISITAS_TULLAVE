@@ -5,6 +5,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { upsertVisitEvent, deleteVisitEvent } from '../utils/googleCalendar.js';
 import { getDistanceInMeters } from '../utils/distance.js';
 import { hasScheduleConflict } from '../utils/scheduleConflict.js';
+import { esStaff } from '../utils/roles.js';
 
 // M8: Sincronizar una visita con Google Calendar (no bloquea la respuesta HTTP)
 async function syncToCalendar(visitId) {
@@ -92,7 +93,7 @@ export const getVisits = async (req, res) => {
         // A2: Excluir visitas con soft delete
         const where = { deletedAt: null };
 
-        if (role !== 'ADMIN') {
+        if (!esStaff(role)) {
             where.userId = userId;
         }
 

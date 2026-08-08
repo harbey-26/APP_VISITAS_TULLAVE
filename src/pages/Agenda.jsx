@@ -13,6 +13,7 @@ import AddressAutocomplete from '../components/AddressAutocomplete';
 import { Button, Modal, Select, Input, SearchCombobox } from '../components/ui';
 import { visitMarkerIcon, agentMarkerIcon } from '../utils/mapMarkers';
 import { buildWhatsAppUrl, buildConfirmationMessage } from '../utils/phone';
+import { esStaff } from '../utils/roles';
 
 const BOGOTA = { lat: 4.6097, lng: -74.0817 };
 
@@ -373,6 +374,10 @@ export default function Agenda() {
     const { token, user } = useAuth();
     const navigate = useNavigate();
     const toast = useToast();
+    // Staff = admin o asistente: ven la agenda de todos los agentes.
+    // El asistente la ve en SOLO LECTURA: sin crear, editar ni ejecutar visitas.
+    const staff = esStaff(user?.role);
+    const soloLectura = user?.role === 'ASISTENTE';
 
     // Cargamos el script de Maps a nivel de página para que el autocompletado de
     // Places funcione dentro de los modales aunque la vista activa sea la lista.
@@ -462,7 +467,7 @@ export default function Agenda() {
     };
 
     const fetchAgents = async () => {
-        if (user?.role === 'ADMIN') {
+        if (staff) {
             try {
                 const res = await fetch(`${API_URL}/api/users`, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -481,7 +486,7 @@ export default function Agenda() {
     // mismo endpoint que el módulo de Rastreo. Silencioso: si falla, el mapa
     // simplemente no pinta agentes.
     const fetchAgentLocations = async () => {
-        if (user?.role !== 'ADMIN') return;
+        if (!staff) return;
         try {
             const res = await fetch(`${API_URL}/api/users/locations`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -800,10 +805,10 @@ export default function Agenda() {
         new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 
     // Aplica el filtro de agente (admin) sobre las visitas ya cargadas del período.
-    const visibleVisits = (user?.role === 'ADMIN' && agentFilter !== 'all')
+    const visibleVisits = (staff && agentFilter !== 'all')
         ? visits.filter(v => String(v.user?.id ?? v.userId) === String(agentFilter))
         : visits;
-    const visibleAgentLocations = (user?.role === 'ADMIN' && agentFilter !== 'all')
+    const visibleAgentLocations = (staff && agentFilter !== 'all')
         ? agentLocations.filter(a => String(a.id) === String(agentFilter))
         : agentLocations;
 
@@ -847,9 +852,11 @@ export default function Agenda() {
                                 <span className="hidden sm:inline">Mapa</span>
                             </button>
                         </div>
-                        <Button icon={Plus} onClick={() => setShowModal(true)} className="whitespace-nowrap">
-                            Nueva Visita
-                        </Button>
+                        {!soloLectura && (
+                            <Button icon={Plus} onClick={() => setShowModal(true)} className="whitespace-nowrap">
+                                Nueva Visita
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -885,8 +892,8 @@ export default function Agenda() {
                         />
                     </div>
 
-                    {/* Filtro por agente — solo admin */}
-                    {user?.role === 'ADMIN' && (
+                    {/* Filtro por agente — staff (admin y asistente) */}
+                    {staff && (
                         <div className="flex items-center gap-1.5">
                             <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             <select
@@ -943,7 +950,7 @@ export default function Agenda() {
                     <AgendaMapView
                         visits={visibleVisits}
                         agents={visibleAgentLocations}
-                        onVisitClick={(id) => navigate(`/visit/${id}`)}
+                        onVisitClick={(id) => { if (!soloLectura) navigate(`/visit/${id}`); }}
                     />
                 </div>
             )}
@@ -967,11 +974,15 @@ export default function Agenda() {
                     <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
                         {agentFilter !== 'all'
                             ? 'No hay visitas para el agente seleccionado en este período. Cambia el filtro o el rango de fechas.'
-                            : `Agenda la primera visita del ${dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.`}
+                            : soloLectura
+                                ? 'No hay visitas agendadas en este período.'
+                                : `Agenda la primera visita del ${dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.`}
                     </p>
-                    <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
-                        Agendar visita
-                    </Button>
+                    {!soloLectura && (
+                        <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
+                            Agendar visita
+                        </Button>
+                    )}
                 </div>
             )}
             {!loadingVisits && viewMode === 'list' && hasVisits && (
@@ -1000,8 +1011,8 @@ export default function Agenda() {
                                         return (
                                             <div
                                                 key={visit.id}
-                                                onClick={() => navigate(`/visit/${visit.id}`)}
-                                                className={`bg-white rounded-xl border cursor-pointer hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
+                                                onClick={() => { if (!soloLectura) navigate(`/visit/${visit.id}`); }}
+                                                className={`bg-white rounded-xl border ${soloLectura ? '' : 'cursor-pointer'} hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
                                                 <div className={`h-1 w-full ${typeConfig.dot}`} />
@@ -1049,30 +1060,35 @@ export default function Agenda() {
                                                                 )}
                                                                 {statusConfig.label}
                                                             </span>
-                                                            {isPastPending && (
-                                                                <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
-                                                                    <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </button>
+                                                            {/* El asistente solo consulta: sin acciones sobre la visita */}
+                                                            {!soloLectura && (
+                                                                <>
+                                                                    {isPastPending && (
+                                                                        <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
+                                                                            <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                    {visit.status === 'PENDING' && (
+                                                                        <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
+                                                                            <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                    {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                        <button onClick={(e) => openEdit(e, visit)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Editar visita">
+                                                                            <Pencil className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                    {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                        <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
+                                                                            <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                    <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Eliminar">
+                                                                        <Trash2 className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                    </button>
+                                                                    <ChevronRight className="w-5 h-5 md:w-4 md:h-4 text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+                                                                </>
                                                             )}
-                                                            {visit.status === 'PENDING' && (
-                                                                <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
-                                                                    <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </button>
-                                                            )}
-                                                            {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                <button onClick={(e) => openEdit(e, visit)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Editar visita">
-                                                                    <Pencil className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </button>
-                                                            )}
-                                                            {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
-                                                                    <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </button>
-                                                            )}
-                                                            <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Eliminar">
-                                                                <Trash2 className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                            </button>
-                                                            <ChevronRight className="w-5 h-5 md:w-4 md:h-4 text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
                                                         </div>
                                                     </div>
 
@@ -1122,7 +1138,7 @@ export default function Agenda() {
                                                                 >
                                                                     <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
-                                                                <a
+                                                                {!soloLectura && <a
                                                                     href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name, visit.user?.phone))}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
@@ -1132,10 +1148,10 @@ export default function Agenda() {
                                                                     className="w-10 h-10 md:w-7 md:h-7 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95 shadow-sm"
                                                                 >
                                                                     <MessageCircle className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </a>
+                                                                </a>}
                                                             </div>
                                                         )}
-                                                        {user?.role === 'ADMIN' && visit.user?.name && (
+                                                        {staff && visit.user?.name && (
                                                             <div className="flex items-center gap-1">
                                                                 <div className="w-4 h-4 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
                                                                     <span className="text-brand-600 font-bold" style={{ fontSize: '8px' }}>{visit.user.name.charAt(0)}</span>
@@ -1143,7 +1159,7 @@ export default function Agenda() {
                                                                 <span className="font-semibold text-brand-700">{visit.user.name}</span>
                                                             </div>
                                                         )}
-                                                        {!visit.clientName && !(user?.role === 'ADMIN' && visit.user?.name) && (
+                                                        {!visit.clientName && !(staff && visit.user?.name) && (
                                                             <span className="text-gray-300 italic">Sin datos de cliente</span>
                                                         )}
                                                         <span className="text-gray-400">{visit.estimatedDuration} min</span>

@@ -12,6 +12,7 @@ import { fechaCorta } from '../utils/fechaLetras';
 import { formatoCifra } from '../utils/numeroALetras';
 import { buildWhatsAppUrl } from '../utils/phone';
 import { PORTAL_URL, mensajePortal } from '../utils/portalShare';
+import { esStaff } from '../utils/roles';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
 } from '../components/ui';
@@ -56,6 +57,9 @@ export default function Solicitudes() {
     const toast = useToast();
     const navigate = useNavigate();
     const isAdmin = user?.role === 'ADMIN';
+    // Staff (admin o asistente): ve todos los expedientes, bandejas y asigna.
+    // Administrar tipos sigue siendo exclusivo del admin.
+    const staff = esStaff(user?.role);
 
     const [tab, setTab] = useState('bandeja'); // bandeja | listado | dashboard
     const [solicitudes, setSolicitudes] = useState([]);
@@ -90,7 +94,7 @@ export default function Solicitudes() {
             setSolicitudes(sols);
             setTipos(tps);
             setStats(st);
-            if (isAdmin) {
+            if (staff) {
                 apiFetch('/api/users').then(setUsuarios).catch(() => {});
             }
             apiFetch('/api/contracts').then(setContratos).catch(() => {});
@@ -166,12 +170,12 @@ export default function Solicitudes() {
     // ── Bandeja (#43): mi trabajo abierto (o el del funcionario elegido) ──
     const bandeja = useMemo(() => {
         let abiertas = solicitudes.filter((s) => ESTADOS_ABIERTOS.includes(s.estado));
-        if (isAdmin) {
+        if (staff) {
             const uid = bandejaDe ? Number(bandejaDe) : user.id;
             abiertas = abiertas.filter((s) => s.responsableId === uid || (!bandejaDe && !s.responsableId));
         }
         return [...abiertas].sort((a, b) => compararBandeja(a, b, hoy));
-    }, [solicitudes, isAdmin, bandejaDe, user.id, hoy]);
+    }, [solicitudes, staff, bandejaDe, user.id, hoy]);
 
     const bandejaPorTipo = useMemo(() => {
         const grupos = {};
@@ -405,7 +409,7 @@ export default function Solicitudes() {
             {/* ── Bandeja de trabajo (#43) ── */}
             {tab === 'bandeja' && (
                 <>
-                    {isAdmin && (
+                    {staff && (
                         <div className="mb-4 flex items-center gap-2">
                             <Select value={bandejaDe} onChange={(e) => setBandejaDe(e.target.value)} className="w-auto text-sm">
                                 <option value="">Mi bandeja (y sin asignar)</option>
@@ -695,7 +699,7 @@ export default function Solicitudes() {
                                 </div>
                             );
                         })()}
-                        {isAdmin && (
+                        {staff && (
                             <Field label="Responsable">
                                 <Select value={form.responsableId} onChange={(e) => setForm({ ...form, responsableId: e.target.value })}>
                                     <option value="">Sin asignar</option>

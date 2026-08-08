@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { esStaff } from './utils/roles';
 import { ToastProvider } from './context/ToastContext';
 import { NotificationsProvider } from './context/NotificationsContext';
 import Login from './pages/Login';
@@ -63,6 +64,20 @@ const AdminRoute = ({ children }) => {
     return user && user.role === 'ADMIN' ? children : <Navigate to="/" replace />;
 };
 
+// Staff = ADMIN o ASISTENTE (vista de administrador sin autorizar)
+const StaffRoute = ({ children }) => {
+    const { user, loading } = useAuth();
+    if (loading) return <LoadingScreen />;
+    return user && esStaff(user.role) ? children : <Navigate to="/" replace />;
+};
+
+// El ASISTENTE solo consulta la agenda: la ejecución de visitas no es para él
+const NoAsistenteRoute = ({ children }) => {
+    const { user, loading } = useAuth();
+    if (loading) return <LoadingScreen />;
+    return user?.role === 'ASISTENTE' ? <Navigate to="/agenda" replace /> : children;
+};
+
 function App() {
     return (
         <AuthProvider>
@@ -81,16 +96,20 @@ function App() {
                         <Route index element={<Navigate to="/agenda" replace />} />
                         <Route path="agenda" element={<Agenda />} />
                         <Route path="notifications" element={<Notifications />} />
-                        <Route path="visit/:id" element={<VisitExecution />} />
+                        <Route path="visit/:id" element={
+                            <NoAsistenteRoute>
+                                <VisitExecution />
+                            </NoAsistenteRoute>
+                        } />
                         <Route path="contracts" element={<Contracts />} />
                         <Route path="liquidaciones" element={<Liquidaciones />} />
                         <Route path="incrementos" element={<Incrementos />} />
                         <Route path="solicitudes" element={<Solicitudes />} />
                         <Route path="solicitudes/:id" element={<SolicitudDetalle />} />
                         <Route path="dashboard" element={
-                            <AdminRoute>
+                            <StaffRoute>
                                 <Dashboard />
-                            </AdminRoute>
+                            </StaffRoute>
                         } />
                         <Route path="users" element={
                             <AdminRoute>
@@ -98,14 +117,14 @@ function App() {
                             </AdminRoute>
                         } />
                         <Route path="properties" element={
-                            <AdminRoute>
+                            <StaffRoute>
                                 <Properties />
-                            </AdminRoute>
+                            </StaffRoute>
                         } />
                         <Route path="tracking" element={
-                            <AdminRoute>
+                            <StaffRoute>
                                 <Tracking />
-                            </AdminRoute>
+                            </StaffRoute>
                         } />
                         <Route path="settings" element={
                             <AdminRoute>

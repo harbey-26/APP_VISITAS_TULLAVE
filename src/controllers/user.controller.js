@@ -15,7 +15,7 @@ const createUserSchema = z.object({
     password: z.string().min(6),
     name: z.string().min(2),
     phone: z.string().trim().optional(),
-    role: z.enum(['AGENT', 'ADMIN'])
+    role: z.enum(['AGENT', 'ADMIN', 'ASISTENTE'])
 });
 
 export const getUsers = async (req, res) => {
@@ -170,7 +170,7 @@ const updateUserSchema = z.object({
     name: z.string().min(2).optional(),
     email: z.string().email().optional(),
     phone: z.string().trim().optional(),
-    role: z.enum(['AGENT', 'ADMIN']).optional(),
+    role: z.enum(['AGENT', 'ADMIN', 'ASISTENTE']).optional(),
     password: z.string().min(6).optional()
 });
 

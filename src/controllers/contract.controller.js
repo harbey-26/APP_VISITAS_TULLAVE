@@ -8,6 +8,7 @@ import { sendEmailWithPdf } from '../utils/gmail.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { crearFichaDesdeContrato } from './incremento.controller.js';
+import { esStaff } from '../utils/roles.js';
 
 // C1: Contratos diligenciados por agentes con visto bueno del admin.
 // Flujo de estados: DRAFT → PENDING_APPROVAL → APPROVED | REJECTED (vuelve a
@@ -52,7 +53,7 @@ const includeRefs = {
 export const getContracts = async (req, res) => {
     try {
         const where = {};
-        if (req.user.role !== 'ADMIN') where.userId = req.user.id;
+        if (!esStaff(req.user.role)) where.userId = req.user.id;
         if (req.query.status) where.status = String(req.query.status);
         const contracts = await prisma.contract.findMany({
             where,
@@ -71,7 +72,7 @@ export const getContract = async (req, res) => {
         const id = parseId(req.params.id);
         const contract = await prisma.contract.findUnique({ where: { id }, include: includeRefs });
         if (!contract) return res.status(404).json({ error: 'Contrato no encontrado' });
-        if (contract.userId !== req.user.id && req.user.role !== 'ADMIN') {
+        if (contract.userId !== req.user.id && !esStaff(req.user.role)) {
             return res.status(403).json({ error: 'No tienes permiso para ver este contrato.' });
         }
         res.json(serialize(contract));

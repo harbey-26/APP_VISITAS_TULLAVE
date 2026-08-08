@@ -17,6 +17,7 @@ import {
 import { buildWhatsAppUrl } from '../utils/phone';
 import { mediosDePagoTexto } from '../utils/contractTemplates';
 import { emailCooldownRemainingMs } from '../utils/emailCooldown';
+import { esStaff } from '../utils/roles';
 import {
     Receipt, Pencil, Eye, Send, Download, Trash2, CheckCircle, Undo2,
     MessageCircle, Mail, RotateCcw, User, X, Plus, Banknote, RefreshCw, ExternalLink,
@@ -151,6 +152,10 @@ export default function Liquidaciones() {
     const { user } = useAuth();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
+    // Staff = admin o asistente (ve todas las liquidaciones). El asistente es
+    // de SOLO CONSULTA: sin editar, aprobar, registrar pagos ni enviar.
+    const staff = esStaff(user?.role);
+    const soloConsulta = user?.role === 'ASISTENTE';
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [liquidaciones, setLiquidaciones] = useState([]);
@@ -469,10 +474,10 @@ export default function Liquidaciones() {
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [liquidaciones]);
 
-    const byAgent = (isAdmin && agentFilter)
+    const byAgent = (staff && agentFilter)
         ? liquidaciones.filter((l) => String(l.user?.id) === agentFilter)
         : liquidaciones;
-    const byWasi = (isAdmin && wasiFilter.trim())
+    const byWasi = (staff && wasiFilter.trim())
         ? byAgent.filter((l) => String(l.data?.origen?.codigoWasi || '')
             .toLowerCase().includes(wasiFilter.trim().toLowerCase()))
         : byAgent;
@@ -538,7 +543,9 @@ export default function Liquidaciones() {
         <div>
             <PageHeader
                 title="Liquidaciones"
-                subtitle={isAdmin
+                subtitle={soloConsulta
+                    ? 'Consulta de las liquidaciones iniciales de arrendamiento'
+                    : isAdmin
                     ? `Liquidaciones iniciales de arrendamiento${pendingCount ? ` — ${pendingCount} por revisar` : ''}${totalPorCobrar > 0 ? ` · Por cobrar: ${money(totalPorCobrar)}` : ''}`
                     : 'Liquidación inicial del contrato: se crea desde un contrato de arrendamiento aprobado'}
             >
@@ -549,7 +556,7 @@ export default function Liquidaciones() {
 
             {/* Filtros: agente (admin) + solo con saldo */}
             <div className="flex flex-wrap items-center gap-3 mb-3">
-                {isAdmin && agentOptions.length > 0 && (
+                {staff && agentOptions.length > 0 && (
                     <div className="relative sm:max-w-xs w-full sm:w-auto">
                         <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <Select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="pl-10">
@@ -562,7 +569,7 @@ export default function Liquidaciones() {
                         </Select>
                     </div>
                 )}
-                {isAdmin && (
+                {staff && (
                     <div className="relative w-full sm:w-44">
                         <Receipt className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <Input
@@ -638,7 +645,7 @@ export default function Liquidaciones() {
                                                     Wasi {l.data.origen.codigoWasi}
                                                 </Badge>
                                             )}
-                                            {isAdmin && l.user?.name && (
+                                            {staff && l.user?.name && (
                                                 <Badge className="bg-brand-50 text-brand-700 inline-flex items-center gap-1">
                                                     <User className="w-3 h-3" />
                                                     {l.user.name}
@@ -677,19 +684,19 @@ export default function Liquidaciones() {
                                         <Button variant="ghost" size="sm" icon={Eye} onClick={() => { setPreview(l); setReviewNote(''); }}>
                                             Ver
                                         </Button>
-                                        {editable && (
+                                        {editable && !soloConsulta && (
                                             <Button variant="ghost" size="sm" icon={Pencil} onClick={() => openEdit(l)}>
                                                 Editar
                                             </Button>
                                         )}
-                                        {l.status === 'APPROVED' && (
+                                        {l.status === 'APPROVED' && !soloConsulta && (
                                             <Button variant="ghost" size="sm" icon={Banknote}
                                                 className="text-emerald-700 hover:bg-emerald-50"
                                                 onClick={() => openPago(l)}>
                                                 Registrar pago
                                             </Button>
                                         )}
-                                        {isReopenable(l) && (
+                                        {!soloConsulta && isReopenable(l) && (
                                             <Button variant="ghost" size="sm" icon={RotateCcw}
                                                 className="text-orange-600 hover:bg-orange-50"
                                                 onClick={() => setConfirmReopen(l)}>
@@ -701,12 +708,12 @@ export default function Liquidaciones() {
                                                 <Button variant="ghost" size="sm" icon={Download} onClick={() => handleDownload(l)}>
                                                     PDF
                                                 </Button>
-                                                {l.data?.origen?.arrendatarioCelular && (
+                                                {!soloConsulta && l.data?.origen?.arrendatarioCelular && (
                                                     <Button variant="ghost" size="sm" icon={MessageCircle}
                                                         className="text-emerald-600 hover:bg-emerald-50"
                                                         onClick={() => sendWhatsApp(l)} aria-label="Enviar por WhatsApp" />
                                                 )}
-                                                {l.data?.origen?.arrendatarioEmail && (
+                                                {!soloConsulta && l.data?.origen?.arrendatarioEmail && (
                                                     <Button variant="ghost" size="sm" icon={Mail}
                                                         className="text-blue-600 hover:bg-blue-50"
                                                         disabled={busy || emailCooldownRemainingMs(l.emailedAt) > 0}
@@ -715,7 +722,7 @@ export default function Liquidaciones() {
                                                 )}
                                             </>
                                         )}
-                                        {(editable || isAdmin) && (
+                                        {((editable && !soloConsulta) || isAdmin) && (
                                             <Button variant="ghost" size="sm" icon={Trash2}
                                                 className="text-red-500 hover:bg-red-50"
                                                 onClick={() => setConfirmDelete(l)} aria-label="Eliminar" />
@@ -1067,12 +1074,12 @@ export default function Liquidaciones() {
                             <Button variant="secondary" size="sm" icon={Download} onClick={() => handleDownload(preview)}>
                                 Descargar PDF
                             </Button>
-                            {preview.status === 'APPROVED' && (
+                            {preview.status === 'APPROVED' && !soloConsulta && (
                                 <Button variant="success" size="sm" icon={Banknote} onClick={() => openPago(preview)}>
                                     Registrar pago
                                 </Button>
                             )}
-                            {isSendable(preview) && (
+                            {!soloConsulta && isSendable(preview) && (
                                 <>
                                     <Button variant="success" size="sm" icon={MessageCircle} loading={busy}
                                         disabled={!preview.data?.origen?.arrendatarioCelular}
@@ -1087,14 +1094,14 @@ export default function Liquidaciones() {
                                     </Button>
                                 </>
                             )}
-                            {isReopenable(preview) && (
+                            {!soloConsulta && isReopenable(preview) && (
                                 <Button variant="ghost" size="sm" icon={RotateCcw}
                                     className="text-orange-600 hover:bg-orange-50"
                                     onClick={() => setConfirmReopen(preview)}>
                                     Corregir
                                 </Button>
                             )}
-                            {EDITABLE_STATUSES.includes(preview.status) && (
+                            {!soloConsulta && EDITABLE_STATUSES.includes(preview.status) && (
                                 <>
                                     <Button variant="ghost" size="sm" icon={Pencil} onClick={() => { setPreview(null); openEdit(preview); }}>
                                         Editar

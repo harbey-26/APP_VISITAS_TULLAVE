@@ -11,6 +11,7 @@ import { generateLiquidacionPdf, liquidacionFileName } from '../utils/liquidacio
 import { sendEmailWithPdf } from '../utils/gmail.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
+import { esStaff } from '../utils/roles.js';
 
 // L1: Liquidación inicial de un contrato de arrendamiento (reemplaza el Excel).
 // Se crea DESDE un contrato ARRENDAMIENTO aprobado: `data.origen` es un snapshot
@@ -149,7 +150,7 @@ function defaultConfig(origen) {
 export const getLiquidaciones = async (req, res) => {
     try {
         const where = {};
-        if (req.user.role !== 'ADMIN') where.userId = req.user.id;
+        if (!esStaff(req.user.role)) where.userId = req.user.id;
         if (req.query.status) where.status = String(req.query.status);
         if (req.query.contractId) where.contractId = parseId(req.query.contractId);
         const liquidaciones = await prisma.liquidacion.findMany({
@@ -173,7 +174,7 @@ export const getLiquidacion = async (req, res) => {
         const id = parseId(req.params.id);
         const liq = await prisma.liquidacion.findUnique({ where: { id }, include: includeRefs });
         if (!liq) return res.status(404).json({ error: 'Liquidación no encontrada' });
-        if (liq.userId !== req.user.id && req.user.role !== 'ADMIN') {
+        if (liq.userId !== req.user.id && !esStaff(req.user.role)) {
             return res.status(403).json({ error: 'No tienes permiso para ver esta liquidación.' });
         }
         res.json(serialize(liq));

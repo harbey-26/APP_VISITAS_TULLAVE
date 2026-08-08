@@ -159,7 +159,7 @@ export default function Users() {
                     {users.map(u => (
                         <Card key={u.id} hover className="p-4 flex items-center justify-between group">
                             <div className="flex items-center space-x-3 min-w-0">
-                                <div className={`p-3 rounded-full shrink-0 ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-brand-100 text-brand-600'}`}>
+                                <div className={`p-3 rounded-full shrink-0 ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : u.role === 'ASISTENTE' ? 'bg-sky-100 text-sky-600' : 'bg-brand-100 text-brand-600'}`}>
                                     {u.role === 'ADMIN' ? <Shield className="w-6 h-6" /> : <UserIcon className="w-6 h-6" />}
                                 </div>
                                 <div className="min-w-0">
@@ -169,9 +169,11 @@ export default function Users() {
                                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${
                                         u.role === 'ADMIN'
                                             ? 'bg-purple-100 text-purple-700'
-                                            : 'bg-brand-100 text-brand-700'
+                                            : u.role === 'ASISTENTE'
+                                                ? 'bg-sky-100 text-sky-700'
+                                                : 'bg-brand-100 text-brand-700'
                                     }`}>
-                                        {u.role === 'ADMIN' ? 'Administrador' : 'Agente'}
+                                        {u.role === 'ADMIN' ? 'Administrador' : u.role === 'ASISTENTE' ? 'Asistente' : 'Agente'}
                                     </span>
                                 </div>
                             </div>
@@ -222,6 +224,7 @@ export default function Users() {
                     <Field label="Rol">
                         <Select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
                             <option value="AGENT">Agente Inmobiliario</option>
+                            <option value="ASISTENTE">Asistente (consulta y solicitudes, no autoriza)</option>
                             <option value="ADMIN">Administrador</option>
                         </Select>
                     </Field>
@@ -247,6 +250,7 @@ export default function Users() {
                     <Field label="Rol">
                         <Select value={editFormData.role} onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}>
                             <option value="AGENT">Agente Inmobiliario</option>
+                            <option value="ASISTENTE">Asistente (consulta y solicitudes, no autoriza)</option>
                             <option value="ADMIN">Administrador</option>
                         </Select>
                     </Field>

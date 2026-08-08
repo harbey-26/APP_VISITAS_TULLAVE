@@ -13,7 +13,7 @@ model User {
   password   String
   name       String
   phone      String?   // Celular del agente — aparece en el mensaje de confirmación al cliente
-  role       String    @default("AGENT") // AGENT, ADMIN
+  role       String    @default("AGENT") // AGENT, ADMIN, ASISTENTE (staff sin autorizar), PORTAL (sistema)
   tokenVersion Int     @default(0) // A8: revocación de sesiones — se incrementa al cambiar la contraseña; los JWT con versión vieja quedan inválidos
   createdAt  DateTime  @default(now())
   lastLat        Float?

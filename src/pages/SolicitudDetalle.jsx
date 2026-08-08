@@ -17,6 +17,7 @@ import { formatoCifra } from '../utils/numeroALetras';
 import { fechaCorta } from '../utils/fechaLetras';
 import { buildWhatsAppUrl } from '../utils/phone';
 import { mensajePortal } from '../utils/portalShare';
+import { esStaff } from '../utils/roles';
 import { downloadBlob } from '../utils/downloadBlob.js';
 import {
     Button, Badge, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
@@ -135,6 +136,9 @@ export default function SolicitudDetalle() {
     const toast = useToast();
     const navigate = useNavigate();
     const isAdmin = user?.role === 'ADMIN';
+    // Staff (admin o asistente): gestiona cualquier expediente y asigna
+    // responsable; eliminar en trámite sigue siendo del admin.
+    const staff = esStaff(user?.role);
 
     const [sol, setSol] = useState(null);
     const [usuarios, setUsuarios] = useState([]);
@@ -151,7 +155,7 @@ export default function SolicitudDetalle() {
         try {
             const s = await apiFetch(`/api/solicitudes/${id}`);
             setSol(s);
-            if (isAdmin) apiFetch('/api/users').then(setUsuarios).catch(() => {});
+            if (staff) apiFetch('/api/users').then(setUsuarios).catch(() => {});
         } catch (err) {
             toast.error(friendlyError(err));
             navigate('/solicitudes');
@@ -391,7 +395,7 @@ export default function SolicitudDetalle() {
                     {/* Responsable (#43) */}
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                         <User className="w-4 h-4 text-gray-400" />
-                        {isAdmin ? (
+                        {staff ? (
                             <Select value={sol.responsableId || ''} onChange={(e) => handleAsignar(e.target.value)} className="w-auto text-sm">
                                 <option value="">Sin responsable</option>
                                 {usuarios.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}

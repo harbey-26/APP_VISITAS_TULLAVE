@@ -8,7 +8,7 @@ import {
     shareServicioPdf, emailServicioPdf, publicServicioPdf,
     getStats,
 } from '../controllers/solicitud.controller.js';
-import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticate, requireAdmin, requireStaff } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.delete('/:id', deleteSolicitud);
 
 // Flujo (#33), asignación (#43) y línea de tiempo (#38)
 router.patch('/:id/estado', cambiarEstado);
-router.patch('/:id/asignar', requireAdmin, asignarSolicitud);
+router.patch('/:id/asignar', requireStaff, asignarSolicitud);
 router.post('/:id/notas', agregarNota);
 
 // Adjuntos (#39)

@@ -11,6 +11,7 @@ import { downloadIncrementoPdf } from '../utils/incrementoPdf';
 import { formatoCifra } from '../utils/numeroALetras';
 import { fechaCorta } from '../utils/fechaLetras';
 import { buildWhatsAppUrl } from '../utils/phone';
+import { esStaff } from '../utils/roles';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
 } from '../components/ui';
@@ -158,6 +159,9 @@ export default function Incrementos() {
     const { user } = useAuth();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
+    // El asistente ve todo el radar (visibilidad staff en el backend) pero es
+    // de SOLO CONSULTA: ver cartas y PDF, sin enviar, ajustar ni aplicar.
+    const soloConsulta = user?.role === 'ASISTENTE';
 
     const [tab, setTab] = useState('tareas');           // tareas | fichas
     const [incrementos, setIncrementos] = useState([]);
@@ -381,9 +385,11 @@ export default function Incrementos() {
         <div className="p-4 lg:p-8 max-w-6xl mx-auto pb-24 lg:pb-8">
             <PageHeader
                 title="Incrementos de canon"
-                subtitle={isAdmin
-                    ? 'Aniversarios de contrato, cartas de incremento y aplicación del nuevo canon'
-                    : 'Incrementos de los contratos a tu cargo'}
+                subtitle={soloConsulta
+                    ? 'Consulta de aniversarios de contrato y cartas de incremento'
+                    : isAdmin
+                        ? 'Aniversarios de contrato, cartas de incremento y aplicación del nuevo canon'
+                        : 'Incrementos de los contratos a tu cargo'}
             >
                 {isAdmin && (
                     <div className="flex flex-wrap gap-2">
@@ -526,12 +532,16 @@ export default function Incrementos() {
                                                         <Button variant="ghost" size="sm" title="Descargar PDF" onClick={() => downloadIncrementoPdf(inc)}>
                                                             <Download className="w-4 h-4" />
                                                         </Button>
-                                                        <Button variant="ghost" size="sm" title="Enviar por WhatsApp" onClick={() => handleWhatsApp(inc)}>
-                                                            <MessageCircle className="w-4 h-4 text-green-600" />
-                                                        </Button>
-                                                        <Button variant="ghost" size="sm" title="Enviar por correo" disabled={busy} onClick={() => handleEmail(inc)}>
-                                                            <Mail className="w-4 h-4 text-blue-600" />
-                                                        </Button>
+                                                        {!soloConsulta && (
+                                                            <>
+                                                                <Button variant="ghost" size="sm" title="Enviar por WhatsApp" onClick={() => handleWhatsApp(inc)}>
+                                                                    <MessageCircle className="w-4 h-4 text-green-600" />
+                                                                </Button>
+                                                                <Button variant="ghost" size="sm" title="Enviar por correo" disabled={busy} onClick={() => handleEmail(inc)}>
+                                                                    <Mail className="w-4 h-4 text-blue-600" />
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                     </>
                                                 )}
                                                 {isAdmin && inc.status === 'PENDIENTE' && (
@@ -704,7 +714,7 @@ export default function Incrementos() {
                                 <Button variant="secondary" onClick={() => downloadIncrementoPdf(preview)}>
                                     <Download className="w-4 h-4" /> PDF
                                 </Button>
-                                {preview.status !== 'ANULADA' && (
+                                {preview.status !== 'ANULADA' && !soloConsulta && (
                                     <>
                                         <Button variant="secondary" onClick={() => handleWhatsApp(preview)}>
                                             <MessageCircle className="w-4 h-4 text-green-600" /> WhatsApp

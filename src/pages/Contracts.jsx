@@ -16,6 +16,7 @@ import {
 } from '../components/ui';
 import { buildWhatsAppUrl } from '../utils/phone';
 import { emailCooldownRemainingMs } from '../utils/emailCooldown';
+import { esStaff } from '../utils/roles';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { MAPS_LOADER_OPTIONS } from '../utils/mapsLoader';
 import AddressAutocomplete from '../components/AddressAutocomplete';
@@ -244,6 +245,10 @@ export default function Contracts() {
     const navigate = useNavigate();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
+    // Staff = admin o asistente (ve todos los contratos). El asistente es de
+    // SOLO CONSULTA: ver y descargar PDF, sin editar/enviar/aprobar/eliminar.
+    const staff = esStaff(user?.role);
+    const soloConsulta = user?.role === 'ASISTENTE';
     // Google Places para los campos de dirección (opciones únicas del loader
     // — ver utils/mapsLoader.js; si falla, los campos degradan a texto libre)
     const { isLoaded: mapsLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
@@ -511,7 +516,7 @@ export default function Contracts() {
 
     // Filtro por agente (solo admin) → luego por estado. Los conteos de los
     // chips de estado reflejan el agente seleccionado.
-    const byAgent = (isAdmin && agentFilter)
+    const byAgent = (staff && agentFilter)
         ? contracts.filter((c) => String(c.user?.id) === agentFilter)
         : contracts;
     const filtered = statusFilter ? byAgent.filter((c) => c.status === statusFilter) : byAgent;
@@ -536,16 +541,18 @@ export default function Contracts() {
         <div>
             <PageHeader
                 title="Contratos"
-                subtitle={isAdmin
+                subtitle={soloConsulta
+                    ? 'Consulta de los contratos diligenciados por los agentes'
+                    : isAdmin
                     ? `Revisa y aprueba los contratos diligenciados por los agentes${pendingCount ? ` — ${pendingCount} por revisar` : ''}`
                     : 'Diligencia los contratos y envíalos a aprobación del administrador'}
             >
-                <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>
+                {!soloConsulta && <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>}
             </PageHeader>
 
             {/* Filtro por agente (solo admin) — visible desde el primer agente
                 con contratos, para que el admin siempre sepa que existe */}
-            {isAdmin && agentOptions.length > 0 && (
+            {staff && agentOptions.length > 0 && (
                 <div className="mb-3 sm:max-w-xs">
                     <div className="relative">
                         <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -599,7 +606,11 @@ export default function Contracts() {
                 <EmptyState
                     icon={FileText}
                     title="Sin contratos"
-                    description={(statusFilter || agentFilter) ? 'No hay contratos con los filtros seleccionados.' : 'Crea el primer contrato con el botón "Nuevo contrato".'}
+                    description={(statusFilter || agentFilter)
+                        ? 'No hay contratos con los filtros seleccionados.'
+                        : soloConsulta
+                            ? 'Cuando los agentes diligencien contratos aparecerán aquí.'
+                            : 'Crea el primer contrato con el botón "Nuevo contrato".'}
                 />
             ) : (
                 <div className="space-y-3">
@@ -620,7 +631,7 @@ export default function Contracts() {
                                                     Wasi {c.data.codigoWasi}
                                                 </Badge>
                                             )}
-                                            {isAdmin && c.user?.name && (
+                                            {staff && c.user?.name && (
                                                 <Badge className="bg-brand-50 text-brand-700 inline-flex items-center gap-1">
                                                     <User className="w-3 h-3" />
                                                     {c.user.name}
@@ -645,12 +656,12 @@ export default function Contracts() {
                                         <Button variant="ghost" size="sm" icon={Eye} onClick={() => { setPreview(c); setReviewNote(''); }}>
                                             Ver
                                         </Button>
-                                        {editable && (
+                                        {editable && !soloConsulta && (
                                             <Button variant="ghost" size="sm" icon={Pencil} onClick={() => openEdit(c)}>
                                                 Editar
                                             </Button>
                                         )}
-                                        {isReopenable(c) && (
+                                        {!soloConsulta && isReopenable(c) && (
                                             <Button variant="ghost" size="sm" icon={RotateCcw}
                                                 className="text-orange-600 hover:bg-orange-50"
                                                 onClick={() => setConfirmReopen(c)}>
@@ -659,7 +670,7 @@ export default function Contracts() {
                                         )}
                                         {/* L1: la liquidación inicial se crea desde el contrato de
                                             arrendamiento aprobado; la página destino la abre o crea */}
-                                        {c.type === 'ARRENDAMIENTO' && isSendable(c) && (
+                                        {!soloConsulta && c.type === 'ARRENDAMIENTO' && isSendable(c) && (
                                             <Button variant="ghost" size="sm" icon={Receipt}
                                                 className="text-brand-700 hover:bg-brand-50"
                                                 onClick={() => navigate(`/liquidaciones?contractId=${c.id}`)}>
@@ -671,12 +682,12 @@ export default function Contracts() {
                                                 <Button variant="ghost" size="sm" icon={Download} onClick={() => handleDownload(c)}>
                                                     PDF
                                                 </Button>
-                                                {clientPhoneOf(c) && (
+                                                {!soloConsulta && clientPhoneOf(c) && (
                                                     <Button variant="ghost" size="sm" icon={MessageCircle}
                                                         className="text-emerald-600 hover:bg-emerald-50"
                                                         onClick={() => sendWhatsApp(c)} aria-label="Enviar por WhatsApp" />
                                                 )}
-                                                {clientEmailOf(c) && (
+                                                {!soloConsulta && clientEmailOf(c) && (
                                                     <Button variant="ghost" size="sm" icon={Mail}
                                                         className="text-blue-600 hover:bg-blue-50"
                                                         disabled={busy || emailCooldownRemainingMs(c.emailedAt) > 0}
@@ -685,7 +696,7 @@ export default function Contracts() {
                                                 )}
                                             </>
                                         )}
-                                        {(editable || isAdmin) && (
+                                        {((editable && !soloConsulta) || isAdmin) && (
                                             <Button variant="ghost" size="sm" icon={Trash2}
                                                 className="text-red-500 hover:bg-red-50"
                                                 onClick={() => setConfirmDelete(c)} aria-label="Eliminar" />
@@ -856,7 +867,7 @@ export default function Contracts() {
                             <Button variant="secondary" size="sm" icon={Download} onClick={() => handleDownload(preview)}>
                                 Descargar PDF
                             </Button>
-                            {isSendable(preview) && (
+                            {!soloConsulta && isSendable(preview) && (
                                 <>
                                     <Button variant="success" size="sm" icon={MessageCircle} loading={busy}
                                         disabled={!clientPhoneOf(preview)}
@@ -871,14 +882,14 @@ export default function Contracts() {
                                     </Button>
                                 </>
                             )}
-                            {isReopenable(preview) && (
+                            {!soloConsulta && isReopenable(preview) && (
                                 <Button variant="ghost" size="sm" icon={RotateCcw}
                                     className="text-orange-600 hover:bg-orange-50"
                                     onClick={() => setConfirmReopen(preview)}>
                                     Corregir
                                 </Button>
                             )}
-                            {EDITABLE_STATUSES.includes(preview.status) && (
+                            {!soloConsulta && EDITABLE_STATUSES.includes(preview.status) && (
                                 <>
                                     <Button variant="ghost" size="sm" icon={Pencil} onClick={() => { setPreview(null); openEdit(preview); }}>
                                         Editar

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createBroadcast, getBroadcasts, getPendingBroadcasts, getInbox, markBroadcastRead, markAllBroadcastsRead } from '../controllers/broadcast.controller.js';
-import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -12,8 +12,8 @@ router.get('/pending', getPendingBroadcasts);
 router.post('/read-all', markAllBroadcastsRead);
 router.post('/:id/read', markBroadcastRead);
 
-// Solo admins: crear y listar comunicados
-router.use(requireAdmin);
+// Staff (admin y asistente): crear y listar comunicados desde Rastreo
+router.use(requireStaff);
 router.post('/', createBroadcast);
 router.get('/', getBroadcasts);
 

@@ -9,6 +9,7 @@ import { getCurrentPosition, startBackgroundTracking, stopBackgroundTracking } f
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { ALERT_CHANNEL_ID, ALERT_CHANNEL_NAME } from '../../utils/fcmConfig';
+import { esStaff } from '../../utils/roles';
 import PermissionsOnboarding, { ONBOARDING_KEY } from '../PermissionsOnboarding';
 import UpdateBanner from '../UpdateBanner';
 import {
@@ -299,19 +300,22 @@ export default function Layout() {
     };
 
     const isAdmin = user?.role === 'ADMIN';
+    // Staff = admin o asistente: mismos módulos de administración, salvo que
+    // el asistente NO gestiona usuarios ni ajustes (integración Google)
+    const isStaff = esStaff(user?.role);
 
     // El admin ya llena la barra inferior con 5 ítems; Contratos le queda en
     // el sidebar. El agente sí lo tiene a un tap.
     const bottomNavItems = [
         { to: '/agenda',     icon: Calendar,        label: 'Agenda'    },
-        ...(!isAdmin ? [
+        ...(!isStaff ? [
             { to: '/contracts', icon: FileText, label: 'Contratos' },
             { to: '/liquidaciones', icon: Receipt, label: 'Liquidaciones' },
         ] : []),
-        ...(isAdmin ? [
+        ...(isStaff ? [
             { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
             { to: '/properties', icon: MapPin,           label: 'Inmuebles' },
-            { to: '/users',      icon: Users,            label: 'Usuarios'  },
+            ...(isAdmin ? [{ to: '/users', icon: Users,  label: 'Usuarios'  }] : []),
             { to: '/tracking',   icon: Radio,            label: 'Rastreo'   },
         ] : []),
     ];
@@ -416,16 +420,16 @@ export default function Layout() {
                     <NavItem to="/solicitudes" icon={Inbox} label="Solicitudes" />
                     <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
 
-                    {isAdmin && (
+                    {isStaff && (
                         <>
                             <p className="px-3 mt-5 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                 Administración
                             </p>
                             <NavItem to="/dashboard"  icon={LayoutDashboard} label="Dashboard"  />
                             <NavItem to="/properties" icon={MapPin}          label="Inmuebles"  />
-                            <NavItem to="/users"      icon={Users}           label="Usuarios"   />
+                            {isAdmin && <NavItem to="/users" icon={Users}    label="Usuarios"   />}
                             <NavItem to="/tracking"   icon={Radio}           label="Rastreo"    />
-                            <NavItem to="/settings"   icon={SettingsIcon}    label="Ajustes"    />
+                            {isAdmin && <NavItem to="/settings" icon={SettingsIcon} label="Ajustes" />}
                         </>
                     )}
                 </nav>
