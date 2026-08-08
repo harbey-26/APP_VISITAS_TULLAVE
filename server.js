@@ -30,7 +30,10 @@ const defaultOrigins = [
     'http://localhost:3000',
     'http://localhost:4173',
     'capacitor://localhost',
-    'http://localhost'
+    'http://localhost',
+    // APK con assets empaquetados (#66): el WebView de Capacitor 8 sirve el
+    // bundle local bajo el esquema https → Origin: https://localhost
+    'https://localhost'
 ];
 const allowedOrigins = (process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
