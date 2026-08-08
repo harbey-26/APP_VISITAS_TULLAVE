@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { esStaff } from './utils/roles';
+import { initOtaUpdater } from './utils/otaUpdater';
 import { ToastProvider } from './context/ToastContext';
 import { NotificationsProvider } from './context/NotificationsContext';
 import Login from './pages/Login';
@@ -79,6 +80,10 @@ const NoAsistenteRoute = ({ children }) => {
 };
 
 function App() {
+    // OTA (#67): en la RAÍZ y no en Layout — con sesión cerrada (Login) también
+    // debe correr notifyAppReady, o el plugin revertiría un bundle sano
+    useEffect(() => { initOtaUpdater(); }, []);
+
     return (
         <AuthProvider>
             <ToastProvider>

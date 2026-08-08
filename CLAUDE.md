@@ -71,18 +71,35 @@ APP_VISITAS_TULLAVE/
 - Para desplegar: `git push origin main` — Railway hace auto-deploy
 
 ### APK Android (GitHub Actions)
+- **Assets empaquetados (#66, ago 2026):** el frontend (`dist/`) viaja DENTRO
+  del APK (ya no hay `server.url` en `capacitor.config.ts`) — arranque
+  instantáneo y la app abre sin señal. Solo las llamadas `/api` van a Railway
+  (`VITE_API_URL` absoluto inyectado en el build de CI). El WebView pide con
+  `Origin: https://localhost`: ese origen debe estar en el CORS de `server.js`
+  y en los referrers de la key de Google Maps
+- **Actualizaciones OTA (#67):** en cada deploy a Railway el backend sirve su
+  propio `dist/` como bundle zip (`utils/otaBundle.js`, hash del contenido =
+  `bundleVersion` en `/api/app/version`; endpoint `GET /api/app/bundle`). El
+  APK (`utils/otaUpdater.js` + `@capgo/capacitor-updater` en modo MANUAL, raíz
+  de `App.jsx`) compara al arrancar y al `resume`, descarga y aplica en el
+  próximo arranque. `notifyAppReady()` revierte solo un bundle que crashee.
+  El flujo de despliegue NO cambia: `git push origin main` y el APK se
+  actualiza solo, sin reinstalar
+- **Regla operativa OTA:** el bundle debe ser compatible con el APK instalado —
+  si un cambio necesita un plugin nativo nuevo, primero se libera el APK y
+  después el código que lo usa
 - Se compila **solo cuando cambian archivos nativos** (`capacitor.config.ts`,
   `package.json`, `package-lock.json`, íconos en `assets/ic_*.png`, o el propio
   workflow). Los cambios en `src/`, `server.js`, `prisma/`, `docs/` NO regeneran
-  APK — el WebView ya los toma al recargar la app.
+  APK — llegan solos por OTA tras el deploy
 - También se puede lanzar manualmente: **GitHub → Actions → Build Android APK → Run workflow**
 - El APK generado se descarga en: **Actions → run más reciente → Artifacts → VisitTrack-APK**
-- El APK carga la misma URL de Railway (WebView nativo), mismo backend y BD
 - Duración del build: ~5-8 minutos
 - **Aviso de update al usuario:** al subir `version` en `package.json`, el banner
   de [`UpdateBanner.jsx`](src/components/UpdateBanner.jsx) aparece automáticamente
-  en el APK con un enlace de descarga. El backend expone la versión vigente en
-  `/api/app/version`.
+  en el APK con un enlace de descarga. Desde el OTA, `version` se sube SOLO para
+  cambios nativos (`apkVersion` en `/api/app/version`); los cambios de UI no la
+  necesitan.
 
 ---
 
