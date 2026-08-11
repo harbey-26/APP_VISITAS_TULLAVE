@@ -197,9 +197,14 @@ export const createVisit = async (req, res) => {
         });
         const data = schema.parse(req.body);
 
+        // #71: admin y asistente pueden asignar la visita a un agente. El
+        // asistente no ejecuta visitas, así que las suyas SIEMPRE deben quedar
+        // asignadas a un agente (sin asignar quedarían huérfanas a su nombre).
         let targetUserId = req.user.id;
-        if (req.user.role === 'ADMIN' && data.assignedUserId) {
+        if (esStaff(req.user.role) && data.assignedUserId) {
             targetUserId = data.assignedUserId;
+        } else if (req.user.role === 'ASISTENTE') {
+            return res.status(400).json({ error: 'Selecciona el agente responsable de la visita.' });
         }
 
         const scheduledStart = new Date(data.scheduledStart);
@@ -262,7 +267,7 @@ export const createVisit = async (req, res) => {
 
 
 // Edición de una visita ya creada. Todos los campos son opcionales: el cliente
-// envía solo lo que cambió. assignedUserId solo lo aplica un admin.
+// envía solo lo que cambió. assignedUserId solo lo aplica el staff (admin/asistente).
 const updateVisitSchema = z.object({
     scheduledStart: z.string().datetime().optional(),
     estimatedDuration: z.number().int().positive().max(480).optional(),
@@ -289,8 +294,8 @@ export const updateVisit = async (req, res) => {
         const visit = await prisma.visit.findUnique({ where: { id: visitId } });
         if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
 
-        // Permisos: el agente dueño o un admin
-        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+        // Permisos: el agente dueño, un admin o el asistente (#71)
+        if (visit.userId !== req.user.id && !esStaff(req.user.role)) {
             return res.status(403).json({ error: 'No tienes permiso para editar esta visita.' });
         }
         // Solo se editan visitas que aún no se cerraron
@@ -298,9 +303,9 @@ export const updateVisit = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden editar visitas pendientes o en curso.' });
         }
 
-        // Reasignar agente: solo admin
+        // Reasignar agente: admin o asistente (#71)
         let targetUserId = visit.userId;
-        if (data.assignedUserId && req.user.role === 'ADMIN') {
+        if (data.assignedUserId && esStaff(req.user.role)) {
             const newUser = await prisma.user.findUnique({ where: { id: data.assignedUserId } });
             if (!newUser) return res.status(404).json({ error: 'Agente no encontrado' });
             targetUserId = data.assignedUserId;

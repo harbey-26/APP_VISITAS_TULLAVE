@@ -58,11 +58,13 @@ export const requireStaff = (req, res, next) => {
     next();
 };
 
-// El ASISTENTE solo VE la agenda: cualquier mutación de visitas le queda
-// prohibida aunque el endpoint esté abierto a agentes y admins.
+// El ASISTENTE gestiona la agenda (crear, editar, reasignar — #71) pero NO
+// ejecuta ni cierra visitas: iniciar/finalizar/no atendida/cancelar/confirmar/
+// fotos/eliminar le quedan prohibidos aunque el endpoint esté abierto a
+// agentes y admins.
 export const forbidAsistente = (req, res, next) => {
     if (req.user?.role === 'ASISTENTE') {
-        return res.status(403).json({ error: 'El rol asistente solo puede consultar la agenda, no gestionar visitas.' });
+        return res.status(403).json({ error: 'El rol asistente no puede ejecutar ni cerrar visitas.' });
     }
     next();
 };

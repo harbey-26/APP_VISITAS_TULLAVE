@@ -2,9 +2,10 @@
 //  - AGENT     agente inmobiliario — su agenda, sus contratos, ejecuta visitas
 //  - ADMIN     acceso total
 //  - ASISTENTE vista de administrador (visibilidad global de los módulos)
-//              pero SIN gestión de usuarios, SIN autorizar (aprobar/devolver,
-//              pagos, aplicar incrementos…) y SIN crear/ejecutar visitas:
-//              la agenda es de solo lectura
+//              pero SIN gestión de usuarios y SIN autorizar (aprobar/devolver,
+//              pagos, aplicar incrementos…). En la agenda SÍ crea, edita y
+//              reasigna visitas (#71) — siempre asignadas a un agente — pero
+//              NO las ejecuta ni las cierra
 //  - PORTAL    usuario sistema del Portal de Clientes (no inicia sesión)
 //
 // "Staff" = visibilidad global de administrador (ADMIN o ASISTENTE). Las

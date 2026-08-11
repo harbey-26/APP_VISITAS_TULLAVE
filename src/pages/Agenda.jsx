@@ -375,9 +375,11 @@ export default function Agenda() {
     const navigate = useNavigate();
     const toast = useToast();
     // Staff = admin o asistente: ven la agenda de todos los agentes.
-    // El asistente la ve en SOLO LECTURA: sin crear, editar ni ejecutar visitas.
+    // El asistente gestiona la agenda (crear, editar y reasignar — #71) pero
+    // NO ejecuta ni cierra visitas: sin check-in, no atendida, cancelar,
+    // confirmar cita ni eliminar.
     const staff = esStaff(user?.role);
-    const soloLectura = user?.role === 'ASISTENTE';
+    const esAsistente = user?.role === 'ASISTENTE';
 
     // Cargamos el script de Maps a nivel de página para que el autocompletado de
     // Places funcione dentro de los modales aunque la vista activa sea la lista.
@@ -763,7 +765,7 @@ export default function Agenda() {
                 clientPhone: editForm.clientPhone,
                 clientEmail: editForm.clientEmail,
             };
-            if (user?.role === 'ADMIN' && editForm.assignedUserId) {
+            if (staff && editForm.assignedUserId) {
                 payload.assignedUserId = parseInt(editForm.assignedUserId);
             }
 
@@ -852,11 +854,9 @@ export default function Agenda() {
                                 <span className="hidden sm:inline">Mapa</span>
                             </button>
                         </div>
-                        {!soloLectura && (
-                            <Button icon={Plus} onClick={() => setShowModal(true)} className="whitespace-nowrap">
-                                Nueva Visita
-                            </Button>
-                        )}
+                        <Button icon={Plus} onClick={() => setShowModal(true)} className="whitespace-nowrap">
+                            Nueva Visita
+                        </Button>
                     </div>
                 </div>
 
@@ -950,7 +950,7 @@ export default function Agenda() {
                     <AgendaMapView
                         visits={visibleVisits}
                         agents={visibleAgentLocations}
-                        onVisitClick={(id) => { if (!soloLectura) navigate(`/visit/${id}`); }}
+                        onVisitClick={(id) => { if (!esAsistente) navigate(`/visit/${id}`); }}
                     />
                 </div>
             )}
@@ -974,15 +974,11 @@ export default function Agenda() {
                     <p className="text-gray-400 text-sm mt-1.5 max-w-xs">
                         {agentFilter !== 'all'
                             ? 'No hay visitas para el agente seleccionado en este período. Cambia el filtro o el rango de fechas.'
-                            : soloLectura
-                                ? 'No hay visitas agendadas en este período.'
-                                : `Agenda la primera visita del ${dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.`}
+                            : `Agenda la primera visita del ${dateRange.start === dateRange.end ? 'día' : 'período'} para empezar el seguimiento.`}
                     </p>
-                    {!soloLectura && (
-                        <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
-                            Agendar visita
-                        </Button>
-                    )}
+                    <Button icon={Plus} onClick={() => setShowModal(true)} className="mt-6">
+                        Agendar visita
+                    </Button>
                 </div>
             )}
             {!loadingVisits && viewMode === 'list' && hasVisits && (
@@ -1011,8 +1007,8 @@ export default function Agenda() {
                                         return (
                                             <div
                                                 key={visit.id}
-                                                onClick={() => { if (!soloLectura) navigate(`/visit/${visit.id}`); }}
-                                                className={`bg-white rounded-xl border ${soloLectura ? '' : 'cursor-pointer'} hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
+                                                onClick={() => { if (!esAsistente) navigate(`/visit/${visit.id}`); }}
+                                                className={`bg-white rounded-xl border ${esAsistente ? '' : 'cursor-pointer'} hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
                                                 <div className={`h-1 w-full ${typeConfig.dot}`} />
@@ -1060,29 +1056,30 @@ export default function Agenda() {
                                                                 )}
                                                                 {statusConfig.label}
                                                             </span>
-                                                            {/* El asistente solo consulta: sin acciones sobre la visita */}
-                                                            {!soloLectura && (
+                                                            {/* #71: el asistente gestiona (editar/reasignar) pero no
+                                                                ejecuta ni cierra: sin no atendida, cancelar ni eliminar */}
+                                                            {!esAsistente && isPastPending && (
+                                                                <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
+                                                                    <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {!esAsistente && visit.status === 'PENDING' && (
+                                                                <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
+                                                                    <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                <button onClick={(e) => openEdit(e, visit)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Editar visita">
+                                                                    <Pencil className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {staff && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
+                                                                <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
+                                                                    <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
+                                                                </button>
+                                                            )}
+                                                            {!esAsistente && (
                                                                 <>
-                                                                    {isPastPending && (
-                                                                        <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
-                                                                            <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                        </button>
-                                                                    )}
-                                                                    {visit.status === 'PENDING' && (
-                                                                        <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
-                                                                            <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                        </button>
-                                                                    )}
-                                                                    {['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                        <button onClick={(e) => openEdit(e, visit)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Editar visita">
-                                                                            <Pencil className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                        </button>
-                                                                    )}
-                                                                    {user?.role === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(visit.status) && (
-                                                                        <button onClick={(e) => initiateReassign(e, visit.id)} className="text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Reasignar agente">
-                                                                            <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                        </button>
-                                                                    )}
                                                                     <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Eliminar">
                                                                         <Trash2 className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                     </button>
@@ -1138,7 +1135,7 @@ export default function Agenda() {
                                                                 >
                                                                     <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
-                                                                {!soloLectura && <a
+                                                                {!esAsistente && <a
                                                                     href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name, visit.user?.phone))}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
@@ -1211,15 +1208,17 @@ export default function Agenda() {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {user?.role === 'ADMIN' && !isNewProperty && (
+                            {staff && !isNewProperty && (
                                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                     <label className="block text-sm font-medium text-blue-800 mb-1">Asignar Agente</label>
                                     <select
                                         className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                         value={formData.assignedUserId}
                                         onChange={e => setFormData({ ...formData, assignedUserId: e.target.value })}
+                                        required={esAsistente}
                                     >
-                                        <option value="">-- Auto-asignar (Yo) --</option>
+                                        {/* #71: el asistente no ejecuta visitas — debe elegir siempre un agente */}
+                                        <option value="">{esAsistente ? '-- Selecciona un agente --' : '-- Auto-asignar (Yo) --'}</option>
                                         {agents.map(agent => (
                                             <option key={agent.id} value={agent.id}>
                                                 {agent.name} ({agent.email})
@@ -1460,7 +1459,7 @@ export default function Agenda() {
             <Modal open={showEditModal} onClose={() => { setShowEditModal(false); setEditForm(null); }} title="Editar Visita" maxWidth="max-w-md">
                 {editForm && (
                     <div className="max-h-[70vh] overflow-y-auto -mx-1 px-1 space-y-4">
-                        {user?.role === 'ADMIN' && (
+                        {staff && (
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                 <label className="block text-sm font-medium text-blue-800 mb-1">Agente asignado</label>
                                 <Select value={editForm.assignedUserId} onChange={e => setEditForm({ ...editForm, assignedUserId: e.target.value })}>
