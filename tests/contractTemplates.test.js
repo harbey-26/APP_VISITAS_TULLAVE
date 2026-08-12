@@ -105,6 +105,30 @@ describe('validateContractData', () => {
         expect(errors.some((e) => e.includes('Deudor solidario 1'))).toBe(true);
     });
 
+    it('sin deudores no exige nada: el codeudor es opcional', () => {
+        const data = { ...emptyFormData('ARRENDAMIENTO'), deudores: [] };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('Deudor solidario'))).toBe(false);
+    });
+
+    it('una tarjeta de deudor agregada pero dejada en blanco no bloquea el envío', () => {
+        // Así queda la tarjeta al pulsar "Agregar": vacía salvo los defaults
+        const enBlanco = {
+            nombre: '', cedula: '', lugarExpedicion: 'Bogotá D.C.', direccion: '',
+            torre: '', apto: '', conjunto: '', ciudad: 'Bogotá D.C.', celular: '', email: '',
+        };
+        const data = { ...emptyFormData('ARRENDAMIENTO'), deudores: [enBlanco] };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('Deudor solidario'))).toBe(false);
+    });
+
+    it('una tarjeta parcialmente diligenciada sí sigue exigiendo sus requeridos', () => {
+        const parcial = { nombre: '', cedula: '', lugarExpedicion: 'Bogotá D.C.', direccion: '', ciudad: 'Bogotá D.C.', celular: '3001234567' };
+        const data = { ...emptyFormData('ARRENDAMIENTO'), deudores: [parcial] };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('Deudor solidario 1'))).toBe(true);
+    });
+
     it('rechaza montos no numéricos', () => {
         const data = { ...emptyFormData('ARRENDAMIENTO'), canon: 'abc' };
         const errors = validateContractData('ARRENDAMIENTO', data);

@@ -161,7 +161,7 @@ export const CONTRACT_TEMPLATES = {
     ARRENDAMIENTO: {
         label: 'Contrato de arrendamiento para inmueble de vivienda urbana',
         shortLabel: 'Arrendamiento',
-        description: 'Contrato entre TuLlave (arrendador) y el inquilino, con deudores solidarios.',
+        description: 'Contrato entre TuLlave (arrendador) y el inquilino, con deudores solidarios opcionales.',
         // #23: la fecha final se calcula sola a partir de inicio + vigencia
         autoEndDate: { start: 'fechaInicio', months: 'duracionMeses', end: 'fechaVencimiento' },
         sections: [
@@ -307,6 +307,16 @@ export function validateContractData(type, data) {
             if (f.type === 'list') {
                 const items = Array.isArray(value) ? value : [];
                 items.forEach((item, i) => {
+                    // Una tarjeta agregada pero dejada en blanco (solo con los
+                    // defaults de la plantilla) cuenta como "sin agregar": el
+                    // codeudor es opcional y no debe bloquear el envío. Si el
+                    // agente diligenció algo, los requeridos sí se exigen.
+                    const sinDiligenciar = f.itemFields.every((sub) => {
+                        const v = item?.[sub.key];
+                        return requiredMissing(v)
+                            || (sub.default != null && String(v).trim() === String(sub.default));
+                    });
+                    if (sinDiligenciar) return;
                     for (const sub of f.itemFields) {
                         if (sub.required && requiredMissing(item?.[sub.key])) {
                             errors.push(`${f.label} ${i + 1}: falta "${sub.label}"`);
