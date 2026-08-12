@@ -245,10 +245,12 @@ export default function Contracts() {
     const navigate = useNavigate();
     const toast = useToast();
     const isAdmin = user?.role === 'ADMIN';
-    // Staff = admin o asistente (ve todos los contratos). El asistente es de
-    // SOLO CONSULTA: ver y descargar PDF, sin editar/enviar/aprobar/eliminar.
+    // Staff = admin o asistente (ve todos los contratos). El asistente opera
+    // como un agente sobre SUS contratos (crear, editar, enviar a revisión,
+    // compartir) y es de solo lectura en los ajenos — el backend exige dueño
+    // o ADMIN para escribir. Aprobar/devolver sigue siendo solo del admin.
     const staff = esStaff(user?.role);
-    const soloConsulta = user?.role === 'ASISTENTE';
+    const esMio = (c) => isAdmin || c?.user?.id === user?.id;
     // Google Places para los campos de dirección (opciones únicas del loader
     // — ver utils/mapsLoader.js; si falla, los campos degradan a texto libre)
     const { isLoaded: mapsLoaded } = useJsApiLoader(MAPS_LOADER_OPTIONS);
@@ -541,13 +543,11 @@ export default function Contracts() {
         <div>
             <PageHeader
                 title="Contratos"
-                subtitle={soloConsulta
-                    ? 'Consulta de los contratos diligenciados por los agentes'
-                    : isAdmin
+                subtitle={isAdmin
                     ? `Revisa y aprueba los contratos diligenciados por los agentes${pendingCount ? ` — ${pendingCount} por revisar` : ''}`
                     : 'Diligencia los contratos y envíalos a aprobación del administrador'}
             >
-                {!soloConsulta && <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>}
+                <Button icon={Plus} onClick={openCreate}>Nuevo contrato</Button>
             </PageHeader>
 
             {/* Filtro por agente (solo admin) — visible desde el primer agente
@@ -608,9 +608,7 @@ export default function Contracts() {
                     title="Sin contratos"
                     description={(statusFilter || agentFilter)
                         ? 'No hay contratos con los filtros seleccionados.'
-                        : soloConsulta
-                            ? 'Cuando los agentes diligencien contratos aparecerán aquí.'
-                            : 'Crea el primer contrato con el botón "Nuevo contrato".'}
+                        : 'Crea el primer contrato con el botón "Nuevo contrato".'}
                 />
             ) : (
                 <div className="space-y-3">
@@ -656,12 +654,12 @@ export default function Contracts() {
                                         <Button variant="ghost" size="sm" icon={Eye} onClick={() => { setPreview(c); setReviewNote(''); }}>
                                             Ver
                                         </Button>
-                                        {editable && !soloConsulta && (
+                                        {editable && esMio(c) && (
                                             <Button variant="ghost" size="sm" icon={Pencil} onClick={() => openEdit(c)}>
                                                 Editar
                                             </Button>
                                         )}
-                                        {!soloConsulta && isReopenable(c) && (
+                                        {esMio(c) && isReopenable(c) && (
                                             <Button variant="ghost" size="sm" icon={RotateCcw}
                                                 className="text-orange-600 hover:bg-orange-50"
                                                 onClick={() => setConfirmReopen(c)}>
@@ -670,7 +668,7 @@ export default function Contracts() {
                                         )}
                                         {/* L1: la liquidación inicial se crea desde el contrato de
                                             arrendamiento aprobado; la página destino la abre o crea */}
-                                        {!soloConsulta && c.type === 'ARRENDAMIENTO' && isSendable(c) && (
+                                        {esMio(c) && c.type === 'ARRENDAMIENTO' && isSendable(c) && (
                                             <Button variant="ghost" size="sm" icon={Receipt}
                                                 className="text-brand-700 hover:bg-brand-50"
                                                 onClick={() => navigate(`/liquidaciones?contractId=${c.id}`)}>
@@ -682,12 +680,12 @@ export default function Contracts() {
                                                 <Button variant="ghost" size="sm" icon={Download} onClick={() => handleDownload(c)}>
                                                     PDF
                                                 </Button>
-                                                {!soloConsulta && clientPhoneOf(c) && (
+                                                {esMio(c) && clientPhoneOf(c) && (
                                                     <Button variant="ghost" size="sm" icon={MessageCircle}
                                                         className="text-emerald-600 hover:bg-emerald-50"
                                                         onClick={() => sendWhatsApp(c)} aria-label="Enviar por WhatsApp" />
                                                 )}
-                                                {!soloConsulta && clientEmailOf(c) && (
+                                                {esMio(c) && clientEmailOf(c) && (
                                                     <Button variant="ghost" size="sm" icon={Mail}
                                                         className="text-blue-600 hover:bg-blue-50"
                                                         disabled={busy || emailCooldownRemainingMs(c.emailedAt) > 0}
@@ -696,7 +694,7 @@ export default function Contracts() {
                                                 )}
                                             </>
                                         )}
-                                        {((editable && !soloConsulta) || isAdmin) && (
+                                        {((editable && esMio(c)) || isAdmin) && (
                                             <Button variant="ghost" size="sm" icon={Trash2}
                                                 className="text-red-500 hover:bg-red-50"
                                                 onClick={() => setConfirmDelete(c)} aria-label="Eliminar" />
@@ -867,7 +865,7 @@ export default function Contracts() {
                             <Button variant="secondary" size="sm" icon={Download} onClick={() => handleDownload(preview)}>
                                 Descargar PDF
                             </Button>
-                            {!soloConsulta && isSendable(preview) && (
+                            {esMio(preview) && isSendable(preview) && (
                                 <>
                                     <Button variant="success" size="sm" icon={MessageCircle} loading={busy}
                                         disabled={!clientPhoneOf(preview)}
@@ -882,14 +880,14 @@ export default function Contracts() {
                                     </Button>
                                 </>
                             )}
-                            {!soloConsulta && isReopenable(preview) && (
+                            {esMio(preview) && isReopenable(preview) && (
                                 <Button variant="ghost" size="sm" icon={RotateCcw}
                                     className="text-orange-600 hover:bg-orange-50"
                                     onClick={() => setConfirmReopen(preview)}>
                                     Corregir
                                 </Button>
                             )}
-                            {!soloConsulta && EDITABLE_STATUSES.includes(preview.status) && (
+                            {esMio(preview) && EDITABLE_STATUSES.includes(preview.status) && (
                                 <>
                                     <Button variant="ghost" size="sm" icon={Pencil} onClick={() => { setPreview(null); openEdit(preview); }}>
                                         Editar
