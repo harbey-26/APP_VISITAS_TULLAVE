@@ -122,6 +122,18 @@ describe('validateContractData', () => {
         expect(errors.some((e) => e.includes('Deudor solidario'))).toBe(false);
     });
 
+    it('una tarjeta en blanco con los defaults en MAYÚSCULAS tampoco bloquea', () => {
+        // El formulario guarda los textos en mayúsculas: si el agente tocó un
+        // campo con default, la tarjeta "vacía" trae 'BOGOTÁ D.C.'
+        const enBlancoUpper = {
+            nombre: '', cedula: '', lugarExpedicion: 'BOGOTÁ D.C.', direccion: '',
+            torre: '', apto: '', conjunto: '', ciudad: 'BOGOTÁ D.C.', celular: '', email: '',
+        };
+        const data = { ...emptyFormData('ARRENDAMIENTO'), deudores: [enBlancoUpper] };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('Deudor solidario'))).toBe(false);
+    });
+
     it('una tarjeta parcialmente diligenciada sí sigue exigiendo sus requeridos', () => {
         const parcial = { nombre: '', cedula: '', lugarExpedicion: 'Bogotá D.C.', direccion: '', ciudad: 'Bogotá D.C.', celular: '3001234567' };
         const data = { ...emptyFormData('ARRENDAMIENTO'), deudores: [parcial] };

@@ -311,10 +311,15 @@ export function validateContractData(type, data) {
                     // defaults de la plantilla) cuenta como "sin agregar": el
                     // codeudor es opcional y no debe bloquear el envío. Si el
                     // agente diligenció algo, los requeridos sí se exigen.
+                    // La comparación con el default ignora mayúsculas: el
+                    // formulario guarda los textos en MAYÚSCULAS, así que una
+                    // tarjeta "vacía" puede traer 'BOGOTÁ D.C.' donde la
+                    // plantilla dice 'Bogotá D.C.'.
                     const sinDiligenciar = f.itemFields.every((sub) => {
                         const v = item?.[sub.key];
                         return requiredMissing(v)
-                            || (sub.default != null && String(v).trim() === String(sub.default));
+                            || (sub.default != null
+                                && String(v).trim().toLowerCase() === String(sub.default).trim().toLowerCase());
                     });
                     if (sinDiligenciar) return;
                     for (const sub of f.itemFields) {
