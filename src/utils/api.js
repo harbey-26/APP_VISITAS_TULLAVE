@@ -7,25 +7,9 @@
 
 import { API_URL } from '../config';
 
-/** Convierte errores técnicos en mensajes legibles para el usuario */
-export function friendlyError(err) {
-    const msg = err?.message || String(err);
-    if (
-        msg.includes('Failed to fetch') ||
-        msg.includes('NetworkError') ||
-        msg.includes('Load failed') ||
-        msg.includes('net::ERR')
-    ) {
-        return 'Sin conexión. Verifica tu internet e intenta de nuevo.';
-    }
-    if (msg.includes('429')) return 'Demasiados intentos. Espera unos minutos.';
-    if (msg.includes('401') || msg.toLowerCase().includes('token')) {
-        return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    }
-    if (msg.includes('403')) return 'No tienes permiso para realizar esta acción.';
-    if (msg.includes('500')) return 'Error en el servidor. Intenta más tarde.';
-    return msg;
-}
+// La traducción de errores vive aparte (módulo puro, con tests). Se re-exporta
+// para que el resto de la app la siga importando desde utils/api.
+export { friendlyError } from './friendlyError';
 
 /**
  * Wrapper de fetch con token automático y manejo de errores.
@@ -62,7 +46,11 @@ export async function apiFetch(path, { method = 'GET', body, token } = {}) {
 
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Error ${res.status}`);
+        // El código viaja en el Error para que friendlyError no tenga que
+        // adivinarlo leyendo el texto
+        const error = new Error(data.error || `Error ${res.status}`);
+        error.status = res.status;
+        throw error;
     }
 
     return res.json();

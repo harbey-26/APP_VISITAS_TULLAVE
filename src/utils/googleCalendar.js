@@ -50,6 +50,13 @@ async function exchangeCode(code) {
     return res.json();
 }
 
+// Google responde `invalid_grant` cuando el refresh token ya no sirve: acceso
+// revocado en myaccount.google.com, contraseña de la cuenta cambiada, o la
+// pantalla de consentimiento en modo "Testing" (esos tokens caducan a los 7
+// días). No se arregla solo: hay que rehacer el OAuth.
+export const GOOGLE_RECONECTAR_MSG =
+    'La conexión con Google se revocó o expiró. Un administrador debe reconectarla en Ajustes → Google Calendar → "Reconectar". No tiene nada que ver con tu sesión en la app.';
+
 async function refreshAccessToken(refreshToken) {
     const body = new URLSearchParams({
         refresh_token: refreshToken,
@@ -58,7 +65,12 @@ async function refreshAccessToken(refreshToken) {
         grant_type: 'refresh_token',
     });
     const res = await fetch(TOKEN_URL, { method: 'POST', body });
-    if (!res.ok) throw new Error(`Google refresh: ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+        const detail = await res.text();
+        const err = new Error(`Google refresh: ${res.status} ${detail}`);
+        if (detail.includes('invalid_grant')) err.code = 'GOOGLE_INVALID_GRANT';
+        throw err;
+    }
     return res.json();
 }
 
@@ -109,11 +121,28 @@ export async function disconnect() {
 export async function getStatus() {
     const row = await prisma.integrationToken.findUnique({ where: { kind: INTEGRATION_KIND } });
     if (!row) return { connected: false };
-    return {
+    const base = {
         connected: true,
         accountEmail: row.accountEmail,
         calendarId: row.calendarId,
     };
+    // Que exista la fila NO significa que Google siga aceptando el permiso: sin
+    // esta comprobación Ajustes decía "Conectado" mientras todos los correos y
+    // la sincronización del calendario fallaban en silencio.
+    try {
+        const session = await getValidAccessToken();
+        if (!session) return { connected: false };
+        if (!session.scope.includes('gmail.send')) {
+            return {
+                ...base,
+                broken: true,
+                problema: 'La cuenta conectada no autorizó el envío de correo (gmail.send). Reconéctala marcando "Enviar correo electrónico en tu nombre" en la pantalla de Google.',
+            };
+        }
+        return base;
+    } catch (e) {
+        return { ...base, broken: true, problema: e.message };
+    }
 }
 
 // Exportado también para el envío de correos (C2 — utils/gmail.js).
@@ -123,7 +152,21 @@ export async function getValidAccessToken() {
     if (!row) return null;
     const meta = { calendarId: row.calendarId || 'primary', scope: row.scope || '', accountEmail: row.accountEmail || null };
     if (row.expiresAt.getTime() > Date.now() + 30_000) return { token: row.accessToken, ...meta };
-    const refreshed = await refreshAccessToken(row.refreshToken);
+    let refreshed;
+    try {
+        refreshed = await refreshAccessToken(row.refreshToken);
+    } catch (e) {
+        // El detalle técnico queda en los logs; al usuario le llega qué hacer.
+        // Antes se propagaba el texto crudo de Google ("Token has been expired
+        // or revoked") y la app lo traducía a "Tu sesión expiró", mandando al
+        // usuario a iniciar sesión otra vez sin arreglar nada.
+        console.error(`[google] No se pudo renovar el acceso — ${e.message}`);
+        const err = new Error(e.code === 'GOOGLE_INVALID_GRANT'
+            ? GOOGLE_RECONECTAR_MSG
+            : 'No se pudo renovar la conexión con Google. Revisa la configuración de Google en el servidor (el detalle está en los logs). No tiene nada que ver con tu sesión en la app.');
+        err.code = e.code || 'GOOGLE_REFRESH_FAILED';
+        throw err;
+    }
     const expiresAt = new Date(Date.now() + (refreshed.expires_in - 60) * 1000);
     // Google devuelve en el refresh el scope realmente vigente del grant; se
     // persiste para que los chequeos de permisos no usen un scope obsoleto
