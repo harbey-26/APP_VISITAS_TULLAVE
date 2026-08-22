@@ -9,7 +9,7 @@ import {
 } from '../utils/contractTemplates';
 import { buildContractDocument, splitMarks, stripMarks } from '../utils/contractDocument';
 import { downloadContractPdf } from '../utils/contractPdf';
-import { sumarMeses } from '../utils/fechaLetras';
+import { finDePeriodo } from '../utils/fechaLetras';
 import { formatoCifra } from '../utils/numeroALetras';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, SearchCombobox, inputClass, cn,
@@ -341,12 +341,14 @@ export default function Contracts() {
 
     // Cambia un campo del formulario. Si la plantilla define autoEndDate y se
     // tocó la fecha de inicio o la vigencia, recalcula la fecha final (#23).
+    // El período incluye el día de inicio: 12 meses desde el 24-ago terminan
+    // el 23-ago del año siguiente, no el 24 (sería un año y un día).
     const setField = (key, value) => {
         setFormData((prev) => {
             const next = { ...prev, [key]: value };
             const ae = template?.autoEndDate;
             if (ae && (key === ae.start || key === ae.months)) {
-                const end = sumarMeses(next[ae.start], next[ae.months]);
+                const end = finDePeriodo(next[ae.start], next[ae.months]);
                 if (end) next[ae.end] = end;
             }
             return next;

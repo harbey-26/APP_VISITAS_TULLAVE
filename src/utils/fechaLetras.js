@@ -37,6 +37,26 @@ export function sumarMeses(fecha, meses) {
     return `${base.getFullYear()}-${mm}-${dd}`;
 }
 
+// Fin de vigencia de un período que INCLUYE el día de inicio: la terminación
+// es la víspera del aniversario. Ej.: finDePeriodo('2026-08-24', 12) →
+// '2027-08-23'. Si el día de inicio no existe en el mes destino (31 → feb),
+// el período ya muere el último día de ese mes y no se resta la víspera.
+export function finDePeriodo(fecha, meses) {
+    const p = partesFecha(fecha);
+    const n = Number(meses);
+    if (!p || !n || isNaN(n)) return '';
+    const base = new Date(p.year, p.month - 1 + n, 1);
+    const ultimoDia = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+    if (p.day > ultimoDia) {
+        base.setDate(ultimoDia);
+    } else {
+        base.setDate(p.day - 1);
+    }
+    const mm = String(base.getMonth() + 1).padStart(2, '0');
+    const dd = String(base.getDate()).padStart(2, '0');
+    return `${base.getFullYear()}-${mm}-${dd}`;
+}
+
 // "2026-08-01" → "01 de agosto de 2026"
 export function fechaCorta(fecha) {
     const p = partesFecha(fecha);
