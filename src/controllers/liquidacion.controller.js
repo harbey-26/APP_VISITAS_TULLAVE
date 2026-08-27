@@ -101,6 +101,8 @@ function buildOrigen(contract) {
         codigoWasi: d.codigoWasi || '',
         arrendatarioNombre: d.arrendatarioNombre || '',
         arrendatarioCedula: d.arrendatarioCedula || '',
+        // 'Persona jurídica' hace que PDF y UI etiqueten NIT en vez de C.C.
+        arrendatarioTipoPersona: d.arrendatarioTipoPersona || '',
         arrendatarioEmail: d.arrendatarioEmail || '',
         arrendatarioCelular: d.arrendatarioCelular || '',
         direccionCompleta: direccion,

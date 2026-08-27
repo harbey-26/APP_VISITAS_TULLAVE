@@ -406,6 +406,20 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   patrón que los deudores solidarios del arrendamiento). Si hay varios, el
   cuadro resumen los numera ("Propietario 1/2/3 · Mandante") y se genera una
   firma de MANDANTE por cada uno. Con un solo dueño el formato no cambia
+- **Persona jurídica (ago 2026):** cualquier parte puede ser una empresa —
+  propietario y otros propietarios (Administración), arrendatario y deudores
+  solidarios (Arrendamiento). Selector "Tipo de persona" + campos de
+  representante legal condicionados con `showIf` (que ahora soporta
+  `notEquals` y también aplica DENTRO de los `itemFields` de las listas,
+  tanto al renderizar como al validar). El documento identifica a la
+  jurídica con NIT + representante legal (sin "lugar de expedición") y en
+  las firmas firma su representante. **Vacío/ausente = persona natural**
+  (retrocompatibilidad con todos los contratos existentes): preguntar
+  SIEMPRE con `esPersonaJuridica()` de `contractTemplates.js`, nunca
+  comparando el literal. El tipo se propaga a la liquidación
+  (`origen.arrendatarioTipoPersona` → el PDF y la sección 1 dicen "NIT") y
+  a la ficha de incrementos (columna `arrendatarioTipoPersona` en
+  `FichaIncremento`, ambos schemas → la carta dice "Señores" y "NIT")
 - **Flujo de aprobación:** DRAFT → el agente lo envía (PENDING_APPROVAL) → el
   admin lo **aprueba** o lo **devuelve con nota** (REJECTED, vuelve a ser
   editable). Notificaciones FCM a admins al enviar y al agente al revisar

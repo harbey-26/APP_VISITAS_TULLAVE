@@ -160,8 +160,10 @@ function ListField({ field, items, onChange, mapsLoaded }) {
                         </button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {field.itemFields.map((f) => (
-                            <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`}>
+                        {/* El showIf de un itemField se evalúa contra el propio ítem
+                            (ej.: representante legal solo si el deudor es jurídica) */}
+                        {field.itemFields.filter((f) => fieldApplies(f, item)).map((f) => (
+                            <Field key={f.key} label={`${f.label}${f.required ? ' *' : ''}`} hint={f.hint}>
                                 <DynamicField field={f} value={item[f.key]} onChange={(v) => update(i, f.key, v)} mapsLoaded={mapsLoaded} />
                             </Field>
                         ))}
@@ -324,7 +326,21 @@ export default function Contracts() {
     const openEdit = (contract) => {
         setEditing(contract);
         setFormType(contract.type);
-        setFormData({ ...emptyFormData(contract.type), ...contract.data });
+        const merged = { ...emptyFormData(contract.type), ...contract.data };
+        // Los defaults nuevos también dentro de las listas: un deudor/propietario
+        // guardado antes de existir "Tipo de persona" debe abrirse como persona
+        // natural, no con el select vacío (bloquearía el reenvío).
+        for (const s of getTemplate(contract.type)?.sections || []) {
+            for (const f of s.fields) {
+                if (f.type !== 'list' || !Array.isArray(merged[f.key])) continue;
+                merged[f.key] = merged[f.key].map((item) => {
+                    const empty = {};
+                    for (const sub of f.itemFields) empty[sub.key] = sub.default || '';
+                    return { ...empty, ...item };
+                });
+            }
+        }
+        setFormData(merged);
         setFormVisitId(contract.visitId ? String(contract.visitId) : '');
         setStep(1);
         setShowForm(true);

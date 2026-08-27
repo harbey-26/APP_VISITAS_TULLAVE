@@ -150,6 +150,7 @@ function parseCsv(texto) {
 
 const FICHA_VACIA = {
     codigoWasi: '', arrendatarioNombre: '', arrendatarioCedula: '',
+    arrendatarioTipoPersona: 'Persona natural',
     arrendatarioEmail: '', arrendatarioCelular: '', direccion: '',
     fechaInicioContrato: '', canonActual: '', tipoIndice: 'IPC',
     puntosAdicionales: 0, pctFijo: 0, notas: '',
@@ -641,7 +642,9 @@ export default function Incrementos() {
                                                 <>
                                                     <Button variant="ghost" size="sm" title="Editar" onClick={() => setFichaForm({
                                                         id: f.id, codigoWasi: f.codigoWasi || '', arrendatarioNombre: f.arrendatarioNombre,
-                                                        arrendatarioCedula: f.arrendatarioCedula || '', arrendatarioEmail: f.arrendatarioEmail || '',
+                                                        arrendatarioCedula: f.arrendatarioCedula || '',
+                                                        arrendatarioTipoPersona: f.arrendatarioTipoPersona || 'Persona natural',
+                                                        arrendatarioEmail: f.arrendatarioEmail || '',
                                                         arrendatarioCelular: f.arrendatarioCelular || '', direccion: f.direccion || '',
                                                         fechaInicioContrato: f.fechaInicioContrato, canonActual: f.canonActual,
                                                         tipoIndice: f.tipoIndice, puntosAdicionales: f.puntosAdicionales, pctFijo: f.pctFijo,
@@ -796,7 +799,15 @@ export default function Incrementos() {
                     <form onSubmit={handleSaveFicha} className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Código Wasi"><Input value={fichaForm.codigoWasi} onChange={(e) => setFichaForm({ ...fichaForm, codigoWasi: e.target.value })} /></Field>
-                            <Field label="Identificación"><Input value={fichaForm.arrendatarioCedula} onChange={(e) => setFichaForm({ ...fichaForm, arrendatarioCedula: e.target.value })} /></Field>
+                            <Field label="Tipo de persona">
+                                <Select value={fichaForm.arrendatarioTipoPersona || 'Persona natural'} onChange={(e) => setFichaForm({ ...fichaForm, arrendatarioTipoPersona: e.target.value })}>
+                                    <option value="Persona natural">Persona natural</option>
+                                    <option value="Persona jurídica">Persona jurídica</option>
+                                </Select>
+                            </Field>
+                            <Field label={/jur/i.test(fichaForm.arrendatarioTipoPersona || '') ? 'NIT' : 'Identificación (C.C.)'}>
+                                <Input value={fichaForm.arrendatarioCedula} onChange={(e) => setFichaForm({ ...fichaForm, arrendatarioCedula: e.target.value })} />
+                            </Field>
                         </div>
                         <Field label="Nombre del arrendatario *"><Input required value={fichaForm.arrendatarioNombre} onChange={(e) => setFichaForm({ ...fichaForm, arrendatarioNombre: e.target.value })} /></Field>
                         <Field label="Dirección del inmueble"><Input value={fichaForm.direccion} onChange={(e) => setFichaForm({ ...fichaForm, direccion: e.target.value })} /></Field>

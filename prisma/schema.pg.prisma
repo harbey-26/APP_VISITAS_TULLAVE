@@ -225,6 +225,7 @@ model FichaIncremento {
   codigoWasi          String?
   arrendatarioNombre  String
   arrendatarioCedula  String?
+  arrendatarioTipoPersona String? // 'Persona jurídica' → la carta dice NIT; null/otro = natural
   arrendatarioEmail   String?
   arrendatarioCelular String?
   direccion           String?  // dirección completa del inmueble (para la carta)

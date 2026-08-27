@@ -15,7 +15,7 @@ import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, inputClass, cn,
 } from '../components/ui';
 import { buildWhatsAppUrl } from '../utils/phone';
-import { mediosDePagoTexto } from '../utils/contractTemplates';
+import { mediosDePagoTexto, esPersonaJuridica } from '../utils/contractTemplates';
 import { emailCooldownRemainingMs } from '../utils/emailCooldown';
 import { esStaff } from '../utils/roles';
 import {
@@ -772,7 +772,7 @@ export default function Liquidaciones() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm bg-gray-50 border border-gray-200 rounded-xl p-3">
                                         {[
                                             ['Arrendatario', origen.arrendatarioNombre],
-                                            ['C.C.', origen.arrendatarioCedula],
+                                            [esPersonaJuridica(origen.arrendatarioTipoPersona) ? 'NIT' : 'C.C.', origen.arrendatarioCedula],
                                             ['Correo', origen.arrendatarioEmail],
                                             ['Celular', origen.arrendatarioCelular],
                                             ['Código Wasi', origen.codigoWasi],

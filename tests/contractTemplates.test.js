@@ -356,3 +356,109 @@ describe('buildContractDocument', () => {
         expect(buildContractDocument('OTRO', {})).toBeNull();
     });
 });
+
+// Persona jurídica como parte del contrato (NIT + representante legal).
+describe('persona jurídica', () => {
+    const clean = (s) => String(s).split(String.fromCharCode(1)).join('');
+
+    it('fieldApplies soporta notEquals (y un dato ausente sigue aplicando)', () => {
+        const field = { key: 'lugar', showIf: { key: 'tipo', notEquals: 'Persona jurídica' } };
+        expect(fieldApplies(field, { tipo: 'Persona jurídica' })).toBe(false);
+        expect(fieldApplies(field, { tipo: 'Persona natural' })).toBe(true);
+        expect(fieldApplies(field, {})).toBe(true); // contrato viejo sin el campo
+    });
+
+    it('arrendamiento jurídica: exige representante legal y NO lugar de expedición', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            arrendatarioTipoPersona: 'Persona jurídica',
+            arrendatarioLugarExpedicion: '',
+        };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('representante legal'))).toBe(true);
+        expect(errors.some((e) => e.includes('Lugar de expedición'))).toBe(false);
+    });
+
+    it('arrendamiento natural: no exige representante legal pero sí lugar de expedición', () => {
+        const data = { ...emptyFormData('ARRENDAMIENTO'), arrendatarioLugarExpedicion: '' };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('representante legal'))).toBe(false);
+        expect(errors.some((e) => e.includes('Lugar de expedición'))).toBe(true);
+    });
+
+    it('deudor solidario jurídico exige su representante dentro de la lista', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            deudores: [{ tipoPersona: 'Persona jurídica', nombre: 'INVERSIONES XYZ SAS', cedula: '901222333', direccion: 'CL 1' }],
+        };
+        const errors = validateContractData('ARRENDAMIENTO', data);
+        expect(errors.some((e) => e.includes('Deudor solidario 1') && e.includes('representante legal'))).toBe(true);
+    });
+
+    it('arrendamiento jurídica: encabezado y firma dicen NIT + representante, sin "DE BOGOTÁ"', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            arrendatarioTipoPersona: 'Persona jurídica',
+            arrendatarioNombre: 'Inversiones XYZ SAS',
+            arrendatarioCedula: '901222333',
+            arrendatarioRepLegalNombre: 'Pedro Páramo',
+            arrendatarioRepLegalCedula: '79111222',
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const nit = doc.blocks.find((b) => b.kind === 'kv' && b.label === 'NIT:' && clean(b.value).includes('901.222.333'));
+        expect(nit).toBeTruthy();
+        const rep = doc.blocks.find((b) => b.kind === 'kv' && b.label === 'REPRESENTANTE LEGAL:');
+        expect(clean(rep.value)).toContain('PEDRO PÁRAMO');
+        expect(clean(rep.value)).toContain('79.111.222');
+        // no queda el "C.C. No. … DE BOGOTÁ" de persona natural
+        expect(doc.blocks.some((b) => b.kind === 'kv' && b.label === 'C.C. No.')).toBe(false);
+        const firma = doc.blocks.find((b) => b.kind === 'signature' && b.role === 'EL ARRENDATARIO');
+        const lineas = firma.lines.map(clean).join('\n');
+        expect(lineas).toContain('NIT 901.222.333');
+        expect(lineas).toContain('REPRESENTANTE LEGAL: PEDRO PÁRAMO');
+        expect(lineas).not.toContain('DE BOGOTÁ');
+    });
+
+    it('cláusula de deudores describe a la jurídica con NIT y representante', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            deudores: [{
+                tipoPersona: 'Persona jurídica', nombre: 'INVERSIONES XYZ SAS', cedula: '901222333',
+                repLegalNombre: 'PEDRO PÁRAMO', repLegalCedula: '79111222', direccion: 'CL 1',
+            }],
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const vp = doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('VIGÉSIMA PRIMERA'));
+        expect(clean(vp.text)).toContain('identificada con NIT 901.222.333, representada legalmente por PEDRO PÁRAMO');
+    });
+
+    it('administración jurídica: cuadro resumen con NIT y representante, y firma el representante', () => {
+        const data = {
+            ...emptyFormData('ADMINISTRACION'),
+            propietarioTipoPersona: 'Persona jurídica',
+            propietarioNombre: 'CONSTRUCTORA ABC SAS',
+            propietarioCedula: '900111222',
+            propietarioRepLegalNombre: 'ANA GÓMEZ',
+            propietarioRepLegalCedula: '52001',
+        };
+        const doc = buildContractDocument('ADMINISTRACION', data);
+        const table = doc.blocks.find((b) => b.kind === 'table');
+        const flat = clean(table.rows.map((r) => r.join(': ')).join('\n'));
+        expect(flat).toContain('NIT: 900.111.222');
+        expect(flat).toContain('Representante legal: ANA GÓMEZ — C.C. 52.001');
+        expect(flat).not.toContain('No. de Identificación');
+        const firma = doc.blocks.find((b) => b.kind === 'signature' && b.role === 'MANDANTE(S)');
+        const lineas = firma.lines.map(clean).join('\n');
+        expect(lineas).toContain('NOMBRE: ANA GÓMEZ');
+        expect(lineas).toContain('Representante legal');
+        expect(lineas).toContain('CONSTRUCTORA ABC SAS NIT: 900.111.222');
+    });
+
+    it('contratos viejos sin tipo de persona siguen imprimiendo C.C. (retrocompatibilidad)', () => {
+        const data = { ...emptyFormData('ARRENDAMIENTO'), arrendatarioNombre: 'MARÍA', arrendatarioCedula: '52123456' };
+        delete data.arrendatarioTipoPersona;
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const cc = doc.blocks.find((b) => b.kind === 'kv' && b.label === 'C.C. No.');
+        expect(clean(cc.value)).toContain('52.123.456');
+    });
+});

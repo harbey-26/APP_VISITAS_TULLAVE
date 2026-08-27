@@ -7,7 +7,7 @@
 // incremento al momento de generarla (ver buildSnapshotCarta en el
 // controlador): así el PDF se regenera idéntico aunque la ficha cambie después.
 
-import { EMPRESA } from './contractTemplates.js';
+import { EMPRESA, esPersonaJuridica } from './contractTemplates.js';
 import { formatoCifra, formatoIdentificacion, montoEnLetras } from './numeroALetras.js';
 import { fechaCorta } from './fechaLetras.js';
 
@@ -33,9 +33,11 @@ export function cartaIncremento(snap) {
     return {
         ciudadFecha: `${EMPRESA.ciudad}, ${fechaCorta(snap.fechaCarta)}`,
         destinatario: [
-            'Señor(a)',
+            esPersonaJuridica(snap.arrendatarioTipoPersona) ? 'Señores' : 'Señor(a)',
             String(snap.arrendatarioNombre || '').toUpperCase(),
-            ...(snap.arrendatarioCedula ? [`C.C. ${formatoIdentificacion(snap.arrendatarioCedula)}`] : []),
+            ...(snap.arrendatarioCedula
+                ? [`${esPersonaJuridica(snap.arrendatarioTipoPersona) ? 'NIT' : 'C.C.'} ${formatoIdentificacion(snap.arrendatarioCedula)}`]
+                : []),
             String(snap.direccion || ''),
             'Ciudad',
         ],

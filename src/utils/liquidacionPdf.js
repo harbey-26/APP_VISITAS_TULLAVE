@@ -9,7 +9,7 @@
 import {
     calcularLiquidacion, etiquetaItems, etiquetaItemsProsa, referenciaPago, IVA_PCT,
 } from './liquidacionCalc.js';
-import { EMPRESA } from './contractTemplates.js';
+import { EMPRESA, esPersonaJuridica } from './contractTemplates.js';
 import { formatoCifra, formatoIdentificacion, montoEnLetras } from './numeroALetras.js';
 import { fechaCorta } from './fechaLetras.js';
 import { CONTRACT_LOGO } from '../assets/contractLogo.js';
@@ -82,7 +82,8 @@ export async function generateLiquidacionPdf(liq) {
     const ANCHO = true;   // el campo ocupa toda la fila
     const campos = [
         ['Arrendatario', origen.arrendatarioNombre || '', ANCHO],
-        ['Identificación', origen.arrendatarioCedula ? `C.C. ${formatoIdentificacion(origen.arrendatarioCedula)}` : ''],
+        ['Identificación', origen.arrendatarioCedula
+            ? `${esPersonaJuridica(origen.arrendatarioTipoPersona) ? 'NIT' : 'C.C.'} ${formatoIdentificacion(origen.arrendatarioCedula)}` : ''],
         ['Teléfono', origen.arrendatarioCelular || ''],
         ['Correo', origen.arrendatarioEmail || ''],
         ['Código', origen.codigoWasi || ''],
@@ -388,7 +389,8 @@ export async function generateLiquidacionPdf(liq) {
     y += LINE_HEIGHT;
     pdf.text(`NIT ${EMPRESA.nit}`, MARGIN.left, y);
     if (origen.arrendatarioCedula) {
-        pdf.text(`C.C. ${formatoIdentificacion(origen.arrendatarioCedula)}`, x2, y);
+        const tipoId = esPersonaJuridica(origen.arrendatarioTipoPersona) ? 'NIT' : 'C.C.';
+        pdf.text(`${tipoId} ${formatoIdentificacion(origen.arrendatarioCedula)}`, x2, y);
     }
     y += LINE_HEIGHT;
     pdf.text(entregaNombre.toUpperCase(), MARGIN.left, y);

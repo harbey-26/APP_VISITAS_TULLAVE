@@ -105,6 +105,11 @@ function direccionCiudad(dir, ciudad) {
 // Quita el punto final para poder cerrar la frase sin duplicarlo.
 const sinPuntoFinal = (s) => String(s).replace(/\.+$/, '');
 
+// ¿La parte es persona jurídica? Se pregunta por regex y no comparando el
+// literal porque normalizeData deja los datos en MAYÚSCULAS ('PERSONA
+// JURÍDICA') y los contratos viejos no traen el campo (→ natural).
+const esJuridica = (t) => /jur/i.test(String(t || ''));
+
 // Compone la dirección completa uniendo la calle base con Torre/Apto/Conjunto
 // (los que tengan dato), separados por coma. El agente escribe cada parte con
 // su palabra ("Torre 2", "Apto 706"), así que no anteponemos etiquetas (#20/#21/#26).
@@ -132,12 +137,18 @@ function buildAdministracion(d) {
     blocks.push({ kind: 'kv', label: 'ADMINISTRADOR:', value: `${EMPRESA.razonSocial} NIT ${EMPRESA.nit}` });
 
     // Filas del cuadro resumen para cada propietario (numeradas si hay varios).
-    const filasPropietario = (nombre, cedula, direccion, telefono, email, n) => [
-        [n ? `Propietario ${n}/Mandante` : 'Propietario/Mandante', v(nombre)],
-        ['No. de Identificación', ident(cedula)],
-        ['Dirección de notificación', v(direccion)],
-        ['Teléfono', v(telefono)],
-        ['Correo electrónico', v(email)],
+    // `p` = { tipoPersona?, nombre, cedula, direccion, telefono, email,
+    //         repLegalNombre?, repLegalCedula? } — una persona jurídica se
+    // identifica con NIT y agrega la fila de su representante legal.
+    const filasPropietario = (p, n) => [
+        [n ? `Propietario ${n}/Mandante` : 'Propietario/Mandante', v(p.nombre)],
+        [esJuridica(p.tipoPersona) ? 'NIT' : 'No. de Identificación', ident(p.cedula)],
+        ...(esJuridica(p.tipoPersona)
+            ? [['Representante legal', `${v(p.repLegalNombre)} — C.C. ${ident(p.repLegalCedula)}`]]
+            : []),
+        ['Dirección de notificación', v(p.direccion)],
+        ['Teléfono', v(p.telefono)],
+        ['Correo electrónico', v(p.email)],
     ];
 
     // Dirección de notificación del primer propietario, con Torre/Apto/Conjunto (#26)
@@ -148,8 +159,13 @@ function buildAdministracion(d) {
     blocks.push({
         kind: 'table',
         rows: [
-            ...filasPropietario(d.propietarioNombre, d.propietarioCedula, dirPropietario, d.propietarioTelefono, d.propietarioEmail, variosDuenos ? 1 : null),
-            ...otrosPropietarios.flatMap((o, i) => filasPropietario(o.nombre, o.cedula, o.direccion, o.telefono, o.email, i + 2)),
+            ...filasPropietario({
+                tipoPersona: d.propietarioTipoPersona, nombre: d.propietarioNombre,
+                cedula: d.propietarioCedula, direccion: dirPropietario,
+                telefono: d.propietarioTelefono, email: d.propietarioEmail,
+                repLegalNombre: d.propietarioRepLegalNombre, repLegalCedula: d.propietarioRepLegalCedula,
+            }, variosDuenos ? 1 : null),
+            ...otrosPropietarios.flatMap((o, i) => filasPropietario(o, i + 2)),
             ['Tipo de Inmueble', v(d.tipoInmueble)],
             ['Ciudad de Ubicación', v(d.ciudadInmueble)],
             ['Dirección', v(dirInmueble)],
@@ -254,23 +270,36 @@ function buildAdministracion(d) {
     });
 
     // Un bloque de firma por cada propietario (numerado si hay varios dueños).
-    const firmaMandante = (nombre, cedula, direccion, telefono, email, role) => ({
+    // Si el mandante es persona jurídica, firma su representante legal (mismo
+    // formato del bloque del ADMINISTRADOR).
+    const firmaMandante = (p, role) => ({
         kind: 'signature',
         role,
         lines: [
-            `NOMBRE: ${v(nombre)}`,
-            `CÉDULA: ${ident(cedula)}`,
-            `DIRECCIÓN: ${v(direccion)}`,
-            `TELÉFONO: ${v(telefono)}`,
-            `EMAIL: ${v(email)}`,
+            ...(esJuridica(p.tipoPersona)
+                ? [
+                    `NOMBRE: ${v(p.repLegalNombre)}`,
+                    `CÉDULA: ${ident(p.repLegalCedula)}`,
+                    `Representante legal`,
+                    `${v(p.nombre)} NIT: ${ident(p.cedula)}`,
+                ]
+                : [
+                    `NOMBRE: ${v(p.nombre)}`,
+                    `CÉDULA: ${ident(p.cedula)}`,
+                ]),
+            `DIRECCIÓN: ${v(p.direccion)}`,
+            `TELÉFONO: ${v(p.telefono)}`,
+            `EMAIL: ${v(p.email)}`,
         ],
     });
-    blocks.push(firmaMandante(
-        d.propietarioNombre, d.propietarioCedula, dirPropietario, d.propietarioTelefono, d.propietarioEmail,
-        variosDuenos ? 'MANDANTE 1' : 'MANDANTE(S)',
-    ));
+    blocks.push(firmaMandante({
+        tipoPersona: d.propietarioTipoPersona, nombre: d.propietarioNombre,
+        cedula: d.propietarioCedula, direccion: dirPropietario,
+        telefono: d.propietarioTelefono, email: d.propietarioEmail,
+        repLegalNombre: d.propietarioRepLegalNombre, repLegalCedula: d.propietarioRepLegalCedula,
+    }, variosDuenos ? 'MANDANTE 1' : 'MANDANTE(S)'));
     otrosPropietarios.forEach((o, i) => {
-        blocks.push(firmaMandante(o.nombre, o.cedula, o.direccion, o.telefono, o.email, `MANDANTE ${i + 2}`));
+        blocks.push(firmaMandante(o, `MANDANTE ${i + 2}`));
     });
     blocks.push({
         kind: 'signature',
@@ -298,7 +327,9 @@ function nombresDeudores(deudores) {
     const list = Array.isArray(deudores) ? deudores.filter((x) => x?.nombre) : [];
     if (list.length === 0) return BLANK;
     return list
-        .map((x) => `${v(x.nombre)}, identificado(a) con C.C. No. ${ident(x.cedula)} de ${v(x.lugarExpedicion)}`)
+        .map((x) => (esJuridica(x.tipoPersona)
+            ? `${v(x.nombre)}, identificada con NIT ${ident(x.cedula)}, representada legalmente por ${v(x.repLegalNombre)}, identificado(a) con C.C. No. ${ident(x.repLegalCedula)}`
+            : `${v(x.nombre)}, identificado(a) con C.C. No. ${ident(x.cedula)} de ${v(x.lugarExpedicion)}`))
         .join('; ');
 }
 
@@ -316,12 +347,25 @@ function buildArrendamiento(d) {
     blocks.push({ kind: 'kv', label: 'Ciudad y Fecha', value: `${v(d.ciudadFirma)}, ${fecha(d.fechaFirma)}` });
     blocks.push({ kind: 'kv', label: 'ARRENDADOR (ES):', value: EMPRESA.razonSocial });
     blocks.push({ kind: 'kv', label: 'NIT:', value: EMPRESA.nit });
+    // Identificación en el encabezado: persona natural con C.C. y lugar de
+    // expedición; jurídica con NIT + línea del representante legal.
+    const kvIdentificacion = (x) => (esJuridica(x.tipoPersona)
+        ? [
+            { kind: 'kv', label: 'NIT:', value: ident(x.cedula) },
+            { kind: 'kv', label: 'REPRESENTANTE LEGAL:', value: `${v(x.repLegalNombre)} — C.C. ${ident(x.repLegalCedula)}` },
+        ]
+        : [{ kind: 'kv', label: 'C.C. No.', value: `${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}` }]);
+
     blocks.push({ kind: 'kv', label: 'ARRENDATARIO (S):', value: v(d.arrendatarioNombre) });
-    blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${ident(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}` });
+    blocks.push(...kvIdentificacion({
+        tipoPersona: d.arrendatarioTipoPersona, cedula: d.arrendatarioCedula,
+        lugarExpedicion: d.arrendatarioLugarExpedicion,
+        repLegalNombre: d.arrendatarioRepLegalNombre, repLegalCedula: d.arrendatarioRepLegalCedula,
+    }));
     if (deudores.length > 0) {
         deudores.forEach((x, i) => {
             blocks.push({ kind: 'kv', label: i === 0 ? 'DEUDOR(ES) SOLIDARIOS:' : ' ', value: v(x.nombre).toUpperCase() });
-            blocks.push({ kind: 'kv', label: 'C.C. No.', value: `${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}` });
+            blocks.push(...kvIdentificacion(x));
         });
     } else {
         blocks.push({ kind: 'kv', label: 'DEUDOR(ES) SOLIDARIOS:', value: BLANK });
@@ -426,12 +470,25 @@ function buildArrendamiento(d) {
             `C.C. ${EMPRESA.cedulaRepresentante} — Representante legal`,
         ],
     });
+    // Identificación en las firmas: mismo criterio del encabezado. Por una
+    // jurídica firma su representante legal.
+    const lineasIdentFirma = (x) => (esJuridica(x.tipoPersona)
+        ? [
+            `NIT ${ident(x.cedula)}`,
+            `REPRESENTANTE LEGAL: ${v(x.repLegalNombre)} — C.C. ${ident(x.repLegalCedula)}`,
+        ]
+        : [`C.C. No. ${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}`]);
+
     blocks.push({
         kind: 'signature',
         role: 'EL ARRENDATARIO',
         lines: [
             `NOMBRE: ${v(d.arrendatarioNombre)}`,
-            `C.C. No. ${ident(d.arrendatarioCedula)} DE ${v(d.arrendatarioLugarExpedicion).toUpperCase()}`,
+            ...lineasIdentFirma({
+                tipoPersona: d.arrendatarioTipoPersona, cedula: d.arrendatarioCedula,
+                lugarExpedicion: d.arrendatarioLugarExpedicion,
+                repLegalNombre: d.arrendatarioRepLegalNombre, repLegalCedula: d.arrendatarioRepLegalCedula,
+            }),
             `Dir. Notificación: ${v(dirNotifArrendatario)}`,
             `Ciudad: ${v(d.arrendatarioCiudad)}`,
             `Celular: ${v(d.arrendatarioCelular)}`,
@@ -444,7 +501,7 @@ function buildArrendamiento(d) {
             role: deudores.length > 1 ? `DEUDOR SOLIDARIO ${i + 1}` : 'EL DEUDOR SOLIDARIO',
             lines: [
                 `NOMBRE: ${v(x.nombre)}`,
-                `C.C. No. ${ident(x.cedula)} DE ${v(x.lugarExpedicion).toUpperCase()}`,
+                ...lineasIdentFirma(x),
                 `Dir. Notificación: ${v(componerDireccion(x.direccion, x.torre, x.apto, x.conjunto))}`,
                 `Ciudad: ${v(x.ciudad)}`,
                 `Celular: ${v(x.celular)}`,

@@ -68,6 +68,28 @@ export const REOPENABLE_STATUSES = ['APPROVED'];
 
 const TIPOS_INMUEBLE = ['Apartamento', 'Casa', 'Local', 'Oficina', 'Bodega', 'Consultorio'];
 
+// Tipo de persona de cada parte del contrato. Los contratos guardados antes
+// de existir este campo no lo traen: se tratan como persona natural (por eso
+// esPersonaJuridica es la ÚNICA forma de preguntar — nunca comparar contra el
+// literal, que además queda en MAYÚSCULAS al renderizar el documento).
+export const TIPOS_PERSONA = ['Persona natural', 'Persona jurídica'];
+export const esPersonaJuridica = (v) => /jur/i.test(String(v || ''));
+
+// Campos extra de una parte que es persona jurídica: quién firma por ella.
+// `prefix` arma las keys ('' para itemFields de listas, que no llevan prefijo).
+const camposRepresentante = (tipoKey, prefix = '') => [
+    {
+        key: prefix ? `${prefix}RepLegalNombre` : 'repLegalNombre',
+        label: 'Nombre del representante legal', type: 'text', required: true,
+        showIf: { key: tipoKey, equals: 'Persona jurídica' },
+    },
+    {
+        key: prefix ? `${prefix}RepLegalCedula` : 'repLegalCedula',
+        label: 'C.C. del representante legal', type: 'text', required: true,
+        showIf: { key: tipoKey, equals: 'Persona jurídica' },
+    },
+];
+
 export const CONTRACT_TEMPLATES = {
     ADMINISTRACION: {
         label: 'Contrato de administración de inmueble',
@@ -81,8 +103,10 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     // Identificador del contrato en Wasi (CRM) — es también el nombre del PDF
                     { key: 'codigoWasi', label: 'Código Wasi', type: 'text', required: true, hint: 'Identificador del contrato. Será el nombre del archivo PDF' },
-                    { key: 'propietarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
-                    { key: 'propietarioCedula', label: 'No. de identificación', type: 'text', required: true },
+                    { key: 'propietarioTipoPersona', label: 'Tipo de persona', type: 'select', options: TIPOS_PERSONA, default: 'Persona natural' },
+                    { key: 'propietarioNombre', label: 'Nombre completo / Razón social', type: 'text', required: true, prefill: 'clientName' },
+                    { key: 'propietarioCedula', label: 'No. de identificación', type: 'text', required: true, hint: 'C.C. si es persona natural; NIT si es persona jurídica' },
+                    ...camposRepresentante('propietarioTipoPersona', 'propietario'),
                     { key: 'propietarioDireccion', label: 'Dirección de notificación (calle)', type: 'address', required: true },
                     { key: 'propietarioTorre', label: 'Torre / Bloque de notificación', type: 'text', hint: 'Opcional' },
                     { key: 'propietarioApto', label: 'Apartamento / Oficina de notificación', type: 'text', hint: 'Opcional' },
@@ -93,8 +117,10 @@ export const CONTRACT_TEMPLATES = {
                         key: 'otrosPropietarios', label: 'Otro propietario', type: 'list', default: [],
                         hint: 'Si el inmueble tiene más de un dueño, agrégalos aquí',
                         itemFields: [
-                            { key: 'nombre', label: 'Nombre completo', type: 'text', required: true },
-                            { key: 'cedula', label: 'No. de identificación', type: 'text', required: true },
+                            { key: 'tipoPersona', label: 'Tipo de persona', type: 'select', options: TIPOS_PERSONA, default: 'Persona natural' },
+                            { key: 'nombre', label: 'Nombre completo / Razón social', type: 'text', required: true },
+                            { key: 'cedula', label: 'No. de identificación', type: 'text', required: true, hint: 'C.C. o NIT según el tipo de persona' },
+                            ...camposRepresentante('tipoPersona'),
                             { key: 'direccion', label: 'Dirección de notificación', type: 'address', required: true },
                             { key: 'telefono', label: 'Teléfono', type: 'phone' },
                             { key: 'email', label: 'Correo electrónico', type: 'email' },
@@ -170,9 +196,11 @@ export const CONTRACT_TEMPLATES = {
                 fields: [
                     // Identificador del contrato en Wasi (CRM) — es también el nombre del PDF
                     { key: 'codigoWasi', label: 'Código Wasi', type: 'text', required: true, hint: 'Identificador del contrato. Será el nombre del archivo PDF' },
-                    { key: 'arrendatarioNombre', label: 'Nombre completo', type: 'text', required: true, prefill: 'clientName' },
-                    { key: 'arrendatarioCedula', label: 'C.C. No.', type: 'text', required: true },
-                    { key: 'arrendatarioLugarExpedicion', label: 'Lugar de expedición', type: 'text', required: true, default: 'Bogotá D.C.' },
+                    { key: 'arrendatarioTipoPersona', label: 'Tipo de persona', type: 'select', options: TIPOS_PERSONA, default: 'Persona natural' },
+                    { key: 'arrendatarioNombre', label: 'Nombre completo / Razón social', type: 'text', required: true, prefill: 'clientName' },
+                    { key: 'arrendatarioCedula', label: 'No. de identificación', type: 'text', required: true, hint: 'C.C. si es persona natural; NIT si es persona jurídica' },
+                    { key: 'arrendatarioLugarExpedicion', label: 'Lugar de expedición', type: 'text', required: true, default: 'Bogotá D.C.', showIf: { key: 'arrendatarioTipoPersona', notEquals: 'Persona jurídica' } },
+                    ...camposRepresentante('arrendatarioTipoPersona', 'arrendatario'),
                     { key: 'arrendatarioDireccion', label: 'Dirección de notificación (calle)', type: 'address', required: true, hint: 'Independiente de la del inmueble; puede ser otra' },
                     { key: 'arrendatarioTorre', label: 'Torre / Bloque de notificación', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
                     { key: 'arrendatarioApto', label: 'Apartamento / Oficina de notificación', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
@@ -188,9 +216,11 @@ export const CONTRACT_TEMPLATES = {
                     {
                         key: 'deudores', label: 'Deudor solidario', type: 'list', default: [],
                         itemFields: [
-                            { key: 'nombre', label: 'Nombre completo', type: 'text', required: true },
-                            { key: 'cedula', label: 'C.C. No.', type: 'text', required: true },
-                            { key: 'lugarExpedicion', label: 'Lugar de expedición', type: 'text', default: 'Bogotá D.C.' },
+                            { key: 'tipoPersona', label: 'Tipo de persona', type: 'select', options: TIPOS_PERSONA, default: 'Persona natural' },
+                            { key: 'nombre', label: 'Nombre completo / Razón social', type: 'text', required: true },
+                            { key: 'cedula', label: 'No. de identificación', type: 'text', required: true, hint: 'C.C. o NIT según el tipo de persona' },
+                            { key: 'lugarExpedicion', label: 'Lugar de expedición', type: 'text', default: 'Bogotá D.C.', showIf: { key: 'tipoPersona', notEquals: 'Persona jurídica' } },
+                            ...camposRepresentante('tipoPersona'),
                             { key: 'direccion', label: 'Dirección de notificación (calle)', type: 'address', required: true },
                             { key: 'torre', label: 'Torre / Bloque', type: 'text', hint: 'Opcional. Ej.: Torre 2' },
                             { key: 'apto', label: 'Apartamento / Oficina', type: 'text', hint: 'Opcional. Ej.: Apto 706' },
@@ -242,9 +272,14 @@ function hoyLocal() {
 }
 
 // ¿El campo aplica según las respuestas actuales? (showIf declarativo)
+// Soporta `equals` y `notEquals`. Ojo con notEquals: un dato ausente (contrato
+// viejo sin el campo) NO es igual, así que el campo aplica — es lo que
+// queremos: "Lugar de expedición" sigue visible si nunca eligieron tipo.
 export function fieldApplies(field, data) {
     if (!field.showIf) return true;
-    return (data?.[field.showIf.key] ?? false) === field.showIf.equals;
+    const value = data?.[field.showIf.key] ?? false;
+    if ('notEquals' in field.showIf) return value !== field.showIf.notEquals;
+    return value === field.showIf.equals;
 }
 
 // Objeto de datos inicial con los defaults de la plantilla.
@@ -323,6 +358,9 @@ export function validateContractData(type, data) {
                     });
                     if (sinDiligenciar) return;
                     for (const sub of f.itemFields) {
+                        // El showIf de un itemField se evalúa contra el propio
+                        // ítem (ej.: representante legal solo si es jurídica)
+                        if (!fieldApplies(sub, item)) continue;
                         if (sub.required && requiredMissing(item?.[sub.key])) {
                             errors.push(`${f.label} ${i + 1}: falta "${sub.label}"`);
                         }
