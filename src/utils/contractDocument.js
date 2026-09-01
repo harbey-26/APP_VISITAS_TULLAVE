@@ -342,6 +342,10 @@ function buildArrendamiento(d) {
     // Dirección de notificación del arrendatario, independiente del inmueble (#26)
     const dirNotifArrendatario = componerDireccion(d.arrendatarioDireccion, d.arrendatarioTorre, d.arrendatarioApto, d.arrendatarioConjunto);
     const tieneAdmin = Number(d.cuotaAdministracion || 0) > 0;
+    // Anexos arrendados junto con el inmueble (parqueadero/garaje y depósito)
+    const anexosInmueble = [];
+    if (d.garajes) anexosInmueble.push(`el (los) parqueadero(s) / garaje(s) No. ${v(d.numeroGarajes)}`);
+    if (d.deposito) anexosInmueble.push(`el depósito No. ${v(d.numeroDeposito)}`);
 
     // Encabezado tipo proforma: líneas etiqueta/valor en negrita (sin tabla)
     blocks.push({ kind: 'kv', label: 'Ciudad y Fecha', value: `${v(d.ciudadFirma)}, ${fecha(d.fechaFirma)}` });
@@ -380,7 +384,9 @@ function buildArrendamiento(d) {
             `Mediante el presente contrato EL ARRENDADOR concede al ARRENDATARIO el uso y goce del inmueble que más adelante se identifica, obligándose éste a pagar a aquél una renta de arrendamiento${tieneAdmin ? ', una cuota de administración' : ''} y a destinarlo exclusivamente para VIVIENDA URBANA de él y su familia. El presente contrato se regirá en todas sus partes por las cláusulas aquí consignadas, así como por los términos de la LEY 820 DE 2003 (Ley de arrendamiento de vivienda urbana), el Código Civil y demás normas concordantes vigentes.`],
 
         ['SEGUNDA: IDENTIFICACIÓN DEL INMUEBLE:',
-            `El presente contrato recae sobre el siguiente inmueble: ${v(sinPuntoFinal(inmueble))}.`],
+            `El presente contrato recae sobre el siguiente inmueble: ${v(sinPuntoFinal(inmueble))}.${anexosInmueble.length > 0
+                ? ` PARÁGRAFO: Hacen parte del inmueble arrendado y se entregan junto con él ${anexosInmueble.join(' y ')}, que EL ARRENDATARIO se obliga a destinar exclusivamente a su uso natural y a restituir al ARRENDADOR junto con el inmueble, quedando sometidos a todas las condiciones del presente contrato.`
+                : ''}`],
 
         ['TERCERA: PRECIO Y FORMA DE PAGO:',
             `El valor mensual del contrato por concepto de arrendamiento es la suma de ${money(d.canon)}${tieneAdmin ? `, y ${money(d.cuotaAdministracion)} corresponden a cuotas ordinarias de administración` : ''}, que EL ARRENDATARIO se obliga a pagar al ARRENDADOR en su totalidad, anticipadamente, dentro de los cinco (5) primeros días de cada período, a su orden por escrito o a quien éste autorice o delegue previamente y por escrito para recibir dicha renta. PARÁGRAFO PRIMERO: La mera tolerancia del ARRENDADOR en aceptar el pago del precio del arrendamiento${tieneAdmin ? ' y su cuota de administración' : ''} con posterioridad a su vencimiento no se entenderá como ánimo de novación o de modificación del término establecido para el pago en este contrato. PARÁGRAFO SEGUNDO: En caso de mora o retardo en el pago del precio mensual del contrato, de acuerdo con lo previsto en la presente cláusula, EL ARRENDADOR podrá dar por terminado unilateralmente con justa causa el presente contrato y exigir la entrega inmediata del inmueble, para lo cual el ARRENDATARIO renuncia expresamente a los requerimientos privados y judiciales previstos en la ley (artículos 1594 y 2007 del Código Civil). PARÁGRAFO — FORMA DE PAGO: El arrendatario pagará el precio del arrendamiento en las oficinas del arrendador, hoy ${EMPRESA.direccion} de la ciudad de ${sinPuntoFinal(EMPRESA.ciudad)}, o mediante consignación en la ${EMPRESA.cuentaRecaudo} del ${EMPRESA.bancoRecaudo} a nombre de ${EMPRESA.razonSocial}.`],

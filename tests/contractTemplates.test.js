@@ -352,6 +352,28 @@ describe('buildContractDocument', () => {
         expect(clean(dir)).toContain('CL 10 #5-20, TORRE 3, APTO 502, LOS PINOS');
     });
 
+    it('arrendamiento: parqueadero y depósito arrendados salen en la cláusula SEGUNDA', () => {
+        const data = {
+            ...emptyFormData('ARRENDAMIENTO'),
+            direccionInmueble: 'Calle 100 #15-20', ciudadInmueble: 'Bogotá D.C.',
+            garajes: true, numeroGarajes: '45', deposito: true, numeroDeposito: '12',
+        };
+        const doc = buildContractDocument('ARRENDAMIENTO', data);
+        const segunda = clean(doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA')).text);
+        expect(segunda).toContain('parqueadero(s) / garaje(s) No. 45');
+        expect(segunda).toContain('el depósito No. 12');
+        expect(segunda).toContain('Hacen parte del inmueble arrendado');
+    });
+
+    it('arrendamiento: sin parqueadero ni depósito la cláusula SEGUNDA no cambia', () => {
+        const doc = buildContractDocument('ARRENDAMIENTO', {
+            ...emptyFormData('ARRENDAMIENTO'), direccionInmueble: 'Calle 100 #15-20', ciudadInmueble: 'Bogotá D.C.',
+        });
+        const segunda = clean(doc.blocks.find((b) => b.kind === 'clause' && b.lead.startsWith('SEGUNDA')).text);
+        expect(segunda).not.toContain('parqueadero');
+        expect(segunda).not.toContain('depósito');
+    });
+
     it('devuelve null para tipo desconocido', () => {
         expect(buildContractDocument('OTRO', {})).toBeNull();
     });
