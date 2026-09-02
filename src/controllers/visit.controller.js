@@ -854,7 +854,9 @@ export const confirmVisit = async (req, res) => {
     try {
         const visit = await prisma.visit.findUnique({ where: { id: visitId } });
         if (!visit || visit.deletedAt) return res.status(404).json({ error: 'Visita no encontrada' });
-        if (visit.userId !== req.user.id && req.user.role !== 'ADMIN') {
+        // Confirma el dueño de la visita o el staff (admin/asistente): confirmar
+        // la cita con el cliente es gestión de agenda, no ejecución de la visita.
+        if (visit.userId !== req.user.id && !esStaff(req.user.role)) {
             return res.status(403).json({ error: 'Sin permiso para modificar esta visita.' });
         }
         if (!['PENDING', 'IN_PROGRESS'].includes(visit.status)) {

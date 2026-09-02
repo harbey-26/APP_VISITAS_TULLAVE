@@ -377,7 +377,7 @@ export default function Agenda() {
     // Staff = admin o asistente: ven la agenda de todos los agentes.
     // El asistente gestiona la agenda (crear, editar y reasignar — #71) pero
     // NO ejecuta ni cierra visitas: sin check-in, no atendida, cancelar,
-    // confirmar cita ni eliminar.
+    // eliminar. SÍ confirma la cita con el cliente por WhatsApp.
     const staff = esStaff(user?.role);
     const esAsistente = user?.role === 'ASISTENTE';
 
@@ -1135,7 +1135,9 @@ export default function Agenda() {
                                                                 >
                                                                     <Phone className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </a>
-                                                                {!esAsistente && <a
+                                                                {/* El asistente SÍ confirma la cita por WhatsApp (gestión de agenda);
+                                                                    el mensaje sale a nombre del agente asignado */}
+                                                                <a
                                                                     href={buildWhatsAppUrl(visit.clientPhone, buildConfirmationMessage(visit, visit.user?.name, visit.user?.phone))}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
@@ -1145,7 +1147,7 @@ export default function Agenda() {
                                                                     className="w-10 h-10 md:w-7 md:h-7 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition active:scale-95 shadow-sm"
                                                                 >
                                                                     <MessageCircle className="w-5 h-5 md:w-3.5 md:h-3.5" />
-                                                                </a>}
+                                                                </a>
                                                             </div>
                                                         )}
                                                         {staff && visit.user?.name && (
