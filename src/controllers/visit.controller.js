@@ -198,8 +198,9 @@ export const createVisit = async (req, res) => {
         const data = schema.parse(req.body);
 
         // #71: admin y asistente pueden asignar la visita a un agente. El
-        // asistente no ejecuta visitas, así que las suyas SIEMPRE deben quedar
-        // asignadas a un agente (sin asignar quedarían huérfanas a su nombre).
+        // asistente debe elegir SIEMPRE el responsable de forma explícita
+        // (puede ser él mismo — sep 2026 — pero nunca por omisión: agenda
+        // visitas de todo el equipo y un olvido las dejaría a su nombre).
         let targetUserId = req.user.id;
         if (esStaff(req.user.role) && data.assignedUserId) {
             targetUserId = data.assignedUserId;

@@ -135,8 +135,10 @@ export const getTodayCheckIns = async (req, res) => {
 
 export const getAgentLocations = async (req, res) => {
     try {
+        // Agentes + asistente: desde sep 2026 el asistente también ejecuta
+        // visitas propias, así que se rastrea en el mapa como uno más
         const agents = await prisma.user.findMany({
-            where: { role: 'AGENT' },
+            where: { role: { in: ['AGENT', 'ASISTENTE'] } },
             select: {
                 id: true, name: true, lastLat: true, lastLng: true, lastSeenAt: true, connectedSince: true,
                 // Dispositivos con push registrado — 0 = ese agente NO recibe notificaciones

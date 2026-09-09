@@ -380,6 +380,9 @@ export default function Agenda() {
     // eliminar. SÍ confirma la cita con el cliente por WhatsApp.
     const staff = esStaff(user?.role);
     const esAsistente = user?.role === 'ASISTENTE';
+    // El asistente solo ejecuta/cierra las visitas asignadas a él (sep 2026);
+    // en las ajenas gestiona la agenda (editar, reasignar, confirmar) sin más
+    const puedeEjecutar = (visit) => !esAsistente || visit?.userId === user?.id;
 
     // Cargamos el script de Maps a nivel de página para que el autocompletado de
     // Places funcione dentro de los modales aunque la vista activa sea la lista.
@@ -476,7 +479,9 @@ export default function Agenda() {
                 });
                 if (res.ok) {
                     const allUsers = await res.json();
-                    setAgents(allUsers.filter(u => u.role === 'AGENT'));
+                    // Asignables: agentes y el asistente (sep 2026: también
+                    // ejecuta las visitas que le asignan)
+                    setAgents(allUsers.filter(u => u.role === 'AGENT' || u.role === 'ASISTENTE'));
                 }
             } catch (error) {
                 console.error(error);
@@ -950,7 +955,7 @@ export default function Agenda() {
                     <AgendaMapView
                         visits={visibleVisits}
                         agents={visibleAgentLocations}
-                        onVisitClick={(id) => { if (!esAsistente) navigate(`/visit/${id}`); }}
+                        onVisitClick={(id) => { if (puedeEjecutar(visibleVisits.find(v => v.id === id))) navigate(`/visit/${id}`); }}
                     />
                 </div>
             )}
@@ -1007,8 +1012,8 @@ export default function Agenda() {
                                         return (
                                             <div
                                                 key={visit.id}
-                                                onClick={() => { if (!esAsistente) navigate(`/visit/${visit.id}`); }}
-                                                className={`bg-white rounded-xl border ${esAsistente ? '' : 'cursor-pointer'} hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
+                                                onClick={() => { if (puedeEjecutar(visit)) navigate(`/visit/${visit.id}`); }}
+                                                className={`bg-white rounded-xl border ${puedeEjecutar(visit) ? 'cursor-pointer' : ''} hover:shadow-lg transition-all duration-200 overflow-hidden group ${typeConfig.border} ${isCompleted || visit.status === 'CANCELLED' ? 'opacity-70' : ''}`}
                                             >
                                                 {/* Franja de color por tipo */}
                                                 <div className={`h-1 w-full ${typeConfig.dot}`} />
@@ -1056,14 +1061,14 @@ export default function Agenda() {
                                                                 )}
                                                                 {statusConfig.label}
                                                             </span>
-                                                            {/* #71: el asistente gestiona (editar/reasignar) pero no
-                                                                ejecuta ni cierra: sin no atendida, cancelar ni eliminar */}
-                                                            {!esAsistente && isPastPending && (
+                                                            {/* #71: en las visitas ajenas el asistente solo gestiona
+                                                                (editar/reasignar): sin no atendida, cancelar ni eliminar */}
+                                                            {puedeEjecutar(visit) && isPastPending && (
                                                                 <button onClick={(e) => handleMarkMissed(e, visit.id)} className="text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Marcar como no atendida">
                                                                     <UserX className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
-                                                            {!esAsistente && visit.status === 'PENDING' && (
+                                                            {puedeEjecutar(visit) && visit.status === 'PENDING' && (
                                                                 <button onClick={(e) => initiateCancel(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Cancelar visita">
                                                                     <Ban className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
@@ -1078,7 +1083,7 @@ export default function Agenda() {
                                                                     <UserCheck className="w-5 h-5 md:w-3.5 md:h-3.5" />
                                                                 </button>
                                                             )}
-                                                            {!esAsistente && (
+                                                            {puedeEjecutar(visit) && (
                                                                 <>
                                                                     <button onClick={(e) => initiateDelete(e, visit.id)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition rounded-full w-9 h-9 md:w-7 md:h-7 flex items-center justify-center opacity-100 md:opacity-40 md:group-hover:opacity-100" title="Eliminar">
                                                                         <Trash2 className="w-5 h-5 md:w-3.5 md:h-3.5" />
@@ -1219,7 +1224,7 @@ export default function Agenda() {
                                         onChange={e => setFormData({ ...formData, assignedUserId: e.target.value })}
                                         required={esAsistente}
                                     >
-                                        {/* #71: el asistente no ejecuta visitas — debe elegir siempre un agente */}
+                                        {/* #71: el asistente agenda para todo el equipo — elige SIEMPRE el responsable (puede ser él mismo) */}
                                         <option value="">{esAsistente ? '-- Selecciona un agente --' : '-- Auto-asignar (Yo) --'}</option>
                                         {agents.map(agent => (
                                             <option key={agent.id} value={agent.id}>

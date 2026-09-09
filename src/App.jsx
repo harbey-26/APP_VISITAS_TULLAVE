@@ -72,13 +72,6 @@ const StaffRoute = ({ children }) => {
     return user && esStaff(user.role) ? children : <Navigate to="/" replace />;
 };
 
-// El ASISTENTE solo consulta la agenda: la ejecución de visitas no es para él
-const NoAsistenteRoute = ({ children }) => {
-    const { user, loading } = useAuth();
-    if (loading) return <LoadingScreen />;
-    return user?.role === 'ASISTENTE' ? <Navigate to="/agenda" replace /> : children;
-};
-
 function App() {
     // OTA (#67): en la RAÍZ y no en Layout — con sesión cerrada (Login) también
     // debe correr notifyAppReady, o el plugin revertiría un bundle sano
@@ -101,11 +94,8 @@ function App() {
                         <Route index element={<Navigate to="/agenda" replace />} />
                         <Route path="agenda" element={<Agenda />} />
                         <Route path="notifications" element={<Notifications />} />
-                        <Route path="visit/:id" element={
-                            <NoAsistenteRoute>
-                                <VisitExecution />
-                            </NoAsistenteRoute>
-                        } />
+                        {/* El asistente solo ejecuta SUS visitas: VisitExecution bloquea las ajenas */}
+                        <Route path="visit/:id" element={<VisitExecution />} />
                         <Route path="contracts" element={<Contracts />} />
                         <Route path="liquidaciones" element={<Liquidaciones />} />
                         <Route path="incrementos" element={<Incrementos />} />

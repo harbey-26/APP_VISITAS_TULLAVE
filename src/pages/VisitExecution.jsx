@@ -105,7 +105,11 @@ function VisitExecutionContent() {
                 if (res.ok) {
                     const visits = await res.json();
                     const v = visits.find(v => v.id === parseInt(id));
-                    if (v) {
+                    if (v && user?.role === 'ASISTENTE' && v.userId !== user.id) {
+                        // El asistente ve la agenda de todos pero solo ejecuta las
+                        // visitas asignadas a él (el backend responde 403 en las ajenas)
+                        setFetchError('Esta visita está asignada a otro agente. Como asistente solo puedes ejecutar las visitas asignadas a ti.');
+                    } else if (v) {
                         setVisit(v);
                         // El borrador local (ediciones recientes sin guardar) tiene prioridad sobre el servidor
                         if (v.notes && !draftLoadedRef.current) setNotes(v.notes);

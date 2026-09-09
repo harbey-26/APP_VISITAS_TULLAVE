@@ -4,8 +4,9 @@
 //  - ASISTENTE vista de administrador (visibilidad global de los módulos)
 //              pero SIN gestión de usuarios y SIN autorizar (aprobar/devolver,
 //              pagos, aplicar incrementos…). En la agenda SÍ crea, edita y
-//              reasigna visitas (#71) — siempre asignadas a un agente — pero
-//              NO las ejecuta ni las cierra
+//              reasigna visitas (#71). Sep 2026: también puede tener visitas
+//              asignadas (aparece en el selector de agente) y ejecutar/cerrar
+//              SOLO las suyas, como un agente; las ajenas siguen sin ejecutar
 //  - PORTAL    usuario sistema del Portal de Clientes (no inicia sesión)
 //
 // "Staff" = visibilidad global de administrador (ADMIN o ASISTENTE). Las
