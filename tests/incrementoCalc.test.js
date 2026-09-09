@@ -4,6 +4,8 @@ import {
     aniversarioEnAnio, proximoAniversario, aniversariosEnRadar, diasHasta,
     semaforo, compararUrgencia, grupoDashboard,
     validarFichaParaCarta,
+    estadoVencimiento, nivelAlertaVencimiento, compararVencimiento,
+    fechaFinSugerida, prorrogarFechaFin,
 } from '../src/utils/incrementoCalc.js';
 
 describe('pctAplicable', () => {
@@ -177,5 +179,49 @@ describe('validarFichaParaCarta', () => {
     });
     it('reporta todos los faltantes', () => {
         expect(validarFichaParaCarta({}).length).toBe(4);
+    });
+});
+
+describe('vencimiento del contrato (fechaFinContrato)', () => {
+    const hoy = '2026-09-09';
+    it('sin fecha fin no hay estado ni alerta', () => {
+        expect(estadoVencimiento(null, hoy)).toBeNull();
+        expect(estadoVencimiento('', hoy)).toBeNull();
+        expect(nivelAlertaVencimiento(undefined, hoy)).toBeNull();
+    });
+    it('clasifica por días restantes: vencido, hoy, <30, <=90 (preaviso), vigente', () => {
+        expect(estadoVencimiento('2026-08-07', hoy)).toMatchObject({ clave: 'VENCIDO', dias: -33 });
+        expect(estadoVencimiento('2026-09-09', hoy)).toMatchObject({ clave: 'VENCE_HOY', dias: 0 });
+        expect(estadoVencimiento('2026-10-09', hoy)).toMatchObject({ clave: 'PROXIMO', dias: 30 });
+        expect(estadoVencimiento('2026-10-15', hoy)).toMatchObject({ clave: 'PREAVISO', dias: 36 });
+        expect(estadoVencimiento('2026-12-08', hoy)).toMatchObject({ clave: 'PREAVISO', dias: 90 });
+        expect(estadoVencimiento('2026-12-09', hoy)).toMatchObject({ clave: 'VIGENTE', dias: 91 });
+    });
+    it('el nivel de alerta es el estado alcanzado y no alerta lo vigente', () => {
+        expect(nivelAlertaVencimiento('2027-09-03', hoy)).toBeNull();
+        expect(nivelAlertaVencimiento('2026-11-07', hoy)).toBe('PREAVISO');
+        expect(nivelAlertaVencimiento('2026-09-20', hoy)).toBe('PROXIMO');
+        expect(nivelAlertaVencimiento('2026-08-07', hoy)).toBe('VENCIDO');
+    });
+    it('ordena vencidos primero, luego los más próximos, y sin fecha al final', () => {
+        const fichas = [
+            { id: 'sinFecha', fechaFinContrato: null },
+            { id: 'vigente', fechaFinContrato: '2027-09-03' },
+            { id: 'vencido', fechaFinContrato: '2026-08-07' },
+            { id: 'preaviso', fechaFinContrato: '2026-11-07' },
+            { id: 'proximo', fechaFinContrato: '2026-09-20' },
+        ];
+        expect(fichas.sort((a, b) => compararVencimiento(a, b, hoy)).map((f) => f.id))
+            .toEqual(['vencido', 'proximo', 'preaviso', 'vigente', 'sinFecha']);
+    });
+    it('sugiere el fin de vigencia como la víspera del aniversario (regla del contrato)', () => {
+        expect(fechaFinSugerida('2026-09-04')).toBe('2027-09-03');
+        expect(fechaFinSugerida('2026-01-01', 12)).toBe('2026-12-31');
+        expect(fechaFinSugerida('', 12)).toBe('');
+    });
+    it('la prórroga suma meses a la fecha fin actual', () => {
+        expect(prorrogarFechaFin('2026-08-07')).toBe('2027-08-07');
+        expect(prorrogarFechaFin('2027-02-28', 12)).toBe('2028-02-28');
+        expect(prorrogarFechaFin('')).toBe('');
     });
 });

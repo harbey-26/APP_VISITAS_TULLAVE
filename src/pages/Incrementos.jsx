@@ -3,8 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch, friendlyError } from '../utils/api';
 import {
-    INCREMENTO_STATUS, TIPOS_INDICE, SEMAFOROS, GRUPOS_DASHBOARD,
-    semaforo, compararUrgencia, hoyISO,
+    INCREMENTO_STATUS, TIPOS_INDICE, SEMAFOROS, GRUPOS_DASHBOARD, VENCIMIENTOS,
+    semaforo, compararUrgencia, hoyISO, estadoVencimiento, compararVencimiento,
+    fechaFinSugerida, prorrogarFechaFin,
 } from '../utils/incrementoCalc';
 import { cartaIncremento } from '../utils/incrementoDocument';
 import { downloadIncrementoPdf } from '../utils/incrementoPdf';
@@ -18,7 +19,7 @@ import {
 import {
     TrendingUp, Eye, Download, MessageCircle, Mail, CheckCircle, X, Plus,
     Pencil, Trash2, Upload, Percent, RefreshCw, PlayCircle, History,
-    FolderSync, AlertTriangle, User, ChevronDown, ChevronUp,
+    FolderSync, AlertTriangle, User, ChevronDown, ChevronUp, CalendarClock, CalendarPlus,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -107,6 +108,8 @@ const CSV_ALIASES = {
     arrendatarioCelular: ['celular', 'telefono', 'tel'],
     direccion: ['direccion', 'direccion inmueble', 'inmueble'],
     fechaInicioContrato: ['fecha inicio', 'fecha de inicio', 'inicio', 'fecha inicio contrato'],
+    fechaFinContrato: ['fecha fin', 'fecha de fin', 'fin', 'fecha fin contrato', 'vencimiento', 'fecha vencimiento', 'fecha de vencimiento', 'fecha terminacion', 'fecha de terminacion'],
+    arrendatarioTipoPersona: ['tipo persona', 'tipo de persona'],
     canonActual: ['canon', 'canon actual', 'canon mensual', 'valor canon'],
     tipoIndice: ['tipo indice', 'indice', 'tipo de indice'],
     pctFijo: ['pct fijo', '% fijo', 'porcentaje fijo'],
@@ -132,10 +135,14 @@ function parseCsv(texto) {
             if (!campo || celdas[i] == null) return;
             let v = celdas[i].trim().replace(/^"|"$/g, '');
             if (campo === 'canonActual') v = v.replace(/[^\d]/g, '');
-            if (campo === 'fechaInicioContrato') {
+            if (campo === 'fechaInicioContrato' || campo === 'fechaFinContrato') {
                 // Acepta DD/MM/YYYY además de YYYY-MM-DD
                 const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                 if (m) v = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+            }
+            if (campo === 'arrendatarioTipoPersona') {
+                // "jurídica" / "empresa" / "SAS" → persona jurídica; lo demás, natural
+                v = /jur|empresa|sas|s\.a\.s/.test(normalizar(v)) ? 'Persona jurídica' : 'Persona natural';
             }
             if (campo === 'tipoIndice') {
                 const t = normalizar(v);
@@ -152,7 +159,7 @@ const FICHA_VACIA = {
     codigoWasi: '', arrendatarioNombre: '', arrendatarioCedula: '',
     arrendatarioTipoPersona: 'Persona natural',
     arrendatarioEmail: '', arrendatarioCelular: '', direccion: '',
-    fechaInicioContrato: '', canonActual: '', tipoIndice: 'IPC',
+    fechaInicioContrato: '', fechaFinContrato: '', canonActual: '', tipoIndice: 'IPC',
     puntosAdicionales: 0, pctFijo: 0, notas: '',
 };
 
@@ -171,6 +178,7 @@ export default function Incrementos() {
     const [loading, setLoading] = useState(true);
     const [filtroGrupo, setFiltroGrupo] = useState(null);
     const [filtroStatus, setFiltroStatus] = useState('');
+    const [filtroVencimiento, setFiltroVencimiento] = useState(null); // clave de VENCIMIENTOS
     const [busy, setBusy] = useState(false);
 
     // Modales
@@ -210,6 +218,26 @@ export default function Incrementos() {
     }, [incrementos]);
 
     const hoy = hoyISO();
+
+    // ── Vencimientos de contrato (sep 2026): contadores y filtro de la pestaña Fichas ──
+    const vencimientos = useMemo(() => {
+        const counts = { VENCIDO: 0, VENCE_HOY: 0, PROXIMO: 0, PREAVISO: 0 };
+        for (const f of fichas) {
+            if (!f.activa) continue;
+            const e = estadoVencimiento(f.fechaFinContrato, hoy);
+            if (e && e.clave in counts) counts[e.clave] += 1;
+        }
+        return counts;
+    }, [fichas, hoy]);
+    const fichasVisibles = useMemo(() => {
+        let lista = [...fichas];
+        if (filtroVencimiento) {
+            lista = lista.filter((f) => f.activa && estadoVencimiento(f.fechaFinContrato, hoy)?.clave === filtroVencimiento);
+        }
+        return lista.sort((a, b) => compararVencimiento(a, b, hoy));
+    }, [fichas, filtroVencimiento, hoy]);
+    const urgentes = vencimientos.VENCIDO + vencimientos.VENCE_HOY + vencimientos.PROXIMO;
+
     const visibles = useMemo(() => {
         let lista = [...incrementos];
         if (filtroGrupo) lista = lista.filter((i) => i.grupo === filtroGrupo);
@@ -337,6 +365,7 @@ export default function Incrementos() {
         try {
             const body = {
                 ...fichaForm,
+                fechaFinContrato: fichaForm.fechaFinContrato || null,
                 canonActual: Number(fichaForm.canonActual),
                 puntosAdicionales: Number(fichaForm.puntosAdicionales) || 0,
                 pctFijo: Number(fichaForm.pctFijo) || 0,
@@ -361,6 +390,21 @@ export default function Incrementos() {
         try {
             await apiFetch(`/api/incrementos/fichas/${ficha.id}`, { method: 'PATCH', body: { activa: !ficha.activa } });
             toast.success(ficha.activa ? 'Ficha desactivada (sale del radar)' : 'Ficha reactivada');
+            load();
+        } catch (err) {
+            toast.error(friendlyError(err));
+        }
+    };
+
+    // Prórroga (admin): la nueva fecha fin es la actual + 12 meses; el backend
+    // reinicia el ciclo de alertas al cambiar la fecha.
+    const handleProrrogar = async (ficha) => {
+        const nueva = prorrogarFechaFin(ficha.fechaFinContrato, 12);
+        if (!nueva) return;
+        if (!window.confirm(`¿Prorrogar el contrato de ${ficha.arrendatarioNombre} 12 meses?\nNueva fecha fin: ${fechaCorta(nueva)}`)) return;
+        try {
+            await apiFetch(`/api/incrementos/fichas/${ficha.id}`, { method: 'PATCH', body: { fechaFinContrato: nueva } });
+            toast.success(`Contrato prorrogado hasta el ${fechaCorta(nueva)}`);
             load();
         } catch (err) {
             toast.error(friendlyError(err));
@@ -411,6 +455,19 @@ export default function Incrementos() {
                     <p>
                         No has configurado el IPC de {anioActual}. Sin él no se pueden calcular los incrementos pactados por IPC.{' '}
                         <button onClick={() => setShowIndices(true)} className="font-bold underline">Configurar ahora</button>
+                    </p>
+                </div>
+            )}
+
+            {/* ── Alerta de vencimientos de contrato (sep 2026) ── */}
+            {urgentes > 0 && (
+                <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-800">
+                    <CalendarClock className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <p>
+                        <span className="font-bold">{urgentes} contrato(s)</span> vencido(s) o por vencer en los próximos 30 días
+                        {vencimientos.PREAVISO > 0 && <> y <span className="font-bold">{vencimientos.PREAVISO}</span> en término de preaviso</>}.{' '}
+                        <button onClick={() => { setTab('fichas'); setFiltroVencimiento(vencimientos.VENCIDO > 0 ? 'VENCIDO' : vencimientos.VENCE_HOY > 0 ? 'VENCE_HOY' : 'PROXIMO'); }}
+                            className="font-bold underline">Ver contratos</button>
                     </p>
                 </div>
             )}
@@ -594,6 +651,23 @@ export default function Incrementos() {
                             </Button>
                         </div>
                     )}
+                    {fichas.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                            {['VENCIDO', 'VENCE_HOY', 'PROXIMO', 'PREAVISO'].map((k) => {
+                                const v = VENCIMIENTOS[k];
+                                const activo = filtroVencimiento === k;
+                                return (
+                                    <button key={k} onClick={() => setFiltroVencimiento(activo ? null : k)}
+                                        className={cn('inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 border transition',
+                                            activo ? 'border-brand-600 ring-2 ring-brand-100 bg-white' : 'border-gray-200 bg-white hover:bg-gray-50',
+                                            vencimientos[k] === 0 && !activo && 'opacity-50')}>
+                                        <span>{v.emoji}</span> {vencimientos[k]} {v.label.toLowerCase()}
+                                        {activo && <X className="w-3 h-3" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                     {fichas.length === 0 ? (
                         <EmptyState
                             icon={TrendingUp}
@@ -604,7 +678,12 @@ export default function Incrementos() {
                         />
                     ) : (
                         <div className="space-y-3">
-                            {fichas.map((f) => (
+                            {fichasVisibles.length === 0 && (
+                                <p className="text-sm text-gray-500 px-1">Ningún contrato en ese estado.</p>
+                            )}
+                            {fichasVisibles.map((f) => {
+                                const venc = estadoVencimiento(f.fechaFinContrato, hoy);
+                                return (
                                 <div key={f.id} className={cn('bg-white rounded-2xl border shadow-sm p-4', f.activa ? 'border-gray-100' : 'border-gray-200 opacity-60')}>
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div className="min-w-0">
@@ -613,6 +692,7 @@ export default function Incrementos() {
                                                 {f.codigoWasi && <Badge className="bg-gray-100 text-gray-600">Wasi {f.codigoWasi}</Badge>}
                                                 {!f.activa && <Badge className="bg-gray-200 text-gray-600">Inactiva</Badge>}
                                                 {f.contract && <Badge className="bg-blue-50 text-blue-600">Contrato #{f.contract.id}</Badge>}
+                                                {venc && f.activa && venc.clave !== 'VIGENTE' && <Badge className={venc.badge}>{venc.emoji} {venc.label}</Badge>}
                                                 <Badge className="bg-gray-100 text-gray-600">{TIPOS_INDICE[f.tipoIndice]?.label || f.tipoIndice}{f.tipoIndice === 'IPC_PLUS' ? ` +${f.puntosAdicionales}` : f.tipoIndice === 'FIJO' ? ` ${f.pctFijo}%` : ''}</Badge>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-0.5 truncate">{f.direccion || 'Sin dirección'}</p>
@@ -621,6 +701,12 @@ export default function Incrementos() {
                                                 {f.proximoAniversario && (
                                                     <> · Próximo aniversario: <span className="font-semibold">{fechaCorta(f.proximoAniversario.fecha)}</span></>
                                                 )}
+                                                {' · '}Vence: {venc
+                                                    ? <span className={cn('font-semibold', venc.dias < 0 && 'text-red-600')}>
+                                                        {fechaCorta(f.fechaFinContrato)}
+                                                        {venc.dias < 0 ? ` (hace ${-venc.dias} días)` : venc.dias === 0 ? ' (hoy)' : ` (faltan ${venc.dias} días)`}
+                                                    </span>
+                                                    : <span className="text-amber-600 font-semibold">sin fecha fin</span>}
                                             </p>
                                             <p className="text-sm mt-1">
                                                 Canon vigente: <span className="font-extrabold">{money(f.canonActual)}</span>
@@ -640,13 +726,19 @@ export default function Incrementos() {
                                             )}
                                             {isAdmin && (
                                                 <>
+                                                    {venc && f.activa && venc.clave !== 'VIGENTE' && (
+                                                        <Button variant="ghost" size="sm" title="Prorrogar 12 meses" onClick={() => handleProrrogar(f)}>
+                                                            <CalendarPlus className="w-4 h-4 text-emerald-600" />
+                                                        </Button>
+                                                    )}
                                                     <Button variant="ghost" size="sm" title="Editar" onClick={() => setFichaForm({
                                                         id: f.id, codigoWasi: f.codigoWasi || '', arrendatarioNombre: f.arrendatarioNombre,
                                                         arrendatarioCedula: f.arrendatarioCedula || '',
                                                         arrendatarioTipoPersona: f.arrendatarioTipoPersona || 'Persona natural',
                                                         arrendatarioEmail: f.arrendatarioEmail || '',
                                                         arrendatarioCelular: f.arrendatarioCelular || '', direccion: f.direccion || '',
-                                                        fechaInicioContrato: f.fechaInicioContrato, canonActual: f.canonActual,
+                                                        fechaInicioContrato: f.fechaInicioContrato, fechaFinContrato: f.fechaFinContrato || '',
+                                                        canonActual: f.canonActual,
                                                         tipoIndice: f.tipoIndice, puntosAdicionales: f.puntosAdicionales, pctFijo: f.pctFijo,
                                                         notas: f.notas || '',
                                                     })}>
@@ -695,7 +787,8 @@ export default function Incrementos() {
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </>
@@ -817,8 +910,18 @@ export default function Incrementos() {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Fecha inicio contrato *"><Input type="date" required value={fichaForm.fechaInicioContrato} onChange={(e) => setFichaForm({ ...fichaForm, fechaInicioContrato: e.target.value })} /></Field>
-                            <Field label="Canon vigente ($) *"><MoneyInput value={fichaForm.canonActual} onChange={(v) => setFichaForm({ ...fichaForm, canonActual: v })} /></Field>
+                            <Field label="Fecha fin contrato" hint="Alerta de renovación: 90 días antes (preaviso), 30 días, el día y vencido">
+                                <div className="flex gap-1.5">
+                                    <Input type="date" value={fichaForm.fechaFinContrato} min={fichaForm.fechaInicioContrato || undefined}
+                                        onChange={(e) => setFichaForm({ ...fichaForm, fechaFinContrato: e.target.value })} />
+                                    <Button type="button" variant="secondary" size="sm" title="Inicio + 12 meses" disabled={!fichaForm.fechaInicioContrato}
+                                        onClick={() => setFichaForm({ ...fichaForm, fechaFinContrato: fechaFinSugerida(fichaForm.fechaInicioContrato, 12) })}>
+                                        +12 m
+                                    </Button>
+                                </div>
+                            </Field>
                         </div>
+                        <Field label="Canon vigente ($) *"><MoneyInput value={fichaForm.canonActual} onChange={(v) => setFichaForm({ ...fichaForm, canonActual: v })} /></Field>
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Índice pactado">
                                 <Select value={fichaForm.tipoIndice} onChange={(e) => setFichaForm({ ...fichaForm, tipoIndice: e.target.value })}>
@@ -887,8 +990,8 @@ function ImportCsvModal({ open, onClose, onDone, toast }) {
             <div className="space-y-4">
                 <p className="text-xs text-gray-500">
                     Archivo CSV con encabezado. Columnas reconocidas: <span className="font-semibold">código Wasi,
-                    nombre, cédula, correo, celular, dirección, fecha inicio (YYYY-MM-DD o DD/MM/YYYY), canon,
-                    tipo índice</span>. Se omiten las filas con código Wasi ya registrado.
+                    nombre, cédula, tipo persona, correo, celular, dirección, fecha inicio y fecha fin (YYYY-MM-DD o DD/MM/YYYY), canon,
+                    tipo índice, notas</span>. La fecha fin activa las alertas de vencimiento. Se omiten las filas con código Wasi ya registrado.
                 </p>
                 <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile}
                     className="block w-full text-sm text-gray-600 file:mr-3 file:px-4 file:py-2 file:rounded-xl file:border-0 file:bg-brand-600 file:text-white file:font-bold file:text-xs" />
@@ -899,7 +1002,7 @@ function ImportCsvModal({ open, onClose, onDone, toast }) {
                                 <div key={i} className="px-3 py-2 text-xs">
                                     <span className="font-bold">{f.arrendatarioNombre || '(sin nombre)'}</span>
                                     {f.codigoWasi && <span className="text-gray-400"> · {f.codigoWasi}</span>}
-                                    <span className="text-gray-500"> · {f.fechaInicioContrato || 'sin fecha'} · ${formatoCifra(f.canonActual || 0)}</span>
+                                    <span className="text-gray-500"> · {f.fechaInicioContrato || 'sin fecha'}{f.fechaFinContrato ? ` → ${f.fechaFinContrato}` : ''} · ${formatoCifra(f.canonActual || 0)}</span>
                                 </div>
                             ))}
                             {filas.length > 30 && <p className="px-3 py-2 text-[11px] text-gray-400">… y {filas.length - 30} más</p>}

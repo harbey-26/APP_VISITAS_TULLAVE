@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import {
     pctAplicable, calcularNuevoCanon, proximoAniversario, aniversariosEnRadar,
     diasHasta, hoyISO, semaforo, grupoDashboard, validarFichaParaCarta, num,
+    estadoVencimiento, nivelAlertaVencimiento, VENCIMIENTOS, fechaFinSugerida,
 } from '../utils/incrementoCalc.js';
 import { correoIncremento } from '../utils/incrementoDocument.js';
 import { generateIncrementoPdf, incrementoFileName } from '../utils/incrementoPdf.js';
@@ -12,6 +13,7 @@ import { sendPersonalNotification, notifyAdmins } from '../utils/notify.js';
 import { EMAIL_COOLDOWN_MS, emailCooldownRemainingMs, emailCooldownMessage } from '../utils/emailCooldown.js';
 import { publicBaseUrl } from '../utils/publicBaseUrl.js';
 import { esStaff } from '../utils/roles.js';
+import { fechaCorta } from '../utils/fechaLetras.js';
 
 // I1: Módulo de incrementos de canon. FichaIncremento = contrato vivo en
 // seguimiento (auto-alta al aprobar contratos ARRENDAMIENTO, backfill de los
@@ -32,6 +34,7 @@ const fichaSchema = z.object({
     arrendatarioCelular: z.string().trim().max(30).optional().nullable(),
     direccion: z.string().trim().max(300).optional().nullable(),
     fechaInicioContrato: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de inicio inválida (YYYY-MM-DD)'),
+    fechaFinContrato: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha fin inválida (YYYY-MM-DD)').optional().nullable(),
     canonActual: z.coerce.number().int().positive('El canon debe ser mayor a cero'),
     tipoIndice: z.enum(['IPC', 'IPC_PLUS', 'FIJO']).optional(),
     puntosAdicionales: z.coerce.number().min(0).max(50).optional(),
@@ -45,6 +48,14 @@ function parseId(raw) {
     const n = parseInt(raw, 10);
     if (isNaN(n) || n <= 0) throw new Error('ID inválido');
     return n;
+}
+
+// La fecha fin debe ser posterior al inicio (una fecha fin anterior es un
+// error de digitación — pasó en la base del cliente, sep 2026).
+function validarFechas({ fechaInicioContrato, fechaFinContrato }) {
+    if (fechaFinContrato && fechaInicioContrato && fechaFinContrato <= fechaInicioContrato) {
+        throw new Error('La fecha fin del contrato debe ser posterior a la fecha de inicio');
+    }
 }
 
 const isAdmin = (req) => req.user.role === 'ADMIN';
@@ -133,6 +144,10 @@ export function fichaDesdeContrato(contract) {
         arrendatarioCelular: d.arrendatarioCelular || null,
         direccion: direccion || null,
         fechaInicioContrato: (d.fechaInicio || '').slice(0, 10),
+        // Vencimiento: la fecha del contrato; si no la tiene, inicio + vigencia
+        fechaFinContrato: (d.fechaVencimiento || '').slice(0, 10)
+            || fechaFinSugerida((d.fechaInicio || '').slice(0, 10), Number(d.duracionMeses) || 12)
+            || null,
         canonActual: num(d.canon),
     };
 }
@@ -171,6 +186,7 @@ export const getFichas = async (req, res) => {
         res.json(fichas.map((f) => ({
             ...f,
             proximoAniversario: proximoAniversario(f.fechaInicioContrato, hoy),
+            vencimiento: estadoVencimiento(f.fechaFinContrato, hoy),
             incrementos: f.incrementos.map((i) => serializeIncremento({ ...i, ficha: f }, indices, hoy)),
             faltantes: validarFichaParaCarta(f),
         })));
@@ -183,6 +199,7 @@ export const getFichas = async (req, res) => {
 export const createFicha = async (req, res) => {
     try {
         const data = fichaSchema.parse(req.body);
+        validarFechas(data);
         const ficha = await prisma.fichaIncremento.create({ data, include: includeFicha });
         res.status(201).json(ficha);
     } catch (error) {
@@ -195,6 +212,15 @@ export const updateFicha = async (req, res) => {
     try {
         const id = parseId(req.params.id);
         const data = fichaSchema.partial().parse(req.body);
+        if ('fechaFinContrato' in data || 'fechaInicioContrato' in data) {
+            const actual = await prisma.fichaIncremento.findUnique({ where: { id } });
+            if (!actual) return res.status(404).json({ error: 'Ficha no encontrada' });
+            validarFechas({ ...actual, ...data });
+            // Nueva fecha fin (prórroga/corrección) = nuevo ciclo de alertas
+            if ('fechaFinContrato' in data && data.fechaFinContrato !== actual.fechaFinContrato) {
+                data.alertasVencimiento = null;
+            }
+        }
         const ficha = await prisma.fichaIncremento.update({
             where: { id }, data, include: includeFicha,
         });
@@ -259,6 +285,7 @@ export const importarFichas = async (req, res) => {
         for (let i = 0; i < filas.length; i++) {
             try {
                 const data = importRowSchema.parse(filas[i]);
+                validarFechas(data);
                 if (data.codigoWasi && codigos.has(data.codigoWasi)) {
                     errores.push({ fila: i + 1, error: `Ya existe una ficha con el código Wasi ${data.codigoWasi}` });
                     continue;
@@ -353,6 +380,54 @@ export async function detectarAniversarios({ horizonteDias = ANTICIPACION_DIAS, 
         console.log(`[Incrementos] ${creados.length} tarea(s) de incremento creada(s) (horizonte ${horizonteDias} días)`);
     }
     return creados;
+}
+
+// Alertas de VENCIMIENTO del contrato (sep 2026): revisa las fichas activas
+// con fecha fin y avisa por nivel — preaviso (90 días, Ley 820 arts. 22/24),
+// menos de 30 días, vence hoy, vencido. Cada nivel se envía UNA sola vez por
+// fecha fin (`alertasVencimiento` = JSON { fechaFin, niveles }); al prorrogar
+// o corregir la fecha el ciclo empieza de nuevo. Admins reciben UN mensaje por
+// nivel con la lista; el agente responsable, uno por contrato suyo.
+export async function revisarVencimientosContratos({ hoy = hoyISO() } = {}) {
+    const fichas = await prisma.fichaIncremento.findMany({
+        where: { activa: true, fechaFinContrato: { not: null } },
+        select: { id: true, userId: true, arrendatarioNombre: true, direccion: true, fechaFinContrato: true, alertasVencimiento: true },
+    });
+    const porNivel = {};
+    for (const ficha of fichas) {
+        const nivel = nivelAlertaVencimiento(ficha.fechaFinContrato, hoy);
+        if (!nivel) continue;
+        let enviadas = { fechaFin: ficha.fechaFinContrato, niveles: [] };
+        try {
+            const prev = ficha.alertasVencimiento ? JSON.parse(ficha.alertasVencimiento) : null;
+            if (prev && prev.fechaFin === ficha.fechaFinContrato && Array.isArray(prev.niveles)) enviadas = prev;
+        } catch { /* JSON corrupto → ciclo nuevo */ }
+        if (enviadas.niveles.includes(nivel)) continue;
+
+        const info = VENCIMIENTOS[nivel];
+        const cuando = nivel === 'VENCIDO'
+            ? `venció el ${fechaCorta(ficha.fechaFinContrato)}`
+            : nivel === 'VENCE_HOY' ? 'vence HOY' : `vence el ${fechaCorta(ficha.fechaFinContrato)}`;
+        if (ficha.userId) {
+            sendPersonalNotification(ficha.userId, `${info.emoji} ${info.label}`,
+                `El contrato de ${ficha.arrendatarioNombre} (${ficha.direccion || 'sin dirección'}) ${cuando}. Gestiona la renovación o el preaviso.`).catch(() => {});
+        }
+        (porNivel[nivel] ||= []).push(`${ficha.arrendatarioNombre} (${cuando})`);
+        enviadas.niveles.push(nivel);
+        await prisma.fichaIncremento.update({
+            where: { id: ficha.id },
+            data: { alertasVencimiento: JSON.stringify(enviadas) },
+        }).catch(() => {});
+    }
+    let total = 0;
+    for (const [nivel, lista] of Object.entries(porNivel)) {
+        const info = VENCIMIENTOS[nivel];
+        notifyAdmins(`${info.emoji} ${info.label}: ${lista.length} contrato(s)`,
+            `${lista.slice(0, 5).join('; ')}${lista.length > 5 ? `; y ${lista.length - 5} más` : ''}. Revisa la pestaña Fichas del módulo de Incrementos.`);
+        total += lista.length;
+    }
+    if (total > 0) console.log(`[Incrementos] ${total} alerta(s) de vencimiento de contrato enviadas`);
+    return total;
 }
 
 // POST /api/incrementos/detectar — solo admin: corre la detección ahora

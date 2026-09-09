@@ -4,7 +4,7 @@
 // procesamiento masivo, carta) y PDF — sin imports de Prisma ni React.
 // Tests en tests/incrementoCalc.test.js.
 
-import { partesFecha } from './fechaLetras.js';
+import { partesFecha, sumarMeses, finDePeriodo } from './fechaLetras.js';
 
 // ── Estados del incremento ──
 // PENDIENTE → (enviar carta) ENVIADA → (llega la fecha efectiva y se aplica el
@@ -193,6 +193,68 @@ export function grupoDashboard(incremento, hoy = hoyISO()) {
         if (f.year === mesSiguiente.year && f.month === mesSiguiente.month) return 'PROXIMO_MES';
     }
     return null;
+}
+
+// ── Vencimiento del contrato (sep 2026) ──
+// La ficha guarda la FECHA FIN del contrato (`fechaFinContrato`) para alertar
+// la renovación con tiempo: el preaviso de terminación del arrendamiento de
+// vivienda urbana es de 3 meses (Ley 820 de 2003, arts. 22 y 24), por eso el
+// primer nivel salta 90 días antes. Sin fecha fin no hay alerta (null).
+export const PREAVISO_VENCIMIENTO_DIAS = 90;
+export const PROXIMO_VENCIMIENTO_DIAS = 30;
+
+export const VENCIMIENTOS = {
+    VENCIDO: { clave: 'VENCIDO', orden: 0, emoji: '⚫', label: 'Contrato vencido', badge: 'bg-gray-900 text-white' },
+    VENCE_HOY: { clave: 'VENCE_HOY', orden: 1, emoji: '🔴', label: 'Vence hoy', badge: 'bg-red-100 text-red-700' },
+    PROXIMO: { clave: 'PROXIMO', orden: 2, emoji: '🟠', label: 'Vence en menos de 30 días', badge: 'bg-orange-100 text-orange-700' },
+    PREAVISO: { clave: 'PREAVISO', orden: 3, emoji: '🟡', label: 'En término de preaviso (90 días)', badge: 'bg-yellow-100 text-yellow-700' },
+    VIGENTE: { clave: 'VIGENTE', orden: 4, emoji: '🟢', label: 'Vigente', badge: 'bg-emerald-100 text-emerald-700' },
+};
+
+// Estado del vencimiento de una ficha → { ...VENCIMIENTOS[x], dias } | null.
+export function estadoVencimiento(fechaFin, hoy = hoyISO()) {
+    if (!partesFecha(fechaFin)) return null;
+    const dias = diasHasta(fechaFin, hoy);
+    let v;
+    if (dias < 0) v = VENCIMIENTOS.VENCIDO;
+    else if (dias === 0) v = VENCIMIENTOS.VENCE_HOY;
+    else if (dias <= PROXIMO_VENCIMIENTO_DIAS) v = VENCIMIENTOS.PROXIMO;
+    else if (dias <= PREAVISO_VENCIMIENTO_DIAS) v = VENCIMIENTOS.PREAVISO;
+    else v = VENCIMIENTOS.VIGENTE;
+    return { ...v, dias };
+}
+
+// Nivel de alerta que el cron debe haber enviado a esta altura (el más
+// avanzado alcanzado). Cada nivel se envía UNA vez; al llegar tarde a un
+// contrato (migración inicial) solo sale el nivel vigente, no los anteriores.
+export function nivelAlertaVencimiento(fechaFin, hoy = hoyISO()) {
+    const e = estadoVencimiento(fechaFin, hoy);
+    if (!e || e.clave === 'VIGENTE') return null;
+    return e.clave;
+}
+
+// Orden para listados de fichas: vencidos primero, luego los más próximos;
+// las fichas sin fecha fin van al final.
+export function compararVencimiento(a, b, hoy = hoyISO()) {
+    const ea = estadoVencimiento(a.fechaFinContrato, hoy);
+    const eb = estadoVencimiento(b.fechaFinContrato, hoy);
+    if (!ea && !eb) return 0;
+    if (!ea) return 1;
+    if (!eb) return -1;
+    if (ea.orden !== eb.orden) return ea.orden - eb.orden;
+    return ea.dias - eb.dias;
+}
+
+// Fecha fin sugerida al crear la ficha: inicio + vigencia, con el período
+// INCLUYENDO el día de inicio (misma regla del contrato, #23):
+// '2026-09-04' + 12 meses → '2027-09-03'.
+export function fechaFinSugerida(fechaInicio, meses = 12) {
+    return finDePeriodo(fechaInicio, meses) || '';
+}
+
+// Prórroga: la nueva fecha fin es la actual + meses ('2026-08-07' → '2027-08-07').
+export function prorrogarFechaFin(fechaFin, meses = 12) {
+    return sumarMeses(fechaFin, meses) || '';
 }
 
 // ── Validación de la ficha antes de generar/enviar la carta (#49, #54) ──

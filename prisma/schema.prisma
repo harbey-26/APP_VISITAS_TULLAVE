@@ -227,6 +227,8 @@ model FichaIncremento {
   arrendatarioCelular String?
   direccion           String?  // dirección completa del inmueble (para la carta)
   fechaInicioContrato String   // "YYYY-MM-DD" — de aquí sale el aniversario
+  fechaFinContrato    String?  // "YYYY-MM-DD" — vencimiento del contrato (alerta de renovación/preaviso); null = sin registrar
+  alertasVencimiento  String?  // JSON { fechaFin, niveles: [] } — niveles de alerta ya enviados para ESA fecha fin (una vez por nivel)
   canonActual         Int      // COP sin centavos — canon vigente hoy
   tipoIndice          String   @default("IPC") // IPC, IPC_PLUS (IPC + puntos), FIJO (% pactado)
   puntosAdicionales   Float    @default(0) // solo IPC_PLUS: IPC + estos puntos

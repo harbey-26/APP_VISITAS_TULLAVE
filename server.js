@@ -5,7 +5,7 @@ import prisma from './src/utils/prisma.js';
 import dotenv from 'dotenv';
 import apiRoutes from './src/routes/index.js';
 import { startLocationReminderCron } from './src/utils/locationReminders.js';
-import { detectarAniversarios } from './src/controllers/incremento.controller.js';
+import { detectarAniversarios, revisarVencimientosContratos } from './src/controllers/incremento.controller.js';
 import { revisarVencimientos } from './src/controllers/solicitud.controller.js';
 import { notifyAdmins } from './src/utils/notify.js';
 import path from 'path';
@@ -197,6 +197,8 @@ function startIncrementoCron() {
                 );
             }
         } catch (e) { console.warn('[Incrementos Cron]', e.message); }
+        // Vencimientos de contrato (sep 2026): preaviso 90 días / 30 días / hoy / vencido
+        try { await revisarVencimientosContratos(); } catch (e) { console.warn('[Vencimientos Cron]', e.message); }
     };
     run(); // al arrancar
     let lastRanDay = new Date().getUTCDate();

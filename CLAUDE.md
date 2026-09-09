@@ -154,7 +154,10 @@ LiquidacionPago — id, liquidacionId, valor (COP sin centavos), fecha, nota,
             registradoPor (auditoría) — tabla propia, no JSON
 FichaIncremento — id, contractId? (@unique — null si vino de CSV/manual),
             userId? (agente responsable), codigoWasi, datos del arrendatario,
-            direccion, fechaInicioContrato ("YYYY-MM-DD"), canonActual (canon
+            direccion, fechaInicioContrato ("YYYY-MM-DD"), fechaFinContrato?
+            ("YYYY-MM-DD" — vencimiento; alimenta la alerta de renovación),
+            alertasVencimiento? (JSON { fechaFin, niveles } — niveles ya
+            avisados para ESA fecha fin), canonActual (canon
             VIGENTE, se actualiza al aplicar), tipoIndice (IPC/IPC_PLUS/FIJO),
             puntosAdicionales, pctFijo, activa (false = contrato terminado)
 Incremento — id, fichaId, periodo (año), fechaEfectiva, canonAnterior,
@@ -241,7 +244,7 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | DELETE | `/api/liquidaciones/:id` | JWT | Eliminar (dueño solo editables; admin cualquiera; cascade borra pagos) |
 | GET | `/api/incrementos/fichas` | JWT | Fichas de incremento (admin todas; agente las suyas) con próximo aniversario e historial |
 | POST | `/api/incrementos/fichas` | JWT+Admin | Alta manual de ficha |
-| PATCH/DELETE | `/api/incrementos/fichas/:id` | JWT+Admin | Editar / eliminar. Para sacar del radar sin perder historial: PATCH `{activa:false}` |
+| PATCH/DELETE | `/api/incrementos/fichas/:id` | JWT+Admin | Editar / eliminar. Para sacar del radar sin perder historial: PATCH `{activa:false}`. Cambiar `fechaFinContrato` (prórroga/corrección) reinicia el ciclo de alertas de vencimiento; fecha fin ≤ inicio → 400 |
 | POST | `/api/incrementos/fichas/backfill` | JWT+Admin | Migración inicial: fichas para contratos ARRENDAMIENTO aprobados sin ficha |
 | POST | `/api/incrementos/fichas/importar` | JWT+Admin | Carga masiva `{filas:[…]}` (el frontend parsea el CSV); deduplica por código Wasi |
 | GET / PUT | `/api/incrementos/indices(/:anio)` | JWT (PUT admin) | IPC por año de aplicación |
@@ -537,6 +540,22 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - Gestión del incremento anual de canon: base de fichas auto-alimentada,
   dashboard semaforizado, carta automática y aplicación del nuevo canon.
   Admin gestiona todo; el agente ve/envía las de sus contratos
+- **Vencimiento del contrato (sep 2026)** — la ficha guarda `fechaFinContrato`
+  (opcional): viene del contrato (`fechaVencimiento`, o inicio + vigencia con
+  `fechaFinSugerida` = `finDePeriodo`, la víspera del aniversario), del CSV
+  (alias "fecha fin" / "vencimiento", DD/MM/YYYY aceptado) o del modal (botón
+  "+12 m"). `estadoVencimiento()` puro (con tests): VENCIDO / VENCE_HOY /
+  PROXIMO (≤30 días) / PREAVISO (≤90 días, término de preaviso de la Ley 820
+  arts. 22 y 24) / VIGENTE. El cron diario (`revisarVencimientosContratos`,
+  dentro de `startIncrementoCron`) avisa UNA vez por nivel: FCM al agente
+  responsable por contrato y UN mensaje por nivel a los admins con la lista;
+  lo enviado queda en `alertasVencimiento` y se reinicia al cambiar la fecha
+  fin. En la página: banner rojo si hay vencidos/por vencer, chips-filtro por
+  estado en la pestaña Fichas (lista ordenada por `compararVencimiento`),
+  badge + "Vence: … (faltan N días)" en cada card y botón "Prorrogar 12
+  meses" (`prorrogarFechaFin` = `sumarMeses`) que solo cambia la fecha fin.
+  Las fichas sin fecha fin muestran "sin fecha fin" y no alertan. El CSV
+  también acepta "tipo persona" (jurídica/natural) para la carta
 - **Fichas (#45)** — tres vías de alta: automática al APROBAR un contrato
   ARRENDAMIENTO (hook en `contract.controller.js` → `crearFichaDesdeContrato`,
   silencioso), botón "Cargar desde contratos" (backfill de aprobados sin ficha)
