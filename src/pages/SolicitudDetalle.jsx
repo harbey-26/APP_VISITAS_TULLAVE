@@ -7,7 +7,7 @@ import {
     SOLICITUD_ESTADOS, TRANSICIONES, PRIORIDADES, MEDIOS_INGRESO,
     SOLICITANTE_TIPOS, ACTUACION_TIPOS, ADJUNTO_CATEGORIAS, DP_TIPOS, DP_ALERTAS,
     URGENCIAS, REPARACION_PASOS,
-    REPORTE_MEDIOS, REPORTE_PAGO_ESTADOS, TRANSICIONES_REPORTE,
+    REPORTE_MEDIOS, REPORTE_MEDIOS_RETIRADOS, REPORTE_PAGO_ESTADOS, TRANSICIONES_REPORTE,
 } from '../utils/solicitudFlow.js';
 import { calcularServicioPublico } from '../utils/servicioPublicoCalc.js';
 import { downloadServicioPublicoPdf } from '../utils/servicioPublicoPdf.js';
@@ -1023,6 +1023,12 @@ function ReportePagoPanel({ rp, disabled, onSave }) {
                 </Field>
                 <Field label="Medio de pago">
                     <Select disabled={disabled} value={f.medioPago} onChange={(e) => setF({ ...f, medioPago: e.target.value })}>
+                        {/* Un medio retirado (Nequi) solo se lista si el reporte
+                            histórico lo trae: se puede ver y guardar sin cambiarlo,
+                            pero no se ofrece para reportes nuevos */}
+                        {REPORTE_MEDIOS_RETIRADOS[rp.medioPago] && (
+                            <option value={rp.medioPago}>{REPORTE_MEDIOS_RETIRADOS[rp.medioPago]} (ya no disponible)</option>
+                        )}
                         {Object.entries(REPORTE_MEDIOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </Select>
                 </Field>

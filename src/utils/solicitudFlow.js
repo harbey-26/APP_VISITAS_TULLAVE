@@ -167,12 +167,22 @@ export function compararBandeja(a, b, hoy) {
 // lo concilia contra la cartera. El ciclo vive en data.reportePago.estado,
 // sobre la máquina de estados general del expediente.
 export const REPORTE_MEDIOS = {
-    NEQUI: 'Nequi',
     DAVIVIENDA: 'Davivienda',
     TRANSFERENCIA: 'Transferencia bancaria',
     EFECTIVO: 'Efectivo',
     OTRO: 'Otro',
 };
+
+// Medios RETIRADOS (sep 2026): ya no se ofrecen en ningún formulario, pero los
+// reportes históricos los conservan en `data.reportePago.medioPago` y deben
+// seguir leyéndose con su etiqueta. Nequi dejó de usarse para el pago de los
+// contratos por decisión del cliente.
+export const REPORTE_MEDIOS_RETIRADOS = {
+    NEQUI: 'Nequi',
+};
+
+export const labelMedioPago = (clave) =>
+    REPORTE_MEDIOS[clave] || REPORTE_MEDIOS_RETIRADOS[clave] || clave || '';
 
 export const REPORTE_PAGO_ESTADOS = {
     REPORTADO: { label: 'Reportado', badge: 'bg-yellow-100 text-yellow-700', orden: 0 },

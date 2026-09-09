@@ -5,7 +5,7 @@ import {
     puedeTransicionar, SOLICITUD_ESTADOS, ESTADOS_ABIERTOS,
     DP_TIPOS, DP_ALERTAS, vencimientoDP, nivelAlertaDP, urgenciaVencimiento,
     REPARACION_ORDEN,
-    REPORTE_MEDIOS, REPORTE_PAGO_ESTADOS, puedeTransicionarReporte,
+    REPORTE_MEDIOS, REPORTE_MEDIOS_RETIRADOS, REPORTE_PAGO_ESTADOS, puedeTransicionarReporte,
 } from '../utils/solicitudFlow.js';
 import { hoyISO } from '../utils/incrementoCalc.js';
 import { calcularServicioPublico, validarServicioPublico } from '../utils/servicioPublicoCalc.js';
@@ -814,7 +814,10 @@ export const updateData = async (req, res) => {
             const cfg = z.object({
                 valor: z.coerce.number().min(0).optional(),
                 fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-                medioPago: z.enum(Object.keys(REPORTE_MEDIOS)).optional(),
+                // El equipo puede re-guardar un reporte histórico con un medio
+                // retirado (Nequi) sin tocarlo; el portal (cliente) solo acepta
+                // los vigentes — ver portal.controller.js
+                medioPago: z.enum([...Object.keys(REPORTE_MEDIOS), ...Object.keys(REPORTE_MEDIOS_RETIRADOS)]).optional(),
                 referencia: z.string().trim().max(80).optional().nullable(),
                 estado: z.enum(Object.keys(REPORTE_PAGO_ESTADOS)).optional(),
                 nota: z.string().trim().max(500).optional().nullable(),

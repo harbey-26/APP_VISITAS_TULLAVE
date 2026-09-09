@@ -4,6 +4,7 @@ import {
     vencimientoDP, nivelAlertaDP, urgenciaVencimiento, compararBandeja,
     pasoReparacionSiguiente,
     REPORTE_PAGO_ESTADOS, TRANSICIONES_REPORTE, puedeTransicionarReporte,
+    REPORTE_MEDIOS, REPORTE_MEDIOS_RETIRADOS, labelMedioPago,
 } from '../src/utils/solicitudFlow.js';
 
 describe('máquina de estados (#33)', () => {
@@ -82,6 +83,22 @@ describe('pasos de reparación (#36)', () => {
         expect(pasoReparacionSiguiente('CASO_CREADO')).toBe('FOTOS_ADJUNTAS');
         expect(pasoReparacionSiguiente('TECNICO_ASIGNADO')).toBe('REPARACION_FINALIZADA');
         expect(pasoReparacionSiguiente('REPARACION_FINALIZADA')).toBeNull();
+    });
+});
+
+describe('medios del reporte de pago', () => {
+    it('Nequi ya no se ofrece como medio de pago (retirado sep 2026)', () => {
+        expect(REPORTE_MEDIOS).not.toHaveProperty('NEQUI');
+        expect(Object.keys(REPORTE_MEDIOS)).toEqual(['DAVIVIENDA', 'TRANSFERENCIA', 'EFECTIVO', 'OTRO']);
+    });
+    it('los reportes históricos con Nequi conservan su etiqueta', () => {
+        expect(REPORTE_MEDIOS_RETIRADOS.NEQUI).toBe('Nequi');
+        expect(labelMedioPago('NEQUI')).toBe('Nequi');
+        expect(labelMedioPago('DAVIVIENDA')).toBe('Davivienda');
+        expect(labelMedioPago('DESCONOCIDO')).toBe('DESCONOCIDO');
+    });
+    it('ningún medio vigente está también en los retirados', () => {
+        for (const k of Object.keys(REPORTE_MEDIOS_RETIRADOS)) expect(REPORTE_MEDIOS).not.toHaveProperty(k);
     });
 });
 

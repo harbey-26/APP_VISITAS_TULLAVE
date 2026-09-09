@@ -119,9 +119,11 @@ APP_VISITAS_TULLAVE/
 ```prisma
 User      — id, email, password, name, phone (celular del agente — sale en
             el mensaje de confirmación al cliente), role (AGENT/ADMIN),
-            tokenVersion (revocación de sesiones: cambiar la contraseña lo
-            incrementa y el middleware rechaza los JWT con versión vieja —
-            desloguea todos los dispositivos del usuario al instante),
+            tokenVersion (revocación de sesiones: cambiar la contraseña O EL
+            ROL lo incrementa y el middleware rechaza los JWT con versión
+            vieja — desloguea todos los dispositivos del usuario al instante.
+            El rol que usa el backend (`req.user.role`) sale SIEMPRE de la BD
+            en `authenticate`, no del token — sep 2026, ver Notas),
             lastLat, lastLng, lastSeenAt, connectedSince
 Property  — id, address, client, lat, lng
 Visit     — id, userId, propertyId, scheduledStart, estimatedDuration,
@@ -194,7 +196,9 @@ SolicitudTipo — clave (@unique), label, activo, orden — administrable; el se
 | Método | Ruta | Auth | Descripción |
 |--------|------|------|-------------|
 | POST | `/api/auth/login` | No | Login, devuelve JWT |
-| POST | `/api/auth/register` | No | Registrar usuario |
+| POST | `/api/auth/refresh` | JWT | Renueva el token y devuelve también el `user` vigente |
+| GET | `/api/auth/me` | JWT | Usuario actual según la BD (id, email, name, role). El frontend lo consulta al arrancar para sincronizar el `user` de localStorage |
+| POST | `/api/auth/register` | No | Deshabilitado (comentado en `auth.routes.js`): los usuarios los crea el admin con `POST /api/users` |
 | PATCH | `/api/users/location` | JWT | Actualizar GPS del agente |
 | GET | `/api/users/locations` | JWT+Admin | Listar ubicaciones de agentes |
 | GET/POST | `/api/properties` | JWT | Inmuebles |
@@ -682,7 +686,7 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   frontend. El portal ya mostraba `data.respuesta` con sus adjuntos
   descargables para cualquier tipo
 - **Reporte de pago (#55, ago 2026)** — tipo `REPORTE_DE_PAGO` (sembrado):
-  el arrendatario reporta un pago (valor, fecha, medio Nequi/Davivienda/
+  el arrendatario reporta un pago (valor, fecha, medio Davivienda/
   transferencia/efectivo/otro, referencia) con **comprobante obligatorio**
   (foto o PDF, categoría COMPROBANTE) desde el portal. Ciclo de conciliación
   propio en `data.reportePago.estado` — REPORTADO → EN_VERIFICACION →
@@ -694,7 +698,12 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
   en el portal); auditoría `resueltoPor/resueltoAt`. El portal muestra la card
   "Pago reportado" con estado en lenguaje de cliente (`REPORTE_ESTADOS` en su
   estados.jsx). La conciliación contra cartera queda pendiente del módulo de
-  cartera (no existe aún)
+  cartera (no existe aún). **Nequi retirado (sep 2026):** el cliente ya no
+  recibe pagos por Nequi — salió de `REPORTE_MEDIOS` (app y portal, donde
+  además era el valor por defecto; ahora Davivienda). Los reportes viejos con
+  `medioPago: 'NEQUI'` se siguen mostrando con su etiqueta vía
+  `REPORTE_MEDIOS_RETIRADOS` / `labelMedioPago`; el endpoint del equipo acepta
+  re-guardarlos, el del portal solo admite medios vigentes
 
 ### Portal de Clientes (backend `/api/portal`) — módulo P1 (ago 2026)
 - **El frontend vive en otro repo:** `../PORTAL_CLIENTES_TULLAVE` (React+Vite+
@@ -815,3 +824,15 @@ npx prisma db push --schema prisma/schema.pg.prisma   # Aplica cambios en Railwa
 - **Direcciones:** se capturan con `AddressAutocomplete` (Google Places) que entrega `lat/lng` exactos desde el navegador. El geocoding del servidor (`property.controller.js`, `process.env.GOOGLE_MAPS_API_KEY`) es solo respaldo y **falla en producción** si la key está restringida por referrer (las llamadas de servidor no llevan referrer) — por eso Places es el camino principal
 - **`AddressAutocomplete` NO usa el widget `<Autocomplete>` de `@react-google-maps/api`** (ago 2026). Ese widget monta su lista de sugerencias (`div.pac-container`) al final del `<body>`, y en **Safari** esa capa queda pintada por debajo de los modales `position: fixed` — las sugerencias existían pero eran invisibles (en Chrome sí se veían). El componente ahora consulta `AutocompleteService` y **renderiza la lista dentro de sí mismo**, así hereda el contexto de apilamiento del modal. No volver al widget "para simplificar": reintroduce el bug en Safari
 - **Editar inmueble usa `PUT`**, no `PATCH` (la ruta es `router.put('/:id')`). Enviar PATCH da 404
+- **Rol vigente vs. rol del token (sep 2026):** el JWT lleva `role` pero el
+  middleware `authenticate` lo IGNORA y pone en `req.user.role` el de la BD
+  (misma consulta que valida `tokenVersion`). Además, cambiar el rol desde
+  `PATCH /api/users/:id` incrementa `tokenVersion` (revoca sesiones) y el
+  frontend sincroniza el `user` de localStorage al arrancar (`GET /api/auth/me`)
+  o al renovar (`refresh` devuelve `user`). Antes, un agente ascendido a
+  ASISTENTE seguía con la UI de agente (sin selector de agente) mientras el
+  backend ya lo trataba como asistente → `POST /api/visits` respondía 400
+  "Selecciona el agente responsable" y "no podía agendar"; con el token viejo
+  ocurría lo contrario (agendaba a su propio nombre). Si se cambia un rol
+  DIRECTO en BD (p. ej. promover a admin), no hace falta revocar: el backend
+  ya usa el rol nuevo y la UI se rearma en la próxima apertura de la app
