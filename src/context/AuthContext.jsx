@@ -37,6 +37,30 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('user');
     }, []);
 
+    // El `user` guardado en localStorage es el del momento del login. Si el
+    // admin cambió el rol (o el nombre) después, la UI seguía armándose con el
+    // viejo — un agente ascendido a asistente no veía el selector de agente y
+    // el backend (que ya lo trataba como asistente) le rechazaba las visitas.
+    const applyServerUser = useCallback((serverUser) => {
+        if (!serverUser?.id) return;
+        setUser(prev => {
+            const next = { ...(prev || {}), ...serverUser };
+            localStorage.setItem('user', JSON.stringify(next));
+            return next;
+        });
+    }, []);
+
+    // Sincronizar el usuario guardado con la BD al arrancar (silencioso: si
+    // falla la red se sigue con el guardado; un 401 dispara el logout global)
+    const syncUser = useCallback(async (currentToken) => {
+        try {
+            const serverUser = await apiFetch('/api/auth/me', { token: currentToken });
+            applyServerUser(serverUser);
+        } catch {
+            // sin red / servicio caído: se conserva el user guardado
+        }
+    }, [applyServerUser]);
+
     // A6: Renovar token silenciosamente antes de que expire
     const attemptRefresh = useCallback(async (currentToken) => {
         try {
@@ -45,10 +69,11 @@ export const AuthProvider = ({ children }) => {
                 setToken(data.token);
                 localStorage.setItem('token', data.token);
             }
+            applyServerUser(data.user);
         } catch {
             // Si el refresh falla, el usuario seguirá con el token actual hasta que expire
         }
-    }, []);
+    }, [applyServerUser]);
 
     useEffect(() => {
         if (token) {
@@ -61,9 +86,12 @@ export const AuthProvider = ({ children }) => {
                 if (savedUser) {
                     try { setUser(JSON.parse(savedUser)); } catch { /* json corrupto */ }
                 }
-                // A6: Si vence en menos de 24h, renovar proactivamente
+                // A6: Si vence en menos de 24h, renovar proactivamente (el
+                // refresh ya devuelve el usuario vigente); si no, sincronizarlo
                 if (msUntilExpiry(token) < ONE_DAY_MS) {
                     attemptRefresh(token);
+                } else {
+                    syncUser(token);
                 }
             }
         }

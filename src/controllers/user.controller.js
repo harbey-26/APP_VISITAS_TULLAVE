@@ -212,6 +212,14 @@ export const updateUser = async (req, res) => {
         if (updateData.role === 'ADMIN' && target.role !== 'ADMIN') {
             return res.status(403).json({ error: 'Promover a admin requiere acción manual en base de datos.' });
         }
+        // Cambiar el ROL también revoca las sesiones: el frontend guarda el
+        // usuario (con su rol) al iniciar sesión y arma la UI con él. Si no
+        // se cierra la sesión, un agente ascendido a asistente seguía viendo
+        // la agenda de agente (sin selector de agente) y el backend le
+        // rechazaba las visitas. Al volver a entrar, todo queda coherente.
+        if (updateData.role && updateData.role !== target.role) {
+            updateData.tokenVersion = { increment: 1 };
+        }
 
         const user = await prisma.user.update({
             where: { id: userId },

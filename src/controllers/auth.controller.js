@@ -66,15 +66,33 @@ export const register = async (req, res) => {
     }
 };
 
+const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, role: user.role });
+
 export const refresh = async (req, res) => {
     try {
         // req.user ya fue validado por el middleware authenticate
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
         if (!user) return res.status(401).json({ error: 'No se pudo renovar la sesión' });
         const token = generateToken(user);
-        res.json({ token });
+        // Devuelve también el usuario para que el frontend refresque el que
+        // tiene guardado (rol/nombre pueden haber cambiado desde el login)
+        res.json({ token, user: publicUser(user) });
     } catch (error) {
         res.status(401).json({ error: 'No se pudo renovar la sesión' });
+    }
+};
+
+// Usuario actual según la BD. El frontend lo consulta al arrancar para
+// sincronizar el `user` guardado en localStorage (rol/nombre vigentes): si
+// el admin cambió el rol, la UI se rearma con el correcto sin reinstalar ni
+// borrar datos. Un token revocado responde 401 desde el middleware.
+export const me = async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (!user) return res.status(401).json({ error: 'Usuario no encontrado' });
+        res.json(publicUser(user));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
 

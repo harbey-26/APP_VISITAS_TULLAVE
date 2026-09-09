@@ -29,16 +29,27 @@ export const authenticate = async (req, res, next) => {
     // tokens anteriores quedan inválidos al instante (también los de un
     // usuario eliminado). Los tokens previos a este cambio no traen `tv`
     // (cuenta como 0, la versión inicial de todos los usuarios).
+    //
+    // El ROL se toma SIEMPRE de la BD, no del token: el JWT lleva el rol con
+    // el que se emitió y, si el admin cambia el rol del usuario (agente →
+    // asistente), la sesión abierta seguía actuando con el rol viejo hasta
+    // renovarse (un asistente agendaba visitas a su propio nombre, o su UI de
+    // agente chocaba con un backend que ya lo trataba como asistente).
+    let current;
     try {
-        if (!(await tokenVersionOk(decoded))) {
-            return res.status(401).json({ error: 'Sesión revocada. Inicia sesión de nuevo.' });
-        }
+        current = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { tokenVersion: true, role: true },
+        });
     } catch (e) {
         // BD caída ≠ sesión inválida: 503 evita desloguear a todos por un parpadeo
         return res.status(503).json({ error: 'Servicio no disponible, intenta de nuevo' });
     }
+    if (!current || (decoded.tv ?? 0) !== current.tokenVersion) {
+        return res.status(401).json({ error: 'Sesión revocada. Inicia sesión de nuevo.' });
+    }
 
-    req.user = decoded;
+    req.user = { ...decoded, role: current.role };
     next();
 };
 
