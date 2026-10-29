@@ -11,14 +11,14 @@ import { hoyISO } from '../utils/incrementoCalc';
 import { fechaCorta } from '../utils/fechaLetras';
 import { formatoCifra } from '../utils/numeroALetras';
 import { buildWhatsAppUrl } from '../utils/phone';
-import { PORTAL_URL, mensajePortal } from '../utils/portalShare';
+import { PORTAL_URL, PAGO_URL, mensajePortal, mensajePago } from '../utils/portalShare';
 import { esStaff } from '../utils/roles';
 import {
     Button, Badge, PageHeader, EmptyState, Skeleton, Modal, Field, Input, Select, cn,
 } from '../components/ui';
 import {
     Inbox, Plus, Settings2, LayoutDashboard, ListTodo, AlertTriangle,
-    Clock, CheckCircle2, User, X, Globe, Copy, MessageCircle,
+    Clock, CheckCircle2, User, X, Globe, Copy, MessageCircle, CreditCard,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -271,6 +271,15 @@ export default function Solicitudes() {
         }
     };
 
+    const copiarPago = async () => {
+        try {
+            await navigator.clipboard.writeText(PAGO_URL);
+            toast.success('Link de pago copiado');
+        } catch {
+            window.prompt('Copie el link de pago:', PAGO_URL);
+        }
+    };
+
     const CardSolicitud = ({ s }) => {
         const est = SOLICITUD_ESTADOS[s.estado] || {};
         const pri = PRIORIDADES[s.prioridad] || {};
@@ -327,33 +336,58 @@ export default function Solicitudes() {
                 </div>
             </PageHeader>
 
-            {/* ── Portal de Clientes: link para compartir con los clientes
-                (pedido ago 2026). Copiar lo deja listo para pegar en cualquier
-                canal; WhatsApp abre el selector de chat con el mensaje ── */}
-            <div className="mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
-                {/* min-w alto a propósito: en móvil (390px) fuerza a los
-                    botones a bajar a su propia línea en vez de estrujar el
-                    texto */}
-                <div className="flex items-center gap-2.5 flex-1 min-w-[230px]">
-                    <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
-                        <Globe className="w-5 h-5 text-brand-600" />
+            {/* ── Links para compartir con clientes: Portal + Pago ePayco.
+                Copiar deja el URL listo; WhatsApp abre el chat con el mensaje. */}
+            <div className="mb-6 space-y-3">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
+                    {/* min-w alto a propósito: en móvil (390px) fuerza a los
+                        botones a bajar a su propia línea en vez de estrujar el
+                        texto */}
+                    <div className="flex items-center gap-2.5 flex-1 min-w-[230px]">
+                        <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
+                            <Globe className="w-5 h-5 text-brand-600" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900">Portal de Clientes</p>
+                            <a href={PORTAL_URL} target="_blank" rel="noreferrer"
+                                className="text-xs font-semibold text-brand-600 hover:underline truncate block">
+                                {PORTAL_URL.replace('https://', '')}
+                            </a>
+                        </div>
                     </div>
-                    <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-900">Portal de Clientes</p>
-                        <a href={PORTAL_URL} target="_blank" rel="noreferrer"
-                            className="text-xs font-semibold text-brand-600 hover:underline truncate block">
-                            {PORTAL_URL.replace('https://', '')}
-                        </a>
+                    <div className="flex gap-2 flex-wrap">
+                        <Button variant="secondary" size="sm" icon={Copy} onClick={copiarPortal}>
+                            Copiar link
+                        </Button>
+                        <Button variant="success" size="sm" icon={MessageCircle}
+                            onClick={() => window.open(buildWhatsAppUrl('', mensajePortal()), '_blank')}>
+                            WhatsApp
+                        </Button>
                     </div>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                    <Button variant="secondary" size="sm" icon={Copy} onClick={copiarPortal}>
-                        Copiar link
-                    </Button>
-                    <Button variant="success" size="sm" icon={MessageCircle}
-                        onClick={() => window.open(buildWhatsAppUrl('', mensajePortal()), '_blank')}>
-                        WhatsApp
-                    </Button>
+
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-[230px]">
+                        <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
+                            <CreditCard className="w-5 h-5 text-brand-600" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900">Link de pago</p>
+                            <a href={PAGO_URL} target="_blank" rel="noreferrer"
+                                className="text-xs font-semibold text-brand-600 hover:underline truncate block">
+                                {PAGO_URL.replace('https://', '')}
+                            </a>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        <Button variant="secondary" size="sm" icon={Copy} onClick={copiarPago}>
+                            Copiar link
+                        </Button>
+                        <Button variant="success" size="sm" icon={MessageCircle}
+                            onClick={() => window.open(buildWhatsAppUrl('', mensajePago()), '_blank')}>
+                            WhatsApp
+                        </Button>
+                    </div>
                 </div>
             </div>
 

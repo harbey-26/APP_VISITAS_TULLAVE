@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PORTAL_URL, mensajePortal } from '../src/utils/portalShare.js';
+import { PORTAL_URL, PAGO_URL, mensajePortal, mensajePago } from '../src/utils/portalShare.js';
 
 describe('mensajePortal', () => {
     it('siempre incluye el link del portal', () => {
@@ -23,5 +23,20 @@ describe('mensajePortal', () => {
 
     it('sin nombre saluda de forma genérica', () => {
         expect(mensajePortal()).toContain('Hola 👋');
+    });
+});
+
+describe('mensajePago', () => {
+    it('siempre incluye el link de ePayco', () => {
+        expect(mensajePago()).toContain(PAGO_URL);
+        expect(mensajePago({ nombre: 'Ana' })).toContain(PAGO_URL);
+    });
+
+    it('saluda por nombre cuando se indica', () => {
+        expect(mensajePago({ nombre: 'Carlos' })).toContain('Hola Carlos');
+    });
+
+    it('sin nombre saluda de forma genérica', () => {
+        expect(mensajePago()).toContain('Hola 👋');
     });
 });
