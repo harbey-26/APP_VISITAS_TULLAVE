@@ -19,6 +19,7 @@ describe('mensajePortal', () => {
         const msg = mensajePortal({ nombre: 'Ana', radicado: 'SOL-2026-0007' });
         expect(msg).not.toContain('SOL-2026-0007');
         expect(msg).toContain('radicar solicitudes');
+        expect(msg).toContain('avance de las solicitudes que tenga en curso');
     });
 
     it('sin nombre saluda de forma genérica', () => {

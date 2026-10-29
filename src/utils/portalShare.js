@@ -28,7 +28,7 @@ export function mensajePortal({ nombre, radicado, email } = {}) {
         );
     } else {
         lineas.push(
-            'Allí puede radicar solicitudes y consultar el avance de las que tenga en curso.',
+            'Allí puede radicar solicitudes y consultar el avance de las solicitudes que tenga en curso.',
             'Ingrese con su correo electrónico: le llegará un código de acceso de un solo uso, sin contraseñas.',
         );
     }
